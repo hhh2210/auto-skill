@@ -68,6 +68,11 @@ Recent WritingBench smoke results:
   complete: 16/16 success after raising `--judge-max-tokens` to 8192.
   `examples_plus_one_shot_skill` is +0.525 (6/2/0), and
   `examples_plus_feature_skill` is +0.425 (5/2/1) vs MIMO `prompt_only`.
+- PresentBench surrogate does not show the same pattern: examples-plus-skill is
+  16/16 success but negative vs prompt-only (`examples_plus_one_shot_skill`
+  -1.0, `examples_plus_feature_skill` -0.625). Treat examples-plus as a
+  WritingBench-specific positive signal until this cross-domain failure is
+  understood.
 
 Current MIMO train-example audit:
 
@@ -142,10 +147,10 @@ Known blockers:
 
 ## Recommended Next Steps
 
-1. Extend the positive examples-plus-skill ablation beyond the existing 4
-   WritingBench packs. Qwen and MIMO both support the direction on this smoke
-   slice; next compare against old LOO / majority LOO as separate modes before
-   making a method claim.
+1. Extend the examples-plus-skill ablation beyond the existing 4 WritingBench
+   packs and debug why the same mechanism is negative on PresentBench surrogate.
+   Qwen and MIMO both support the WritingBench direction on this smoke slice,
+   but this is not yet a cross-domain method claim.
 2. Attribute whether current losses come from skill compression, feature
    extraction, LOO merge, or skill interference with raw examples.
 3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,

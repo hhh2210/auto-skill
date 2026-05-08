@@ -5,11 +5,17 @@ from pathlib import Path
 
 from scripts.metrics.summarize_mvp_metrics import (
     expected_cells_for_eval,
+    row_judge_model,
     summarize_cross_eval_groups,
 )
 
 
 class SummarizeMvpMetricsTests(unittest.TestCase):
+    def test_row_judge_model_falls_back_to_nested_judge_model(self) -> None:
+        row = {"judge": {"model": "qwen3.5-plus"}}
+
+        self.assertEqual(row_judge_model(row), "qwen3.5-plus")
+
     def test_expected_cells_use_observed_modes_for_split_eval_files(self) -> None:
         packs = [
             {

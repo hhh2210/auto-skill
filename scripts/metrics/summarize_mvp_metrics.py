@@ -203,6 +203,9 @@ def row_judge_model(row: dict[str, Any]) -> str:
     value = row.get("judge_model")
     if isinstance(value, str) and value:
         return value
+    judge = row.get("judge")
+    if isinstance(judge, dict) and isinstance(judge.get("model"), str) and judge["model"]:
+        return judge["model"]
     for call in row.get("judge_calls") or []:
         if isinstance(call, dict) and isinstance(call.get("model"), str) and call["model"]:
             return call["model"]
