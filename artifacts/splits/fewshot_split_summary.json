@@ -1,0 +1,61 @@
+{
+  "schema_version": "fewshot-split-build-summary/v1",
+  "parameters": {
+    "train_size": 3,
+    "heldout_size": 2,
+    "max_groups": 4,
+    "seed": 7
+  },
+  "sources": {
+    "WritingBench": {
+      "total_groups": 199,
+      "eligible_groups": 114,
+      "selected_groups": 4,
+      "skipped_too_small": 85,
+      "truncated_by_max_groups": 110,
+      "minimum_group_size": 5,
+      "max_groups": 4,
+      "largest_group_sizes": [
+        13,
+        12,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9
+      ]
+    },
+    "PresentBench": {
+      "total_groups": 33,
+      "eligible_groups": 28,
+      "selected_groups": 4,
+      "skipped_too_small": 5,
+      "truncated_by_max_groups": 24,
+      "minimum_group_size": 5,
+      "max_groups": 4,
+      "largest_group_sizes": [
+        19,
+        15,
+        12,
+        11,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10
+      ],
+      "raw_total_groups_before_exclusions": 33,
+      "raw_case_count_before_exclusions": 238,
+      "case_count_after_exclusions": 237,
+      "excluded_known_bad_cases": [
+        "education/CSAPP-Lectures_2015Fall/Lecture15"
+      ],
+      "excluded_known_bad_case_count": 1
+    }
+  },
+  "total_splits": 8
+}

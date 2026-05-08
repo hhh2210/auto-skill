@@ -1,0 +1,31 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.venv/
+.env
+.env.*
+!.env.example
+
+# Large benchmark datasets are local inputs, not source files.
+/data/
+
+# Keep small derived examples by default; ignore future large experiment outputs.
+outputs/
+runs/
+logs/
+*.log
+artifacts/pr_reviews/
+artifacts/jobs/
+artifacts/reports/
+artifacts/diagrams/
+artifacts/memory/
+artifacts/seed/
+artifacts/packs/example_packs.jsonl
+artifacts/jobs/generated_desired_outputs.jsonl
+local_artifacts/
+
+/.claude
