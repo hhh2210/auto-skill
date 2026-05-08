@@ -107,7 +107,8 @@ Expected surfaces:
   transport/rate-limit/server errors; use `--parse-max-attempts 3` only when a
   complete model response is occasionally malformed JSON or an invalid judge
   score. This is supported by `run_skill_mvp.py`, `run_writingbench_official_eval.py`,
-  `run_heldout_eval.py`, and `audit_train_examples.py`.
+  `run_heldout_eval.py`, `audit_train_examples.py`,
+  `run_pattern_similarity_eval.py`, and `run_self_consistency_metric.py`.
 - Do not globally enable Qwen thinking for skill induction. Default to
   `--no-enable-thinking`; only use `--thinking-stages ... --thinking-budget N`
   for targeted A/B runs on analysis or merge stages.

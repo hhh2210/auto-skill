@@ -52,8 +52,8 @@ stable.
 | `ops/report_experiment_readiness.py` | Fail-closed experiment readiness report; repeat artifact flags to merge split runs. | CI/core |
 | `ops/report_expanded_cleaning_status.py` | Recompute local 30WB/20PB expanded-cleaning status from ignored run artifacts. | handoff gate |
 | `ops/validate_run_artifacts.py` | Validate generated-output, skill, and eval artifacts. | CI/core |
-| `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic. | diagnostic metric |
-| `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge. | debug-only metric |
+| `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic; supports signature/judge parse retries. | diagnostic metric |
+| `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge; supports judge parse retries. | debug-only metric |
 | `metrics/export_judge_disagreements.py` | Export judge delta sign-disagreement packets with output stats and optional skill context for evaluator calibration review. | diagnostic |
 | `metrics/validate_disagreement_taxonomy.py` | Validate per-packet calibration labels against judge-disagreement packet hashes. | diagnostic |
 | `metrics/report_example_contamination.py` | Deterministic train-example phrase overlap diagnostic for candidate outputs. | diagnostic |

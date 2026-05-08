@@ -28,6 +28,7 @@ from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigErr
 from auto_skill.mvp import (  # noqa: E402
     HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
+    build_feature_signature_context,
     build_heldout_generation_prompt,
     user_examples_from_pack,
 )
@@ -55,6 +56,8 @@ SKILL_REQUIRED_MODES = {
     "auto_skill",
     "examples_plus_one_shot_skill",
     "examples_plus_feature_skill",
+    "feature_signatures_only",
+    "examples_plus_feature_signatures",
     "slide_constrained_examples_plus_feature_skill",
 }
 
@@ -101,12 +104,29 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
     if mode in {
         "ours_no_validation",
         "examples_plus_feature_skill",
+        "feature_signatures_only",
+        "examples_plus_feature_signatures",
         "slide_constrained_examples_plus_feature_skill",
     }:
+        if mode in {"feature_signatures_only", "examples_plus_feature_signatures"}:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
+            )
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))
     return None
+
+
+def skill_index_with_feature_signatures(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
+    index = skill_index(rows)
+    for row in rows:
+        pack_id = row.get("pack_id")
+        mode = row.get("mode")
+        feature_signature_context = build_feature_signature_context(row)
+        if pack_id and mode and feature_signature_context:
+            index[(str(pack_id), f"{mode}::feature_signatures")] = feature_signature_context
+    return index
 
 
 def is_reusable_candidate_row(row: dict[str, Any] | None) -> bool:
@@ -792,7 +812,11 @@ def main() -> int:
             flush=True,
         )
     skill_paths = args.skills or [Path("runs/skill_mvp.qwen.jsonl")]
-    skills = {} if reuse_enabled else skill_index(load_skill_rows(skill_paths))
+    skills = (
+        {}
+        if reuse_enabled
+        else skill_index_with_feature_signatures(load_skill_rows(skill_paths))
+    )
 
     expected_cells = expected_score_cells(
         selected,

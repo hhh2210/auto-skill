@@ -14,9 +14,11 @@ from scripts.eval.run_heldout_eval import (
     load_compatible_resume_success_rows,
     load_resume_success_rows,
     load_skill_rows,
+    mode_needs_skill,
     mode_skill,
     runtime_metadata,
     score_row_status,
+    skill_index,
     successful_score_cells,
     summarize_rows,
     write_empty_eval_result,
@@ -73,6 +75,35 @@ class HeldoutEvalTests(unittest.TestCase):
             mode_skill("layout_plan_examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
+
+    def test_feature_signature_modes_select_compact_feature_context(self) -> None:
+        rows = [
+            {
+                "pack_id": "pack-1",
+                "mode": "auto_skill_feature_driven_no_validation",
+                "skill_md": "Full Skill",
+                "cross_example_report": {
+                    "stable_features": ["Use numbered sections"],
+                    "candidate_rules": [{"rule": "Keep actions concrete", "support_count": 3}],
+                },
+            }
+        ]
+        skills = skill_index(rows)
+
+        self.assertIn(
+            "Abstract Feature Signatures",
+            mode_skill("feature_signatures_only", skills, "pack-1") or "",
+        )
+        self.assertIn(
+            "Keep actions concrete",
+            mode_skill("examples_plus_feature_signatures", skills, "pack-1") or "",
+        )
+
+    def test_feature_signature_modes_require_context(self) -> None:
+        self.assertTrue(mode_needs_skill("feature_signatures_only"))
+        self.assertTrue(mode_needs_skill("examples_plus_feature_signatures"))
+        self.assertFalse(mode_needs_skill("prompt_only"))
+        self.assertFalse(mode_needs_skill("few_shot_examples_only"))
 
     def test_load_skill_rows_merges_repeated_skill_artifacts(self) -> None:
         with TemporaryDirectory() as tmp:

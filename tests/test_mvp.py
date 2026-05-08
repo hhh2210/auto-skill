@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from auto_skill.mvp import (
+    build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
     build_validation_aware_skill_merge_prompt,
@@ -113,6 +114,50 @@ class MVPTests(unittest.TestCase):
         self.assertIn("Do not answer with a plan, outline, checklist", prompt)
         self.assertIn("higher priority than", prompt)
         self.assertIn("not import example-specific facts", prompt)
+
+    def test_feature_signature_context_uses_structured_example_features(self) -> None:
+        context = build_feature_signature_context(
+            {
+                "cross_example_report": {
+                    "stable_features": ["Use numbered sections"],
+                    "candidate_rules": [
+                        {
+                            "rule": "Keep action items concrete",
+                            "supporting_examples": ["ex-1", "ex-2"],
+                        }
+                    ],
+                    "conflicts": [
+                        {
+                            "feature": "length",
+                            "description": "Some examples are brief and some are long.",
+                        }
+                    ],
+                    "outliers": [
+                        {"example_id": "ex-3", "reason": "Uses a special audience."}
+                    ],
+                }
+            }
+        )
+
+        assert context is not None
+        self.assertIn("Abstract Feature Signatures", context)
+        self.assertIn("Use numbered sections", context)
+        self.assertIn("Keep action items concrete (support=2)", context)
+        self.assertIn("not private rubrics", context)
+
+    def test_feature_signature_context_returns_none_without_cross_report(self) -> None:
+        self.assertIsNone(build_feature_signature_context({"skill_md": "# Skill"}))
+
+    def test_examples_plus_feature_signatures_includes_examples(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={"task_id": "task-1", "task_input": "Write a memo.", "materials": []},
+            mode="examples_plus_feature_signatures",
+            examples=[],
+            skill_md="# Abstract Feature Signatures",
+        )
+
+        self.assertIn("User examples:", prompt)
+        self.assertIn("Reusable skill:", prompt)
 
 
 if __name__ == "__main__":

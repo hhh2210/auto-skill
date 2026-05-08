@@ -223,6 +223,7 @@ def build_heldout_generation_prompt(
         "few_shot_examples_only",
         "examples_plus_one_shot_skill",
         "examples_plus_feature_skill",
+        "examples_plus_feature_signatures",
         "slide_constrained_examples_plus_feature_skill",
         "layout_plan_examples_plus_feature_skill",
     }:
@@ -292,6 +293,110 @@ Heldout task input:
 Material excerpts:
 {materials}
 """
+
+
+def build_feature_signature_context(skill_row: dict[str, Any], *, max_items: int = 8) -> str | None:
+    """Build a compact example-derived context from a feature-driven skill row.
+
+    This context is an ablation surface: it uses only structured fields produced
+    from user-visible train examples and intentionally omits the full SKILL.md.
+    """
+
+    report = skill_row.get("cross_example_report")
+    if not isinstance(report, dict):
+        return None
+
+    stable_features = _string_list(report.get("stable_features"), limit=max_items)
+    candidate_rules = _candidate_rule_lines(report.get("candidate_rules"), limit=max_items)
+    optional_features = _string_list(report.get("optional_features"), limit=max_items)
+    conflicts = _described_item_lines(report.get("conflicts"), label_key="feature", limit=4)
+    outliers = _described_item_lines(report.get("outliers"), label_key="example_id", limit=4)
+
+    if not any([stable_features, candidate_rules, optional_features, conflicts, outliers]):
+        return None
+
+    sections = [
+        "# Abstract Feature Signatures",
+        "",
+        "Use these as compact patterns abstracted from the visible training examples.",
+        "They are not private rubrics, heldout feedback, or official scores.",
+    ]
+    _append_bullets(sections, "Stable features", stable_features)
+    _append_bullets(sections, "Candidate rules", candidate_rules)
+    _append_bullets(sections, "Optional or contextual features", optional_features)
+    _append_bullets(sections, "Known variation/conflicts", conflicts)
+    _append_bullets(sections, "Outlier notes", outliers)
+    return "\n".join(sections).strip()
+
+
+def _append_bullets(sections: list[str], title: str, items: list[str]) -> None:
+    if not items:
+        return
+    sections.extend(["", f"## {title}"])
+    sections.extend(f"- {item}" for item in items)
+
+
+def _string_list(value: Any, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            items.append(_single_line(item))
+        elif isinstance(item, dict):
+            text = item.get("feature") or item.get("rule") or item.get("description")
+            if isinstance(text, str) and text.strip():
+                items.append(_single_line(text))
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _candidate_rule_lines(value: Any, *, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines = []
+    for item in value:
+        if isinstance(item, str):
+            rule = item
+            support = None
+        elif isinstance(item, dict):
+            rule = item.get("rule")
+            support = item.get("support_count")
+            if not isinstance(support, int):
+                supporting = item.get("supporting_examples")
+                support = len(supporting) if isinstance(supporting, list) else None
+        else:
+            continue
+        if not isinstance(rule, str) or not rule.strip():
+            continue
+        suffix = f" (support={support})" if isinstance(support, int) else ""
+        lines.append(_single_line(rule) + suffix)
+        if len(lines) >= limit:
+            break
+    return lines
+
+
+def _described_item_lines(value: Any, *, label_key: str, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            lines.append(_single_line(item))
+        elif isinstance(item, dict):
+            label = item.get(label_key)
+            description = item.get("description") or item.get("reason")
+            if isinstance(description, str) and description.strip():
+                prefix = f"{label}: " if isinstance(label, str) and label.strip() else ""
+                lines.append(prefix + _single_line(description))
+        if len(lines) >= limit:
+            break
+    return lines
+
+
+def _single_line(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def build_presentbench_layout_plan_prompt(

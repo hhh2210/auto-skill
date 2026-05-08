@@ -27,6 +27,7 @@ from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigErr
 from auto_skill.mvp import (  # noqa: E402
     HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
+    build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
     build_presentbench_layout_plan_prompt,
@@ -42,6 +43,17 @@ Use only user-visible examples, reusable skills, task input, and visible materia
 JUDGE_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
 REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
+SKILL_REQUIRED_MODES = {
+    "one_shot_skill_from_examples",
+    "ours_no_validation",
+    "auto_skill",
+    "examples_plus_one_shot_skill",
+    "examples_plus_feature_skill",
+    "feature_signatures_only",
+    "examples_plus_feature_signatures",
+    "slide_constrained_examples_plus_feature_skill",
+    "layout_plan_examples_plus_feature_skill",
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +109,9 @@ def skill_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
         skill_md = row.get("skill_md")
         if pack_id and mode and isinstance(skill_md, str) and skill_md.strip():
             index[(str(pack_id), str(mode))] = skill_md
+        feature_signature_context = build_feature_signature_context(row)
+        if pack_id and mode and feature_signature_context:
+            index[(str(pack_id), f"{mode}::feature_signatures")] = feature_signature_context
     return index
 
 
@@ -134,13 +149,23 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
     if mode in {
         "ours_no_validation",
         "examples_plus_feature_skill",
+        "feature_signatures_only",
+        "examples_plus_feature_signatures",
         "slide_constrained_examples_plus_feature_skill",
         "layout_plan_examples_plus_feature_skill",
     }:
+        if mode in {"feature_signatures_only", "examples_plus_feature_signatures"}:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
+            )
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))
     return None
+
+
+def mode_needs_skill(mode: str) -> bool:
+    return mode in SKILL_REQUIRED_MODES
 
 
 def summarize_rows(
@@ -866,19 +891,7 @@ def main() -> int:
                     )
                     continue
                 skill_md = mode_skill(mode, skills, pack_id)
-                if (
-                    mode
-                    in {
-                        "one_shot_skill_from_examples",
-                        "ours_no_validation",
-                        "auto_skill",
-                        "examples_plus_one_shot_skill",
-                        "examples_plus_feature_skill",
-                        "slide_constrained_examples_plus_feature_skill",
-                        "layout_plan_examples_plus_feature_skill",
-                    }
-                    and not skill_md
-                ):
+                if mode_needs_skill(mode) and not skill_md:
                     append_checkpoint_row(
                         args.out,
                         rows,

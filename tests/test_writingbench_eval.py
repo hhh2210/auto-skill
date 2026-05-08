@@ -28,6 +28,7 @@ from scripts.eval.run_writingbench_official_eval import (
     row_matches_runtime,
     runtime_metadata,
     score_with_writingbench_prompt,
+    skill_index_with_feature_signatures,
     summarize_rows,
     write_empty_eval_result,
 )
@@ -75,11 +76,38 @@ class WritingBenchEvalTests(unittest.TestCase):
             mode_skill("examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
+        self.assertIsNone(mode_skill("feature_signatures_only", skills, "pack-1"))
         self.assertEqual(
             mode_skill("slide_constrained_examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
         self.assertIsNone(mode_skill("layout_plan_examples_plus_feature_skill", skills, "pack-1"))
+
+    def test_feature_signature_modes_select_compact_feature_context(self) -> None:
+        skills = skill_index_with_feature_signatures(
+            [
+                {
+                    "pack_id": "pack-1",
+                    "mode": "auto_skill_feature_driven_no_validation",
+                    "skill_md": "Feature Skill",
+                    "cross_example_report": {
+                        "stable_features": ["Use numbered sections"],
+                        "candidate_rules": [
+                            {"rule": "Keep actions concrete", "support_count": 3}
+                        ],
+                    },
+                }
+            ]
+        )
+
+        self.assertIn(
+            "Abstract Feature Signatures",
+            mode_skill("feature_signatures_only", skills, "pack-1") or "",
+        )
+        self.assertIn(
+            "Keep actions concrete",
+            mode_skill("examples_plus_feature_signatures", skills, "pack-1") or "",
+        )
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -88,6 +116,7 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertFalse(mode_needs_skill("one_shot_skill_from_examples", reused))
         self.assertTrue(mode_needs_skill("one_shot_skill_from_examples", None))
         self.assertTrue(mode_needs_skill("examples_plus_feature_skill", None))
+        self.assertTrue(mode_needs_skill("examples_plus_feature_signatures", None))
 
     def test_reused_candidate_requires_success_generation_text(self) -> None:
         self.assertFalse(is_reusable_candidate_row({"status": "success", "generation": {}}))
