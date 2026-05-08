@@ -90,6 +90,12 @@ class WritingBenchEvalTests(unittest.TestCase):
                     "pack_id": "pack-1",
                     "mode": "auto_skill_feature_driven_no_validation",
                     "skill_md": "Feature Skill",
+                    "feature_reports": [
+                        {
+                            "content_features": {"key_variables": ["temperature"]},
+                            "structure_features": {"sections": ["Methods"]},
+                        }
+                    ],
                     "cross_example_report": {
                         "stable_features": ["Use numbered sections"],
                         "candidate_rules": [
@@ -112,6 +118,10 @@ class WritingBenchEvalTests(unittest.TestCase):
             "Keep actions concrete",
             mode_skill("task_first_feature_signatures", skills, "pack-1") or "",
         )
+        self.assertIn(
+            "Task-Grounded Operational Anchors",
+            mode_skill("task_first_operational_anchors", skills, "pack-1") or "",
+        )
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -122,6 +132,7 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertTrue(mode_needs_skill("examples_plus_feature_skill", None))
         self.assertTrue(mode_needs_skill("examples_plus_feature_signatures", None))
         self.assertTrue(mode_needs_skill("task_first_feature_signatures", None))
+        self.assertTrue(mode_needs_skill("task_first_operational_anchors", None))
 
     def test_reused_candidate_requires_success_generation_text(self) -> None:
         self.assertFalse(is_reusable_candidate_row({"status": "success", "generation": {}}))

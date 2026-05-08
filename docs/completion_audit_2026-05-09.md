@@ -19,7 +19,7 @@ benchmark or paper-level claim.
 | Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
-| Compact feature-signature ablation | `notes/feature_signature_ablation_2026-05-09.md` records a one-cell WritingBench smoke using `cross_example_report`-derived abstract signatures. `feature_signatures_only`, `examples_plus_feature_signatures`, and `task_first_feature_signatures` all ran successfully, but remained below prompt-only/few-shot. | Done as negative mechanism smoke |
+| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a one-cell WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the same cell. | Done as mechanism smoke; promising but one-cell |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -147,6 +147,7 @@ Task: `writingbench_Academic_Engineering_Paper_Outline_en::heldout::0`
 | feature_signatures_only | 2.6 |
 | examples_plus_feature_signatures | 3.0 |
 | task_first_feature_signatures | 3.0 |
+| task_first_operational_anchors | 6.0 |
 
 Interpretation: compact signatures derived from `cross_example_report` do not
 recover the task-completion information lost by skill compression on this cell.
@@ -154,7 +155,12 @@ They are slightly better than the corresponding full-feature skill modes on this
 single task, but still well below few-shot examples. The task-first variant
 places heldout task/materials before signatures and removes raw examples, but
 still has outline/template-like weaknesses and under-delivers technical depth
-and task-specific evidence.
+and task-specific evidence. In contrast, sanitized
+`task_first_operational_anchors` recovers a much longer output (38,551 chars)
+and improves technical coverage, evidence density, and structural completeness
+on this one Qwen-judged cell.
+However, the output may also be rewarded for hallucinated empirical detail and
+generic references, so this is a candidate mechanism rather than a clean win.
 
 ### PresentBench Surrogate
 
@@ -238,7 +244,9 @@ prove the auto-skill method.
    feature-signature smoke in `notes/feature_signature_ablation_2026-05-09.md`
    also stayed below prompt-only/few-shot even after a task-first prompt-order
    variant, so shorter context and simple task-first ordering are not the
-   missing mechanism.
+   missing mechanism. The later `task_first_operational_anchors` smoke is
+   positive on one cell, but may be partially rewarded for ungrounded detail and
+   still needs calibrated multi-pack validation.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -260,7 +268,7 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
-5. Redesign how transferable constraints are grounded in the current task before
-   another broad benchmark run; current compact-signature evidence suggests that
-   shortening the skill context alone is insufficient. The next artifact should
-   preserve operational/detail anchors, not just abstract structural features.
+5. Validate `task_first_operational_anchors` on the existing calibrated
+   four-pack WritingBench sample with Qwen and independent judge-swap before
+   expanding N. This is currently the most concrete positive mechanism signal,
+   but it is only one cell and needs an explicit hallucination/grounding check.

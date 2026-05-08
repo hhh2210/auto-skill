@@ -218,10 +218,11 @@ def build_heldout_generation_prompt(
 ) -> str:
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
-    if mode == "task_first_feature_signatures":
+    if mode in {"task_first_feature_signatures", "task_first_operational_anchors"}:
         return build_task_first_feature_signature_prompt(
             task=task,
             feature_signatures=skill_md,
+            mode=mode,
             max_material_chars=max_material_chars,
         )
     examples_text = ""
@@ -305,6 +306,7 @@ def build_task_first_feature_signature_prompt(
     *,
     task: dict[str, Any],
     feature_signatures: str | None,
+    mode: str = "task_first_feature_signatures",
     max_material_chars: int = 4000,
 ) -> str:
     """Build a task-grounded prompt that uses signatures only after the task."""
@@ -314,7 +316,7 @@ def build_task_first_feature_signature_prompt(
     signatures = feature_signatures or "(missing feature signatures)"
     return f"""Complete the heldout task below.
 
-Mode: task_first_feature_signatures
+Mode: {mode}
 Use the heldout task input and material excerpts as the source of truth.
 Return only the final answer.
 
@@ -375,6 +377,76 @@ def build_feature_signature_context(skill_row: dict[str, Any], *, max_items: int
     _append_bullets(sections, "Known variation/conflicts", conflicts)
     _append_bullets(sections, "Outlier notes", outliers)
     return "\n".join(sections).strip()
+
+
+def build_operational_anchor_context(
+    skill_row: dict[str, Any],
+    *,
+    max_items: int = 12,
+) -> str | None:
+    """Build current-task detail anchors from user-example feature reports."""
+
+    feature_reports = skill_row.get("feature_reports")
+    if not isinstance(feature_reports, list):
+        return None
+    slot_names: list[str] = []
+    style_slots: list[str] = []
+
+    for report in feature_reports:
+        if not isinstance(report, dict):
+            continue
+        for key in ("basic_attributes", "content_features", "structure_features"):
+            value = report.get(key)
+            if isinstance(value, dict):
+                slot_names.extend(_humanize_key(name) for name in value)
+        style = report.get("style_features")
+        if isinstance(style, dict):
+            style_slots.extend(_humanize_key(name) for name in style)
+        preserve = report.get("must_not_generalize")
+        if isinstance(preserve, list) and preserve:
+            slot_names.append("example-specific preservation constraints")
+
+    slots = _dedupe_preserve_order(slot_names)[:max_items]
+    styles = _dedupe_preserve_order(style_slots)[:6]
+    if not any([slots, styles]):
+        return None
+
+    output = [
+        "# Task-Grounded Operational Anchors",
+        "",
+        "Use these anchors to instantiate the current task, not to copy training-example facts.",
+        "The heldout task and its materials remain the source of truth.",
+    ]
+    _append_bullets(
+        output,
+        "Detail slots to fill from the current task",
+        slots,
+    )
+    _append_bullets(
+        output,
+        "Depth and coverage anchors",
+        [
+            "Turn concrete current-task entities, variables, methods, standards, datasets, "
+            "dates, and case-study details into substantive sections or bullets.",
+            "Prefer completed content over placeholders; use placeholders only when the "
+            "current task explicitly asks for an outline or future-populated section.",
+            "For every major current-task requirement, include both the high-level section "
+            "and task-specific supporting detail.",
+        ],
+    )
+    _append_bullets(output, "Style slots to infer from the current task", styles)
+    _append_bullets(
+        output,
+        "Anti-leakage checks",
+        [
+            "Do not copy names, numbers, institutions, algorithms, journals, datasets, "
+            "locations, or case details from training examples unless they appear in "
+            "the current task or materials.",
+            "If an anchor slot cannot be grounded in the current task, omit it or keep "
+            "it generic instead of inventing details.",
+        ],
+    )
+    return "\n".join(output).strip()
 
 
 def _append_bullets(sections: list[str], title: str, items: list[str]) -> None:
@@ -445,6 +517,22 @@ def _described_item_lines(value: Any, *, label_key: str, limit: int) -> list[str
 
 def _single_line(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _humanize_key(value: str) -> str:
+    return re.sub(r"[_-]+", " ", value).strip()
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen = set()
+    output = []
+    for value in values:
+        normalized = value.casefold()
+        if not value or normalized in seen:
+            continue
+        seen.add(normalized)
+        output.append(value)
+    return output
 
 
 def build_presentbench_layout_plan_prompt(

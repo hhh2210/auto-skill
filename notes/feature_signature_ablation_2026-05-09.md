@@ -40,6 +40,16 @@ Follow-up code added one more mode:
     signatures;
   - treats signatures as secondary structure/tone/self-check guidance.
 
+A later follow-up added:
+
+- `task_first_operational_anchors`
+  - omits raw examples;
+  - places the heldout task input and current materials first;
+  - uses sanitized user-example `feature_reports` keys to preserve
+    operational/detail slots such as variables, methods, standards, datasets,
+    case-study details, evidence density, and placeholder policy;
+  - does not emit raw feature values from training examples.
+
 ## Smoke Command
 
 ```bash
@@ -130,6 +140,63 @@ is much longer (41,209 chars) and scores 8 on `Integration of Personal
 Experience and Industry Standards`; the compact signatures do not preserve
 enough operational/detail anchors to reproduce that behavior.
 
+## Operational Anchors Follow-Up
+
+Command:
+
+```bash
+uv run python scripts/eval/run_writingbench_official_eval.py \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --skills runs/expanded/skill_mvp.qwen.sample4_wb.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --writingbench-root ../WritingBench \
+  --pack-id writingbench_Academic_Engineering_Paper_Outline_en \
+  --modes task_first_operational_anchors \
+  --limit-heldout 1 \
+  --out runs/expanded/writingbench_official_eval.qwen.task_first_operational_anchors_sanitized_smoke.jsonl \
+  --summary-out runs/expanded/writingbench_official_eval.qwen.task_first_operational_anchors_sanitized_smoke.summary.json \
+  --num-threads 1 \
+  --timeout-seconds 600 \
+  --max-retries 3 \
+  --parse-max-attempts 3 \
+  --max-tokens 8192 \
+  --judge-max-tokens 1024 \
+  --allow-partial
+```
+
+Result:
+
+| mode | Qwen WritingBench score | output chars |
+|---|---:|---:|
+| `task_first_operational_anchors` | 6.0 | 38,551 |
+
+Criterion scores:
+
+| criterion | score |
+|---|---:|
+| Academic Relevance and Rigor | 5 |
+| Multi-layered Protection System Coverage | 6 |
+| Edge Computing Security Analysis | 5 |
+| Integration of Personal Experience and Industry Standards | 7 |
+| Structural Coherence and Academic Format | 7 |
+
+This is a noisy but useful mechanism signal on this difficult cell:
+
+- `task_first_operational_anchors` beats `prompt_only` (4.0),
+  `few_shot_examples_only` (4.4), and all previous skill/signature modes on the
+  same Qwen-judged cell.
+- The score gain coincides with restored output length and more technical
+  coverage.
+- Caveat: the judged output may also be rewarded for hallucinated empirical
+  detail and generic references. This smoke identifies a direction to test, not
+  a clean task-completion win.
+- An earlier unsanitized operational-anchor prompt scored 6.4, but that run is
+  not used as current evidence because the prompt could emit raw
+  training-example feature values.
+- This is still a one-cell Qwen-judge smoke. It must not be reported as a
+  benchmark result until rerun on the calibrated multi-pack sample and checked
+  with an independent judge.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -141,4 +208,7 @@ The next method loop should focus on preserving current-task deliverable
 semantics and distinguishing transferable structure from example-specific
 content, not just shortening `SKILL.md`. In particular, a useful skill artifact
 may need to preserve operational anchors such as expected detail depth,
-evidence density, and how to instantiate task-specific empirical material.
+evidence density, and how to instantiate task-specific empirical material. The
+`task_first_operational_anchors` smoke is a concrete next candidate for
+calibrated evaluation, but future eval must penalize ungrounded detail
+fabrication.

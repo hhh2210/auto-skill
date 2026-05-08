@@ -6,6 +6,7 @@ from auto_skill.mvp import (
     build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
+    build_operational_anchor_context,
     build_task_first_feature_signature_prompt,
     build_validation_aware_skill_merge_prompt,
     evaluation_criteria,
@@ -188,6 +189,52 @@ class MVPTests(unittest.TestCase):
 
         self.assertIn("Mode: task_first_feature_signatures", prompt)
         self.assertNotIn("User examples:", prompt)
+        self.assertLess(
+            prompt.index("Heldout task input:"),
+            prompt.index("Reusable feature signatures:"),
+        )
+
+    def test_operational_anchor_context_preserves_detail_slots_not_example_facts(self) -> None:
+        context = build_operational_anchor_context(
+            {
+                "feature_reports": [
+                    {
+                        "content_features": {
+                            "key_variables": ["Indoor temperature", "CO2 concentration"],
+                            "evaluation_metrics": ["Energy reduction percentages"],
+                        },
+                        "structure_features": {
+                            "outline_sections": ["Abstract", "Methodology", "Results"]
+                        },
+                        "style_features": {"tone": "Formal, academic, and technical"},
+                        "must_not_generalize": [
+                            "Do not copy Building and Environment journal details.",
+                        ],
+                    }
+                ]
+            }
+        )
+
+        assert context is not None
+        self.assertIn("Task-Grounded Operational Anchors", context)
+        self.assertIn("key variables", context)
+        self.assertIn("evaluation metrics", context)
+        self.assertIn("current-task entities", context)
+        self.assertIn("Anti-leakage checks", context)
+        self.assertNotIn("Indoor temperature", context)
+        self.assertNotIn("CO2 concentration", context)
+        self.assertNotIn("Building and Environment", context)
+
+    def test_task_first_operational_anchor_mode_uses_task_first_prompt(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={"task_id": "task-1", "task_input": "Write a memo.", "materials": []},
+            mode="task_first_operational_anchors",
+            examples=[],
+            skill_md="# Task-Grounded Operational Anchors",
+        )
+
+        self.assertIn("Mode: task_first_operational_anchors", prompt)
+        self.assertIn("Reusable feature signatures:", prompt)
         self.assertLess(
             prompt.index("Heldout task input:"),
             prompt.index("Reusable feature signatures:"),

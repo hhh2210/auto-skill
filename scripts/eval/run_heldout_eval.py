@@ -30,6 +30,7 @@ from auto_skill.mvp import (  # noqa: E402
     build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
+    build_operational_anchor_context,
     build_presentbench_layout_plan_prompt,
     evaluation_criteria,
     extract_overall_score,
@@ -52,6 +53,7 @@ SKILL_REQUIRED_MODES = {
     "feature_signatures_only",
     "examples_plus_feature_signatures",
     "task_first_feature_signatures",
+    "task_first_operational_anchors",
     "slide_constrained_examples_plus_feature_skill",
     "layout_plan_examples_plus_feature_skill",
 }
@@ -113,6 +115,9 @@ def skill_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
         feature_signature_context = build_feature_signature_context(row)
         if pack_id and mode and feature_signature_context:
             index[(str(pack_id), f"{mode}::feature_signatures")] = feature_signature_context
+        operational_anchor_context = build_operational_anchor_context(row)
+        if pack_id and mode and operational_anchor_context:
+            index[(str(pack_id), f"{mode}::operational_anchors")] = operational_anchor_context
     return index
 
 
@@ -153,6 +158,7 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         "feature_signatures_only",
         "examples_plus_feature_signatures",
         "task_first_feature_signatures",
+        "task_first_operational_anchors",
         "slide_constrained_examples_plus_feature_skill",
         "layout_plan_examples_plus_feature_skill",
     }:
@@ -163,6 +169,10 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         }:
             return skills.get(
                 (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
+            )
+        if mode == "task_first_operational_anchors":
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::operational_anchors")
             )
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":

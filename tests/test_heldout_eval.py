@@ -82,6 +82,12 @@ class HeldoutEvalTests(unittest.TestCase):
                 "pack_id": "pack-1",
                 "mode": "auto_skill_feature_driven_no_validation",
                 "skill_md": "Full Skill",
+                "feature_reports": [
+                    {
+                        "content_features": {"key_variables": ["temperature"]},
+                        "structure_features": {"sections": ["Methods"]},
+                    }
+                ],
                 "cross_example_report": {
                     "stable_features": ["Use numbered sections"],
                     "candidate_rules": [{"rule": "Keep actions concrete", "support_count": 3}],
@@ -102,11 +108,16 @@ class HeldoutEvalTests(unittest.TestCase):
             "Keep actions concrete",
             mode_skill("task_first_feature_signatures", skills, "pack-1") or "",
         )
+        self.assertIn(
+            "Task-Grounded Operational Anchors",
+            mode_skill("task_first_operational_anchors", skills, "pack-1") or "",
+        )
 
     def test_feature_signature_modes_require_context(self) -> None:
         self.assertTrue(mode_needs_skill("feature_signatures_only"))
         self.assertTrue(mode_needs_skill("examples_plus_feature_signatures"))
         self.assertTrue(mode_needs_skill("task_first_feature_signatures"))
+        self.assertTrue(mode_needs_skill("task_first_operational_anchors"))
         self.assertFalse(mode_needs_skill("prompt_only"))
         self.assertFalse(mode_needs_skill("few_shot_examples_only"))
 
