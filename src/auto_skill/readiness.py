@@ -239,6 +239,17 @@ def collect_models(rows: list[dict[str, Any]], *, keys: tuple[str, ...]) -> set[
     return models
 
 
+def missing_model_count(rows: list[dict[str, Any]], *, key: str) -> int:
+    """Count rows that do not expose a non-empty top-level model identifier."""
+
+    missing = 0
+    for row in rows:
+        value = row.get(key)
+        if not isinstance(value, str) or not value.strip():
+            missing += 1
+    return missing
+
+
 def model_inventory(
     *,
     skill_rows: list[dict[str, Any]],
@@ -250,11 +261,18 @@ def model_inventory(
     eval_solvers = collect_models(eval_rows, keys=("solver_model",))
     eval_judges = collect_models(eval_rows, keys=("judge_model",))
     union = skill_solvers | eval_solvers | eval_judges
+    missing = {
+        "skill_solver_model": missing_model_count(skill_rows, key="solver_model"),
+        "eval_solver_model": missing_model_count(eval_rows, key="solver_model"),
+        "eval_judge_model": missing_model_count(eval_rows, key="judge_model"),
+    }
     return {
         "skill_solver_models": sorted(skill_solvers),
         "eval_solver_models": sorted(eval_solvers),
         "eval_judge_models": sorted(eval_judges),
         "all_models": sorted(union),
+        "missing_model_identity": missing,
+        "model_identity_complete": not any(missing.values()),
         "monoculture": len(union) == 1 if union else False,
         "monoculture_model": next(iter(union)) if len(union) == 1 else None,
     }
@@ -333,11 +351,20 @@ def readiness_report(
         eval_rows=writing_eval_rows + present_surrogate_rows + present_official_rows,
     )
     if inventory["monoculture"] and inventory["monoculture_model"]:
-        warnings.append(
-            "model_monoculture: all skill induction, generation, and judge rows "
-            f"share model {inventory['monoculture_model']}; results are smoke-only "
-            "(see README cross-model recipe)."
-        )
+        if inventory["model_identity_complete"]:
+            warnings.append(
+                "model_monoculture: all skill induction, generation, and judge rows "
+                f"share model {inventory['monoculture_model']}; results are smoke-only "
+                "(see README cross-model recipe)."
+            )
+        else:
+            warnings.append(
+                "model_monoculture: visible solver/judge model fields share model "
+                f"{inventory['monoculture_model']}, but some rows are missing top-level "
+                "model identity "
+                f"{inventory['missing_model_identity']}; results are smoke-only "
+                "(see README cross-model recipe)."
+            )
 
     if not packs:
         blockers.append("no example packs loaded")

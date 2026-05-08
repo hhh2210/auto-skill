@@ -345,6 +345,25 @@ class ModelInventoryTests(unittest.TestCase):
         inventory = model_inventory(skill_rows=[], eval_rows=[])
         self.assertFalse(inventory["monoculture"])
         self.assertIsNone(inventory["monoculture_model"])
+        self.assertTrue(inventory["model_identity_complete"])
+
+    def test_inventory_counts_missing_model_identity(self) -> None:
+        inventory = model_inventory(
+            skill_rows=[{"mode": "old_skill_without_solver_model"}],
+            eval_rows=[
+                {"solver_model": "qwen-3.5-plus", "judge_model": "qwen-3.5-plus"},
+            ],
+        )
+        self.assertTrue(inventory["monoculture"])
+        self.assertFalse(inventory["model_identity_complete"])
+        self.assertEqual(
+            inventory["missing_model_identity"],
+            {
+                "skill_solver_model": 1,
+                "eval_solver_model": 0,
+                "eval_judge_model": 0,
+            },
+        )
 
     def test_readiness_emits_monoculture_warning(self) -> None:
         report = readiness_report(
@@ -366,6 +385,24 @@ class ModelInventoryTests(unittest.TestCase):
             report["warnings"],
         )
         self.assertTrue(report["model_inventory"]["monoculture"])
+
+    def test_readiness_qualifies_monoculture_warning_when_model_identity_missing(self) -> None:
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=skill_rows("pack-1"),
+            writing_eval_rows=[
+                {**row, "solver_model": "qwen-3.5-plus", "judge_model": "qwen-3.5-plus"}
+                for row in eval_rows("pack-1")
+            ],
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            require_presentbench_official=False,
+        )
+        warning = next(warn for warn in report["warnings"] if "model_monoculture" in warn)
+        self.assertIn("visible solver/judge model fields", warning)
+        self.assertIn("missing top-level model identity", warning)
+        self.assertFalse(report["model_inventory"]["model_identity_complete"])
 
 
 if __name__ == "__main__":
