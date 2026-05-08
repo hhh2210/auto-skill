@@ -10,7 +10,7 @@ benchmark or paper-level claim.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Construct and clean WritingBench / PresentBench example data | Checked-in MVP packs: `artifacts/packs/example_packs.v1.jsonl`, 8 packs, 24 generated train examples. Expanded local pass: `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`, 50 packs, 150 frozen train examples, 100 heldout tasks. | Done for MVP and local expanded workspace |
-| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success, and the expanded PresentBench optional MIMO audit sample is now 2/2 success with `--judge-max-tokens 8192`. | Partial: MIMO works for WritingBench audit/judge-swap and small PresentBench audits, but long material-aware PresentBench usage remains a known risk |
+| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded canonical examples and solver outputs. MIMO was used for WritingBench train-example audit, WritingBench judge-swap, PresentBench audit, and a frozen local subset: `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` has 15 packs and 45 frozen train examples with benchmark-flow `status=ok`. | Done for Qwen canonical data and MIMO audited subset; not a full 50-pack MIMO clean |
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
 | Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 32/32 success for examples-plus-skill, slide-constrained, and layout-plan surrogate ablations. | Done as MVP/surrogate eval |
 | Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
@@ -34,6 +34,7 @@ diff -q AGENTS.md CLAUDE.md
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
 ```
@@ -163,12 +164,16 @@ Expanded local pass:
 - 20 PresentBench packs.
 - 150/150 latest generated desired outputs are success.
 - 100 heldout tasks.
-- Expanded status gate is `ready`.
+- Expanded status gate is `ready`; strict local handoff with
+  `--require-mimo-subset` is also `ready`.
 - Required audits:
   - MIMO WritingBench sample: 6/6 success.
   - Qwen PresentBench material-aware sample: 2/2 success.
 - Optional MIMO PresentBench audit: 2/2 success after rerun with
   `--judge-max-tokens 8192`; mean score 8.4.
+- MIMO frozen subset: 15 packs, 45 frozen train examples, 30 heldout tasks,
+  45 generation jobs, 12 WritingBench packs, 3 PresentBench packs, and
+  benchmark-flow `status=ok`.
 
 Interpretation: expanded cleaning is usable for handoff and follow-up
 experiments, but it is not a released dataset snapshot and does not by itself
@@ -195,9 +200,9 @@ prove the auto-skill method.
    skill-only compression loss and task-specific constraint extraction before
    blaming raw example copying.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
-   slice. A small PresentBench material-aware MIMO audit is also 2/2 success
-   when `--judge-max-tokens 8192` is used, but larger PresentBench MIMO usage
-   remains a risk until tested beyond this tiny sample.
+   slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
+   only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
+   the canonical cleaner until a full MIMO pass is frozen and audited.
 4. Some old skill/eval rows lack top-level `solver_model` / `judge_model`.
    New runners record model identity, but old artifacts should not be used as
    paper-facing evidence without this caveat.
