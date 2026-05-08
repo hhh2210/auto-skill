@@ -79,6 +79,10 @@ Recent WritingBench smoke results:
   surrogate: 8/8 success, mean 6.625, delta -1.0 vs prompt-only. The next
   PresentBench attempt needs an explicit layout-planning stage, not just a
   stronger instruction sentence.
+- An explicit layout-plan stage (`layout_plan_examples_plus_feature_skill`) was
+  tested next. It was still negative: 8/8 success, mean 6.75, delta -0.875 vs
+  prompt-only. This suggests the remaining issue is raw examples in the final
+  prompt, not merely missing planning.
 
 Current MIMO train-example audit:
 
@@ -157,8 +161,8 @@ Known blockers:
    packs and debug why the same mechanism is negative on PresentBench surrogate.
    Qwen and MIMO both support the WritingBench direction on this smoke slice,
    but this is not yet a cross-domain method claim. The next PresentBench
-   variant should test explicit current-task layout planning rather than raw
-   examples-plus-skill concatenation or a light prompt-only guardrail.
+   variant should remove raw examples from the final prompt and pass only
+   abstract example signatures plus current-task hard constraints.
 2. Attribute whether current losses come from skill compression, feature
    extraction, LOO merge, or skill interference with raw examples.
 3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,

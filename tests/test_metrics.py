@@ -175,6 +175,13 @@ class MetricsTests(unittest.TestCase):
             {
                 "mode": "auto_skill",
                 "status": "success",
+                "layout_plan": {
+                    "usage": {
+                        "prompt_tokens": 7,
+                        "completion_tokens": 3,
+                        "total_tokens": 10,
+                    }
+                },
                 "generation": {
                     "usage": {
                         "prompt_tokens": 10,
@@ -211,11 +218,12 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(mode["attempted_rows"], 2)
         self.assertEqual(mode["successful_rows"], 1)
         self.assertEqual(mode["status_counts"], {"model_error": 1, "success": 1})
+        self.assertEqual(mode["layout_plan"]["total_tokens"], 10)
         self.assertEqual(mode["generation"]["total_tokens"], 19)
         self.assertEqual(mode["judge"]["total_tokens"], 22)
-        self.assertEqual(mode["combined_model_calls"]["total_tokens"], 41)
-        self.assertEqual(mode["combined_model_calls_avg_per_success"]["total_tokens"], 41)
-        self.assertEqual(mode["combined_model_calls_avg_per_attempt"]["total_tokens"], 20.5)
+        self.assertEqual(mode["combined_model_calls"]["total_tokens"], 51)
+        self.assertEqual(mode["combined_model_calls_avg_per_success"]["total_tokens"], 51)
+        self.assertEqual(mode["combined_model_calls_avg_per_attempt"]["total_tokens"], 25.5)
         self.assertEqual(
             summary["comparison_to_examples_only_generation"]["modes"]["auto_skill"][
                 "input_tokens"

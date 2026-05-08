@@ -664,6 +664,14 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    unsupported_modes = sorted(set(modes) & {"layout_plan_examples_plus_feature_skill"})
+    if unsupported_modes:
+        print(
+            "error: layout_plan_examples_plus_feature_skill is PresentBench-surrogate only; "
+            "use scripts/eval/run_heldout_eval.py for that ablation.",
+            file=sys.stderr,
+        )
+        return 2
     if args.parse_max_attempts <= 0:
         print("error: --parse-max-attempts must be positive", file=sys.stderr)
         return 2

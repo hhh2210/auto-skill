@@ -482,13 +482,14 @@ uv run python scripts/metrics/summarize_mvp_metrics.py \
   --skills runs/skill_mvp.qwen.ours_full.writingbench.jsonl \
   --skills runs/skill_mvp.qwen.ours_full.presentbench.jsonl \
   --packs artifacts/packs/example_packs.v1.jsonl \
-  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill,examples_plus_one_shot_skill,examples_plus_feature_skill,slide_constrained_examples_plus_feature_skill \
+  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill,examples_plus_one_shot_skill,examples_plus_feature_skill,slide_constrained_examples_plus_feature_skill,layout_plan_examples_plus_feature_skill \
   --eval runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl \
   --eval runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.examples_plus_skill.heldout2.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.slide_constrained_examples_plus_feature.heldout2.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.layout_plan_examples_plus_feature.heldout2.jsonl \
   --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl \
   --eval runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl \
   --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl \

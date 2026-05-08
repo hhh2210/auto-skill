@@ -5,7 +5,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from auto_skill.llm import ChatCompletionConfig
-from auto_skill.mvp import build_heldout_generation_prompt
+from auto_skill.mvp import (
+    build_heldout_generation_prompt,
+    build_presentbench_layout_plan_prompt,
+)
 from auto_skill.schemas import UserExample
 from auto_skill.writingbench_eval import (
     average_writingbench_scores,
@@ -75,6 +78,7 @@ class WritingBenchEvalTests(unittest.TestCase):
             mode_skill("slide_constrained_examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
+        self.assertIsNone(mode_skill("layout_plan_examples_plus_feature_skill", skills, "pack-1"))
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -330,6 +334,24 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertIn("Reusable skill:", prompt)
         self.assertIn("Slide-task constraint priority:", prompt)
         self.assertIn("Do not copy example slide counts", prompt)
+
+    def test_layout_plan_prompt_extracts_current_task_constraints(self) -> None:
+        prompt = build_presentbench_layout_plan_prompt(
+            task={"task_id": "task-1", "task_input": "Create 12 slides", "materials": []},
+            examples=[
+                UserExample(
+                    example_id="ex-1",
+                    task_input="Example task",
+                    output="Example output",
+                )
+            ],
+            skill_md="Feature Skill",
+        )
+
+        self.assertIn("Hard constraints:", prompt)
+        self.assertIn("Per-slide allocation:", prompt)
+        self.assertIn("Do-not-copy-from-examples:", prompt)
+        self.assertIn("Create 12 slides", prompt)
 
     def test_parse_score_accepts_fenced_json(self) -> None:
         parsed = parse_writingbench_score('```json\n{"score": 8, "reason": "ok"}\n```')

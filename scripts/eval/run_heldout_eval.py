@@ -28,6 +28,7 @@ from auto_skill.mvp import (  # noqa: E402
     PromptRunResult,
     build_heldout_generation_prompt,
     build_judge_prompt,
+    build_presentbench_layout_plan_prompt,
     evaluation_criteria,
     extract_overall_score,
     parse_json_object,
@@ -133,6 +134,7 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         "ours_no_validation",
         "examples_plus_feature_skill",
         "slide_constrained_examples_plus_feature_skill",
+        "layout_plan_examples_plus_feature_skill",
     }:
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
@@ -358,6 +360,45 @@ def evaluate_heldout_job(
     solver_model_id = config.model
     judge_model_id = (judge_config or config).model
     try:
+        layout_plan: PromptRunResult | None = None
+        layout_plan_text = ""
+        if job.mode == "layout_plan_examples_plus_feature_skill":
+            plan_prompt = build_presentbench_layout_plan_prompt(
+                task=task,
+                examples=job.examples,
+                skill_md=job.skill_md,
+                max_material_chars=max_material_chars,
+            )
+            layout_plan = call_model(
+                client,
+                system_prompt=GENERATION_SYSTEM_PROMPT,
+                user_prompt=plan_prompt,
+                temperature=temperature,
+                max_tokens=min(max_tokens, 2048),
+            )
+            if layout_plan.finish_reason != "stop":
+                row = {
+                    "schema_version": "heldout-eval/v1",
+                    "pack_id": pack_id,
+                    "task_id": task_id,
+                    "source": pack.get("source"),
+                    "mode": job.mode,
+                    "evaluator_kind": job.evaluator_kind,
+                    "status": "layout_plan_incomplete",
+                    "layout_plan": layout_plan.to_json(),
+                    "generation": None,
+                    "judge": None,
+                    "judge_report": None,
+                    "overall_score": None,
+                    "solver_model": layout_plan.model or solver_model_id,
+                    "judge_model": judge_model_id,
+                }
+                return cell, row, f"layout_plan_incomplete ({layout_plan.finish_reason})"
+            layout_plan_text = (
+                "\n\nCurrent-task layout plan:\n"
+                + layout_plan.text
+                + "\n\nFollow this plan when writing the final answer."
+            )
         prompt = build_heldout_generation_prompt(
             task=task,
             mode=job.mode,
@@ -365,6 +406,8 @@ def evaluate_heldout_job(
             skill_md=job.skill_md,
             max_material_chars=max_material_chars,
         )
+        if layout_plan_text:
+            prompt += layout_plan_text
         generation = call_model(
             client,
             system_prompt=GENERATION_SYSTEM_PROMPT,
@@ -381,6 +424,7 @@ def evaluate_heldout_job(
                 "mode": job.mode,
                 "evaluator_kind": job.evaluator_kind,
                 "status": "generation_incomplete",
+                "layout_plan": layout_plan.to_json() if layout_plan is not None else None,
                 "generation": generation.to_json(),
                 "judge": None,
                 "judge_report": None,
@@ -415,6 +459,7 @@ def evaluate_heldout_job(
             "mode": job.mode,
             "evaluator_kind": job.evaluator_kind,
             "status": status,
+            "layout_plan": layout_plan.to_json() if layout_plan is not None else None,
             "generation": generation.to_json(),
             "judge": judge.to_json(),
             "judge_parse_attempts": judge_parse_attempts,
@@ -740,6 +785,7 @@ def main() -> int:
                         "examples_plus_one_shot_skill",
                         "examples_plus_feature_skill",
                         "slide_constrained_examples_plus_feature_skill",
+                        "layout_plan_examples_plus_feature_skill",
                     }
                     and not skill_md
                 ):

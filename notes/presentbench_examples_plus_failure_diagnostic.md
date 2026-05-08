@@ -93,10 +93,13 @@ language instead of obeying the heldout checklist.
    mean score 6.625, delta -1.0 vs prompt-only, wins/losses/ties 2/6/0.
    Therefore, simply telling the solver not to copy example layout is not
    enough.
-3. Add a layout-plan intermediate step for PresentBench:
-   - first extract current-task hard constraints: slide count, required figures,
-     exact wording, per-slide limits, citation placement;
-   - then apply skill only to fill style and coverage gaps.
+3. An explicit layout-plan intermediate step was tested as
+   `layout_plan_examples_plus_feature_skill`. It was still negative:
+   mean score 6.75, delta -0.875 vs prompt-only, wins/losses/ties 2/4/2.
+   This improves slightly over the light guardrail but does not solve the
+   failure. The plan itself is not sufficient if raw examples remain in the
+   final generation prompt.
 4. Keep examples-plus-skill as a WritingBench-positive ablation, not a
-   cross-domain method claim, until the constrained slide composition variant is
-   tested.
+   cross-domain method claim. The next PresentBench design should remove raw
+   examples from the final prompt and pass only abstract example signatures plus
+   current-task hard constraints.
