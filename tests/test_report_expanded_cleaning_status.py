@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -9,6 +10,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "ops" / "report_expanded_cleaning_status.py"
+GENERATION_PROMPT = "Create a final output from the visible task input only."
+GENERATION_PROMPT_SHA = hashlib.sha256(GENERATION_PROMPT.encode("utf-8")).hexdigest()
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -48,7 +51,12 @@ def split_row(source: str, split_id: str) -> dict:
     }
 
 
-def pack_row(source: str, split_id: str, pack_id: str) -> dict:
+def job_id_for_pack(pack_id: str) -> str:
+    return f"{pack_id}::train::0::generate_desired_output"
+
+
+def pack_row(source: str, split_id: str, pack_id: str, *, job_id: str | None = None) -> dict:
+    generation_job_id = job_id or job_id_for_pack(pack_id)
     return {
         "schema_version": "example-pack/v1",
         "pack_id": pack_id,
@@ -70,7 +78,13 @@ def pack_row(source: str, split_id: str, pack_id: str) -> dict:
                 "domain": {"primary": source},
                 "task_input": "Task",
                 "materials": [],
-                "desired_output": {"status": "generated", "text": "Output"},
+                "desired_output": {
+                    "status": "generated",
+                    "text": "Output",
+                    "generation_job_id": generation_job_id,
+                    "prompt_sha256": GENERATION_PROMPT_SHA,
+                    "prompt_template_version": "desired-output/user-visible-only/v2",
+                },
             }
         ],
         "heldout_tasks": [
@@ -114,15 +128,30 @@ def private_row(source: str, split_id: str, pack_id: str) -> dict:
     }
 
 
-def generation_row(job_id: str, pack_id: str) -> dict:
+def generation_job_row(source: str, pack_id: str, *, job_id: str | None = None) -> dict:
+    return {
+        "job_id": job_id or job_id_for_pack(pack_id),
+        "pack_id": pack_id,
+        "example_id": f"{pack_id}::train::0",
+        "source": source,
+        "source_task_id": f"{source}-train",
+        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_template_version": "desired-output/user-visible-only/v2",
+        "prompt": GENERATION_PROMPT,
+    }
+
+
+def generation_row(job_id: str, pack_id: str, source: str = "WritingBench") -> dict:
     return {
         "schema_version": "generated-desired-output/v1",
         "status": "success",
         "job_id": job_id,
         "pack_id": pack_id,
         "example_id": f"{pack_id}::train::0",
-        "source": "WritingBench",
-        "prompt_sha256": "sha",
+        "source": source,
+        "source_task_id": f"{source}-train",
+        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_template_version": "desired-output/user-visible-only/v2",
         "desired_output": "Output",
         "finish_reason": "stop",
     }
@@ -158,8 +187,8 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
                 private_row("PresentBench", "present::demo", "pack-present"),
             ]
             jobs = [
-                {"job_id": "job-writing", "prompt_sha256": "sha"},
-                {"job_id": "job-present", "prompt_sha256": "sha"},
+                generation_job_row("WritingBench", "pack-writing"),
+                generation_job_row("PresentBench", "pack-present"),
             ]
             write_jsonl(tmp / "splits.jsonl", splits)
             write_jsonl(tmp / "packs.jsonl", packs)
@@ -168,8 +197,8 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
             write_jsonl(
                 tmp / "generated.jsonl",
                 [
-                    generation_row("job-writing", "pack-writing"),
-                    generation_row("job-present", "pack-present"),
+                    generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                    generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
                 ],
             )
             write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
@@ -224,8 +253,11 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
                 tmp / "private.jsonl",
                 [private_row("WritingBench", "writing::demo", "pack-writing")],
             )
-            write_jsonl(tmp / "jobs.jsonl", [{"job_id": "job-writing", "prompt_sha256": "sha"}])
-            failed = generation_row("job-writing", "pack-writing") | {
+            write_jsonl(
+                tmp / "jobs.jsonl",
+                [generation_job_row("WritingBench", "pack-writing")],
+            )
+            failed = generation_row(job_id_for_pack("pack-writing"), "pack-writing") | {
                 "status": "rejected_incomplete_generation",
                 "finish_reason": "length",
             }
@@ -275,14 +307,22 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             split = split_row("WritingBench", "writing::demo")
-            pack = pack_row("WritingBench", "writing::demo", "pack-writing")
+            pack = pack_row(
+                "WritingBench",
+                "writing::demo",
+                "pack-writing",
+                job_id="expected-job",
+            )
             write_jsonl(tmp / "splits.jsonl", [split, split_row("PresentBench", "present::demo")])
             write_jsonl(tmp / "packs.jsonl", [pack])
             write_jsonl(
                 tmp / "private.jsonl",
                 [private_row("WritingBench", "writing::demo", "pack-writing")],
             )
-            write_jsonl(tmp / "jobs.jsonl", [{"job_id": "expected-job", "prompt_sha256": "sha"}])
+            write_jsonl(
+                tmp / "jobs.jsonl",
+                [generation_job_row("WritingBench", "pack-writing", job_id="expected-job")],
+            )
             write_jsonl(tmp / "generated.jsonl", [generation_row("wrong-job", "pack-writing")])
             write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
 
@@ -346,15 +386,15 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
             write_jsonl(
                 tmp / "jobs.jsonl",
                 [
-                    {"job_id": "job-writing", "prompt_sha256": "sha"},
-                    {"job_id": "job-present", "prompt_sha256": "sha"},
+                    generation_job_row("WritingBench", "pack-writing"),
+                    generation_job_row("PresentBench", "pack-present"),
                 ],
             )
             write_jsonl(
                 tmp / "generated.jsonl",
                 [
-                    generation_row("job-writing", "pack-writing"),
-                    generation_row("job-present", "pack-present"),
+                    generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                    generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
                 ],
             )
             write_jsonl(

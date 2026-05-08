@@ -136,9 +136,10 @@ uv run python scripts/ops/report_experiment_readiness.py --profile full --expect
 
 Known blockers:
 
-- `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts,
-  so the known blockers are experiment completeness/evaluator issues rather than
-  benchmark-flow leakage.
+- `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts
+  and on the expanded artifacts when `--jobs` / `--generated-outputs` are
+  provided, so the known blockers are experiment completeness/evaluator issues
+  rather than benchmark-flow leakage.
 - PresentBench official slide artifacts now exist for prompt_only and auto_skill,
   and `check_presentbench_official_eval_ready.py` reports
   `ready_for_official_judge: 16` across 4 packs x 2 heldout x 2 official modes.

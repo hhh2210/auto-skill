@@ -132,7 +132,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     except SchemaValidationError as exc:
         errors.append(f"generated outputs schema invalid: {exc}")
 
-    flow = audit_benchmark_flow(splits=splits, packs=packs, private_rows=private_rows)
+    flow = audit_benchmark_flow(
+        splits=splits,
+        packs=packs,
+        private_rows=private_rows,
+        generation_jobs=jobs,
+        generated_rows=generated_rows,
+    )
     errors.extend(f"benchmark_flow: {error}" for error in flow.errors)
     warnings.extend(f"benchmark_flow: {warning}" for warning in flow.warnings)
 

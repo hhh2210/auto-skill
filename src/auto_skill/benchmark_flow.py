@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any
 
 from auto_skill.data_cleaning import ValidationError, validate_splits
 from auto_skill.generated_outputs import private_leak_matches
+from auto_skill.schemas import SchemaValidationError, validate_artifact_rows
 
 PRIVATE_KEYS = {"supervision", "judge", "statistics"}
 PRIVATE_KEY_PREFIXES = ("private_",)
@@ -100,11 +102,29 @@ def _pack_private_refs(
     return refs
 
 
+def _latest_generation_rows(
+    rows: list[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        job_id = str(row.get("job_id") or "")
+        prompt_sha = str(row.get("prompt_sha256") or "")
+        if job_id and prompt_sha:
+            latest[(job_id, prompt_sha)] = row
+    return latest
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def audit_benchmark_flow(
     *,
     splits: list[dict[str, Any]],
     packs: list[dict[str, Any]],
     private_rows: list[dict[str, Any]],
+    generation_jobs: list[dict[str, Any]] | None = None,
+    generated_rows: list[dict[str, Any]] | None = None,
 ) -> FlowAuditResult:
     """Validate the example-driven benchmark flow boundary.
 
@@ -121,6 +141,15 @@ def audit_benchmark_flow(
         validate_splits(splits)
     except ValidationError as exc:
         errors.append(f"splits invalid: {exc}")
+    if generated_rows is not None:
+        try:
+            validate_artifact_rows(
+                generated_rows,
+                kind="generated_outputs",
+                label="generated outputs",
+            )
+        except SchemaValidationError as exc:
+            errors.append(f"generated outputs invalid: {exc}")
 
     split_by_id = {
         str(row.get("split_id")): row for row in splits if isinstance(row.get("split_id"), str)
@@ -148,6 +177,12 @@ def audit_benchmark_flow(
         if isinstance(row.get("pack_id"), str)
     }
     private_pack_ids = set(private_by_pack)
+    jobs_by_id = {
+        str(job.get("job_id")): job
+        for job in generation_jobs or []
+        if isinstance(job.get("job_id"), str)
+    }
+    latest_rows = _latest_generation_rows(generated_rows or [])
 
     for pack in packs:
         pack_id = str(pack.get("pack_id") or "<unknown>")
@@ -242,11 +277,105 @@ def audit_benchmark_flow(
             leaks = private_leak_matches(text)
             if leaks:
                 errors.append(f"{label}: desired_output leaks private metadata {leaks}")
+            if generation_jobs is not None:
+                job_id = desired.get("generation_job_id")
+                prompt_sha = desired.get("prompt_sha256")
+                if not isinstance(job_id, str) or not job_id:
+                    errors.append(f"{label}: generated desired_output lacks generation_job_id")
+                elif job_id not in jobs_by_id:
+                    errors.append(f"{label}: generation_job_id {job_id!r} is missing from jobs")
+                else:
+                    job = jobs_by_id[job_id]
+                    if job.get("pack_id") != pack_id:
+                        errors.append(f"{label}: generation job pack_id mismatch")
+                    if job.get("example_id") != example.get("example_id"):
+                        errors.append(f"{label}: generation job example_id mismatch")
+                    if job.get("source") != example.get("source"):
+                        errors.append(f"{label}: generation job source mismatch")
+                    if job.get("source_task_id") != example.get("source_task_id"):
+                        errors.append(f"{label}: generation job source_task_id mismatch")
+                    if prompt_sha and job.get("prompt_sha256") != prompt_sha:
+                        errors.append(f"{label}: generation job prompt_sha256 mismatch")
+                    expected_template = desired.get("prompt_template_version")
+                    if (
+                        expected_template
+                        and job.get("prompt_template_version") != expected_template
+                    ):
+                        errors.append(f"{label}: generation job prompt_template_version mismatch")
+                    prompt = job.get("prompt")
+                    if not isinstance(prompt, str) or not prompt.strip():
+                        errors.append(f"{label}: generation job prompt is empty")
+                    else:
+                        actual_prompt_sha = _sha256_text(prompt)
+                        if job.get("prompt_sha256") != actual_prompt_sha:
+                            errors.append(
+                                f"{label}: generation job prompt_sha256 does not match prompt"
+                            )
+                        prompt_leaks = private_leak_matches(prompt)
+                        if prompt_leaks:
+                            errors.append(
+                                f"{label}: generation job prompt leaks private metadata "
+                                f"{prompt_leaks}"
+                            )
+                if generated_rows is not None and isinstance(job_id, str) and job_id:
+                    if not isinstance(prompt_sha, str) or not prompt_sha:
+                        errors.append(f"{label}: generated desired_output lacks prompt_sha256")
+                    else:
+                        generated = latest_rows.get((job_id, prompt_sha))
+                        if generated is None:
+                            errors.append(f"{label}: missing generated output row for {job_id!r}")
+                        else:
+                            if generated.get("pack_id") != pack_id:
+                                errors.append(f"{label}: generated output pack_id mismatch")
+                            if generated.get("example_id") != example.get("example_id"):
+                                errors.append(f"{label}: generated output example_id mismatch")
+                            if generated.get("source") != example.get("source"):
+                                errors.append(f"{label}: generated output source mismatch")
+                            if generated.get("source_task_id") != example.get("source_task_id"):
+                                errors.append(
+                                    f"{label}: generated output source_task_id mismatch"
+                                )
+                            expected_template = desired.get("prompt_template_version")
+                            if (
+                                expected_template
+                                and generated.get("prompt_template_version")
+                                != expected_template
+                            ):
+                                errors.append(
+                                    f"{label}: generated output "
+                                    "prompt_template_version mismatch"
+                                )
+                            if generated.get("status") != "success":
+                                errors.append(
+                                    f"{label}: latest generated output is "
+                                    f"{generated.get('status')!r}"
+                                )
+                            if generated.get("finish_reason") != "stop":
+                                errors.append(
+                                    f"{label}: generated output finish_reason is not stop"
+                                )
+                            if generated.get("desired_output") != text:
+                                errors.append(
+                                    f"{label}: frozen desired_output text does not match "
+                                    "generated output row"
+                                )
 
         for index, task in enumerate(pack.get("heldout_tasks", [])):
             label = f"{pack_id}.heldout_tasks[{index}]"
             if task.get("desired_output") is not None:
                 errors.append(f"{label}: heldout task must not include desired_output")
+
+    if generation_jobs is not None:
+        expected_job_ids = {
+            example.get("desired_output", {}).get("generation_job_id")
+            for pack in packs
+            for example in pack.get("train_examples", [])
+            if isinstance(example.get("desired_output"), dict)
+            and example["desired_output"].get("generation_job_id")
+        }
+        orphan_jobs = set(jobs_by_id) - {str(job_id) for job_id in expected_job_ids}
+        if orphan_jobs:
+            warnings.append(f"generation jobs have no frozen example: {sorted(orphan_jobs)[:5]}")
 
     for row in private_rows:
         pack_id = str(row.get("pack_id") or "<unknown>")

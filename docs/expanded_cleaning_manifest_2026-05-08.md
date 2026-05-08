@@ -117,7 +117,9 @@ Audit benchmark-flow compliance:
 uv run python scripts/data/audit_benchmark_flow.py \
   --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl \
   --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
-  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
 ```
 
 Observed result:

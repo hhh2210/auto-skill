@@ -28,6 +28,7 @@ uv run python -m unittest discover -s tests
 uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
 uv run python scripts/data/audit_benchmark_flow.py
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 ```
