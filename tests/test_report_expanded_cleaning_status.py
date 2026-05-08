@@ -1,0 +1,405 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = REPO_ROOT / "scripts" / "ops" / "report_expanded_cleaning_status.py"
+
+
+def write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def split_row(source: str, split_id: str) -> dict:
+    return {
+        "split_id": split_id,
+        "source": source,
+        "learning_problem": "few_shot_skill_induction",
+        "domain": {"primary": source},
+        "train_examples": [
+            {
+                "source": source,
+                "source_id": f"{source}-train",
+                "domain": {"primary": source},
+                "task_input": "Task",
+                "supervision": {"items": [{"name": "Quality"}]},
+                "judge": {"type": "llm"},
+            }
+        ],
+        "heldout_tasks": [
+            {
+                "source": source,
+                "source_id": f"{source}-heldout",
+                "domain": {"primary": source},
+                "task_input": "Heldout",
+                "supervision": {"items": [{"name": "Quality"}]},
+                "judge": {"type": "llm"},
+            }
+        ],
+    }
+
+
+def pack_row(source: str, split_id: str, pack_id: str) -> dict:
+    return {
+        "schema_version": "example-pack/v1",
+        "pack_id": pack_id,
+        "split_id": split_id,
+        "source": source,
+        "domain": {"primary": source},
+        "input_boundary": {
+            "auto_skill_module_can_use": [
+                "train_examples.task_input",
+                "train_examples.desired_output.text",
+            ],
+            "must_not_use_for_induction": ["private rubrics", "heldout tasks"],
+        },
+        "train_examples": [
+            {
+                "example_id": f"{pack_id}::train::0",
+                "source": source,
+                "source_task_id": f"{source}-train",
+                "domain": {"primary": source},
+                "task_input": "Task",
+                "materials": [],
+                "desired_output": {"status": "generated", "text": "Output"},
+            }
+        ],
+        "heldout_tasks": [
+            {
+                "task_id": f"{pack_id}::heldout::0",
+                "source": source,
+                "source_task_id": f"{source}-heldout",
+                "domain": {"primary": source},
+                "task_input": "Heldout",
+                "materials": [],
+                "desired_output": None,
+            }
+        ],
+    }
+
+
+def private_row(source: str, split_id: str, pack_id: str) -> dict:
+    return {
+        "schema_version": "example-pack/v1",
+        "pack_id": pack_id,
+        "split_id": split_id,
+        "source": source,
+        "train_private": [
+            {
+                "task_ref": f"{pack_id}::train::0",
+                "source": source,
+                "source_task_id": f"{source}-train",
+                "supervision": {"items": [{"name": "Quality"}]},
+                "judge": {"type": "llm"},
+            }
+        ],
+        "heldout_private": [
+            {
+                "task_ref": f"{pack_id}::heldout::0",
+                "source": source,
+                "source_task_id": f"{source}-heldout",
+                "supervision": {"items": [{"name": "Quality"}]},
+                "judge": {"type": "llm"},
+            }
+        ],
+    }
+
+
+def generation_row(job_id: str, pack_id: str) -> dict:
+    return {
+        "schema_version": "generated-desired-output/v1",
+        "status": "success",
+        "job_id": job_id,
+        "pack_id": pack_id,
+        "example_id": f"{pack_id}::train::0",
+        "source": "WritingBench",
+        "prompt_sha256": "sha",
+        "desired_output": "Output",
+        "finish_reason": "stop",
+    }
+
+
+def audit_row(pack_id: str, source: str, status: str = "success") -> dict:
+    return {
+        "schema_version": "train-example-quality-audit/v1",
+        "pack_id": pack_id,
+        "task_id": f"{pack_id}::train::0",
+        "source": source,
+        "mode": "desired_output",
+        "evaluator_kind": "private_train_example_quality_audit",
+        "status": status,
+        "overall_score": 8 if status == "success" else None,
+    }
+
+
+class ExpandedCleaningStatusCliTests(unittest.TestCase):
+    def test_reports_ready_for_complete_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            jobs = [
+                {"job_id": "job-writing", "prompt_sha256": "sha"},
+                {"job_id": "job-present", "prompt_sha256": "sha"},
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(tmp / "jobs.jsonl", jobs)
+            write_jsonl(
+                tmp / "generated.jsonl",
+                [
+                    generation_row("job-writing", "pack-writing"),
+                    generation_row("job-present", "pack-present"),
+                ],
+            )
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+            write_jsonl(tmp / "audit-present.jsonl", [audit_row("pack-present", "PresentBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--required-audit",
+                    "audit-present.jsonl",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            self.assertEqual(json.loads(result.stdout)["status"], "ready")
+
+    def test_reports_not_ready_when_latest_generation_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            split = split_row("WritingBench", "writing::demo")
+            pack = pack_row("WritingBench", "writing::demo", "pack-writing")
+            write_jsonl(tmp / "splits.jsonl", [split, split_row("PresentBench", "present::demo")])
+            write_jsonl(tmp / "packs.jsonl", [pack])
+            write_jsonl(
+                tmp / "private.jsonl",
+                [private_row("WritingBench", "writing::demo", "pack-writing")],
+            )
+            write_jsonl(tmp / "jobs.jsonl", [{"job_id": "job-writing", "prompt_sha256": "sha"}])
+            failed = generation_row("job-writing", "pack-writing") | {
+                "status": "rejected_incomplete_generation",
+                "finish_reason": "length",
+            }
+            failed.pop("desired_output")
+            write_jsonl(tmp / "generated.jsonl", [failed])
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--expect-packs",
+                    "1",
+                    "--expect-train-examples",
+                    "1",
+                    "--expect-heldout-tasks",
+                    "1",
+                    "--expect-generation-jobs",
+                    "1",
+                    "--expect-status",
+                    "not_ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "not_ready")
+            self.assertTrue(any("not all success" in error for error in report["errors"]))
+
+    def test_reports_not_ready_when_generation_keys_do_not_match_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            split = split_row("WritingBench", "writing::demo")
+            pack = pack_row("WritingBench", "writing::demo", "pack-writing")
+            write_jsonl(tmp / "splits.jsonl", [split, split_row("PresentBench", "present::demo")])
+            write_jsonl(tmp / "packs.jsonl", [pack])
+            write_jsonl(
+                tmp / "private.jsonl",
+                [private_row("WritingBench", "writing::demo", "pack-writing")],
+            )
+            write_jsonl(tmp / "jobs.jsonl", [{"job_id": "expected-job", "prompt_sha256": "sha"}])
+            write_jsonl(tmp / "generated.jsonl", [generation_row("wrong-job", "pack-writing")])
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--expect-packs",
+                    "1",
+                    "--expect-train-examples",
+                    "1",
+                    "--expect-heldout-tasks",
+                    "1",
+                    "--expect-generation-jobs",
+                    "1",
+                    "--expect-status",
+                    "not_ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            errors = json.loads(result.stdout)["errors"]
+            self.assertTrue(
+                any("keys do not match jobs" in error for error in errors)
+            )
+
+    def test_required_audit_spec_enforces_source_and_min_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(
+                tmp / "jobs.jsonl",
+                [
+                    {"job_id": "job-writing", "prompt_sha256": "sha"},
+                    {"job_id": "job-present", "prompt_sha256": "sha"},
+                ],
+            )
+            write_jsonl(
+                tmp / "generated.jsonl",
+                [
+                    generation_row("job-writing", "pack-writing"),
+                    generation_row("job-present", "pack-present"),
+                ],
+            )
+            write_jsonl(
+                tmp / "audit-wrong-source.jsonl",
+                [audit_row("pack-writing", "WritingBench")],
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-wrong-source.jsonl:PresentBench:2",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "not_ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            errors = json.loads(result.stdout)["errors"]
+            self.assertTrue(any("source mismatch" in error for error in errors))
+            self.assertTrue(any("too few success rows" in error for error in errors))
+
+
+if __name__ == "__main__":
+    unittest.main()

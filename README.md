@@ -138,6 +138,12 @@ generation success and a passing benchmark-flow audit. MIMO is better used as an
 independent audit or targeted regeneration model until its long PresentBench
 request failures are resolved.
 
+To re-check the local expanded-cleaning handoff state:
+
+```bash
+uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+```
+
 The split builder excludes known source-data mismatches, currently
 `education/CSAPP-Lectures_2015Fall/Lecture15`, whose instructions ask for
 Chapter 10 System-Level I/O while its judge checklist scores Chapter 8

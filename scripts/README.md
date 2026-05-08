@@ -48,6 +48,7 @@ stable.
 | --- | --- | --- |
 | `metrics/summarize_mvp_metrics.py` | Summarize task, artifact, cost, self-consistency, and model inventory metrics. | core reporting |
 | `ops/report_experiment_readiness.py` | Fail-closed experiment readiness report. | CI/core |
+| `ops/report_expanded_cleaning_status.py` | Recompute local 30WB/20PB expanded-cleaning status from ignored run artifacts. | handoff gate |
 | `ops/validate_run_artifacts.py` | Validate generated-output, skill, and eval artifacts. | CI/core |
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge. | debug-only metric |

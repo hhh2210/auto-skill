@@ -40,6 +40,7 @@ Coverage:
 | `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.summary.json` | 27 | 512 | `cd968e93800168b33c4beb869d7dce76a4505d7abdf0d315ed1b71802b610596` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.jsonl` | 2 | 13745 | `b6e3fae7aeb9281865d74e823d837ea054095df5b3af70da3be7efec185c289b` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.summary.json` | 24 | 442 | `254236e53059069864ee7b960152e3d52bee13e61505ea55606962b3a712116e` |
+| `runs/expanded/expanded_cleaning_status.json` | 93 | 2475 | `ed58ef6cd5a7afc896ee4ad93ba24cb993e70479a1961141e8413964d78f92c3` |
 
 The generated-output file has 154 append-only rows because failed rows were
 kept for traceability. The latest row per `(job_id, prompt_sha256)` is 150/150
@@ -124,6 +125,30 @@ Observed result:
 ```json
 {"schema_version":"benchmark-flow-audit/v1","status":"ok","errors":[],"warnings":[]}
 ```
+
+Run the aggregate expanded-cleaning gate:
+
+```bash
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --expect-status ready \
+  --out runs/expanded/expanded_cleaning_status.json
+```
+
+Observed result:
+
+```json
+{
+  "status": "ready",
+  "errors": [],
+  "warnings": [
+    "optional audit has non-success rows: runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.jsonl: {'model_error': 1, 'success': 1}"
+  ]
+}
+```
+
+This gate recomputes split counts, pack freeze counts, latest generation status,
+benchmark-flow audit, and train-example audit schema/status coverage from the
+local ignored artifacts.
 
 Run a small independent MIMO quality audit for WritingBench train examples:
 
