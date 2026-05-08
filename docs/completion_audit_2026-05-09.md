@@ -18,6 +18,7 @@ benchmark or paper-level claim.
 | Judge calibration packet | `scripts/metrics/export_judge_disagreements.py` exports the Qwen-vs-MIMO sign-flip cells to `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl` and `.md` for manual/third-judge review. Current packets include same-output checks, output hashes/stats, task/private rubric context, and skill artifact context. | Done for current expanded sample |
 | Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
+| Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -198,7 +199,8 @@ prove the auto-skill method.
    diagnostic did not show higher contamination for `examples_plus_feature_skill`
    than for prompt-only on that probe, so the next method loop should address
    skill-only compression loss and task-specific constraint extraction before
-   blaming raw example copying.
+   blaming raw example copying. The current compression diagnostic is in
+   `notes/skill_compression_diagnostic_2026-05-09.md`.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -220,3 +222,5 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
+5. Test abstract example signatures or compact constraint packs before another
+   broad benchmark run; current data suggests skill-only is cheap but unstable.
