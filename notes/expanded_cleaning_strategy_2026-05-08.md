@@ -100,6 +100,9 @@ Latest local result:
 - `audit_benchmark_flow.py`: `status=ok`, no errors or warnings.
 - MIMO WritingBench audit sample: 6/6 success, mean score 6.43 with
   `--judge-max-tokens 4096`.
+- PresentBench material-aware audit sample: Qwen judge 2/2 success, mean score
+  7.5 with the generic rubric/checklist surrogate judge. MIMO on the same path
+  remains connection-unstable for long material-aware prompts.
 
 ## Reproduction Commands
 
@@ -141,6 +144,5 @@ uv run python scripts/data/audit_benchmark_flow.py \
   --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl
 ```
 
-Only consider full benchmark cleaning after the remaining quality-audit gap is
-closed, especially PresentBench train-example audit or official-score-based
-inspection for generated slide examples.
+Only consider full benchmark cleaning after sampled quality audits are expanded
+or replaced with official-score-based inspection for generated slide examples.

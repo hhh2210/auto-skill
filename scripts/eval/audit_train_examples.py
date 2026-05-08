@@ -18,13 +18,19 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from auto_skill.eval_summary import summarize_score_rows  # noqa: E402
-from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
+from auto_skill.example_packs import load_jsonl, material_context, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
+from auto_skill.mvp import (  # noqa: E402
+    build_judge_prompt,
+    evaluation_criteria,
+    extract_overall_score,
+    parse_json_object,
+)
 from auto_skill.writingbench_eval import (  # noqa: E402
     average_writingbench_scores,
     load_writingbench_prompt_templates,
 )
-from scripts.eval.run_heldout_eval import select_packs  # noqa: E402
+from scripts.eval.run_heldout_eval import is_valid_overall_score, select_packs  # noqa: E402
 from scripts.eval.run_writingbench_official_eval import (  # noqa: E402
     score_with_writingbench_prompt,
 )
@@ -32,6 +38,8 @@ from scripts.eval.run_writingbench_official_eval import (  # noqa: E402
 AUDIT_SCHEMA_VERSION = "train-example-quality-audit/v1"
 AUDIT_MODE = "desired_output"
 AUDIT_KIND = "private_train_example_quality_audit"
+GENERIC_AUDIT_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
+Use the provided rubric/checklist only for scoring. Return strict JSON."""
 
 
 def train_private_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -98,6 +106,31 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def generic_judge_status(
+    *,
+    finish_reason: str | None,
+    judge_report: dict[str, Any],
+    overall_score: float | None,
+) -> str:
+    if finish_reason != "stop":
+        return "judge_incomplete"
+    if "parse_error" in judge_report or overall_score is None:
+        return "judge_parse_error"
+    if not is_valid_overall_score(overall_score):
+        return "judge_invalid_score"
+    return "success"
+
+
+def chat_result_json(result: Any) -> dict[str, Any]:
+    return {
+        "text": result.text,
+        "model": result.model,
+        "finish_reason": result.finish_reason,
+        "usage": result.usage,
+        "request_id": result.request_id,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -128,6 +161,12 @@ def main() -> int:
     parser.add_argument("--limit-packs", type=int)
     parser.add_argument("--limit-examples", type=int)
     parser.add_argument("--judge-max-tokens", type=int, default=1024)
+    parser.add_argument(
+        "--judge-material-chars",
+        type=int,
+        default=8000,
+        help="Maximum material excerpt chars included in generic PresentBench audit prompts.",
+    )
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument("--allow-partial", action="store_true")
@@ -164,10 +203,16 @@ def main() -> int:
         judge_config = ChatCompletionConfig.from_env(
             args.env_file, prefix=args.judge_config_prefix
         )
-        templates = load_writingbench_prompt_templates(args.writingbench_root)
     except (ConfigError, OSError, ImportError, AttributeError) as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
+    templates = None
+    if any(pack.get("source") == "WritingBench" for pack in selected):
+        try:
+            templates = load_writingbench_prompt_templates(args.writingbench_root)
+        except (OSError, ImportError, AttributeError) as exc:
+            print(f"configuration error: {exc}", file=sys.stderr)
+            return 2
     if args.timeout_seconds is not None:
         judge_config = replace(judge_config, timeout_seconds=args.timeout_seconds)
     if args.max_retries is not None:
@@ -219,46 +264,136 @@ def main() -> int:
                 if example_budget is not None:
                     example_budget -= 1
                 continue
-            if pack.get("source") != "WritingBench":
-                rows.append(
-                    audit_failure_row(
-                        pack=pack,
-                        example=example,
-                        status="unsupported_source_for_writingbench_audit",
-                        judge_model=judge_config.model,
-                    )
-                )
-                print(f"  {example_id}: unsupported_source_for_writingbench_audit", flush=True)
-                if example_budget is not None:
-                    example_budget -= 1
-                continue
-            supervision = private_eval.get("supervision") or {}
-            raw_items = supervision.get("items") or supervision.get("criteria") or []
-            criteria = [item for item in raw_items if isinstance(item, dict)]
+            criteria = evaluation_criteria(private_eval)
             if not criteria:
+                status = (
+                    "missing_writingbench_criteria"
+                    if pack.get("source") == "WritingBench"
+                    else "missing_benchmark_criteria"
+                )
                 rows.append(
                     audit_failure_row(
                         pack=pack,
                         example=example,
-                        status="missing_writingbench_criteria",
+                        status=status,
                         judge_model=judge_config.model,
                     )
                 )
-                print(f"  {example_id}: missing_writingbench_criteria", flush=True)
+                print(f"  {example_id}: {status}", flush=True)
                 if example_budget is not None:
                     example_budget -= 1
                 continue
 
+            if pack.get("source") == "WritingBench":
+                if templates is None:
+                    rows.append(
+                        audit_failure_row(
+                            pack=pack,
+                            example=example,
+                            status="missing_writingbench_templates",
+                            judge_model=judge_config.model,
+                        )
+                    )
+                    print(f"  {example_id}: missing_writingbench_templates", flush=True)
+                    if example_budget is not None:
+                        example_budget -= 1
+                    continue
+                try:
+                    status, scores, judge_calls = score_with_writingbench_prompt(
+                        client=judge_client,
+                        system_prompt=templates.evaluate_system,
+                        prompt_template=templates.evaluate_prompt,
+                        query=str(example.get("task_input") or ""),
+                        response=text or "",
+                        criteria=criteria,
+                        max_tokens=args.judge_max_tokens,
+                        judge_client=judge_client,
+                    )
+                except Exception as exc:  # noqa: BLE001 - audit should record flaky API calls.
+                    rows.append(
+                        audit_failure_row(
+                            pack=pack,
+                            example=example,
+                            status="model_error",
+                            judge_model=judge_config.model,
+                        )
+                        | {
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[:500],
+                        }
+                    )
+                    print(f"  {example_id}: model_error ({type(exc).__name__})", flush=True)
+                    if example_budget is not None:
+                        example_budget -= 1
+                    continue
+                overall_score = average_writingbench_scores(scores) if status == "success" else None
+                first_judge_model = next(
+                    (call.get("model") for call in judge_calls if call.get("model")),
+                    judge_config.model,
+                )
+                rows.append(
+                    {
+                        "schema_version": AUDIT_SCHEMA_VERSION,
+                        "pack_id": pack_id,
+                        "task_id": example_id,
+                        "example_id": example_id,
+                        "source": pack.get("source"),
+                        "source_task_id": example.get("source_task_id"),
+                        "mode": AUDIT_MODE,
+                        "evaluator_kind": AUDIT_KIND,
+                        "official_prompt_file": templates.prompt_file,
+                        "status": status,
+                        "scores": scores,
+                        "overall_score": overall_score,
+                        "judge_calls": judge_calls,
+                        "judge_model": first_judge_model,
+                    }
+                )
+                print(f"  {example_id}: {overall_score} ({status})", flush=True)
+                if example_budget is not None:
+                    example_budget -= 1
+                continue
+
+            if pack.get("source") != "PresentBench":
+                rows.append(
+                    audit_failure_row(
+                        pack=pack,
+                        example=example,
+                        status="unsupported_source_for_audit",
+                        judge_model=judge_config.model,
+                    )
+                )
+                print(f"  {example_id}: unsupported_source_for_audit", flush=True)
+                if example_budget is not None:
+                    example_budget -= 1
+                continue
             try:
-                status, scores, judge_calls = score_with_writingbench_prompt(
-                    client=judge_client,
-                    system_prompt=templates.evaluate_system,
-                    prompt_template=templates.evaluate_prompt,
-                    query=str(example.get("task_input") or ""),
-                    response=text or "",
-                    criteria=criteria,
+                judge_prompt = build_judge_prompt(
+                    task={
+                        "task_input": str(example.get("task_input") or "")
+                        + "\n\nMaterial excerpts:\n"
+                        + material_context(
+                            example.get("materials", []),
+                            max_chars=args.judge_material_chars,
+                        ),
+                    },
+                    candidate_output=text or "",
+                    private_eval=private_eval,
+                )
+                judge = judge_client.complete(
+                    [
+                        {"role": "system", "content": GENERIC_AUDIT_SYSTEM_PROMPT},
+                        {"role": "user", "content": judge_prompt},
+                    ],
+                    temperature=0.0,
                     max_tokens=args.judge_max_tokens,
-                    judge_client=judge_client,
+                )
+                judge_report = parse_json_object(judge.text)
+                overall_score = extract_overall_score(judge_report)
+                status = generic_judge_status(
+                    finish_reason=judge.finish_reason,
+                    judge_report=judge_report,
+                    overall_score=overall_score,
                 )
             except Exception as exc:  # noqa: BLE001 - audit should record flaky API calls.
                 rows.append(
@@ -277,11 +412,6 @@ def main() -> int:
                 if example_budget is not None:
                     example_budget -= 1
                 continue
-            overall_score = average_writingbench_scores(scores) if status == "success" else None
-            first_judge_model = next(
-                (call.get("model") for call in judge_calls if call.get("model")),
-                judge_config.model,
-            )
             rows.append(
                 {
                     "schema_version": AUDIT_SCHEMA_VERSION,
@@ -292,17 +422,18 @@ def main() -> int:
                     "source_task_id": example.get("source_task_id"),
                     "mode": AUDIT_MODE,
                     "evaluator_kind": AUDIT_KIND,
-                    "official_prompt_file": templates.prompt_file,
                     "status": status,
-                    "scores": scores,
-                    "overall_score": overall_score,
-                    "judge_calls": judge_calls,
-                    "judge_model": first_judge_model,
+                    "scores": judge_report.get("criterion_scores") or {},
+                    "overall_score": overall_score if status == "success" else None,
+                    "judge_report": judge_report,
+                    "judge_calls": [chat_result_json(judge)],
+                    "judge_model": judge.model or judge_config.model,
                 }
             )
             print(f"  {example_id}: {overall_score} ({status})", flush=True)
             if example_budget is not None:
                 example_budget -= 1
+            continue
         if example_budget is not None and example_budget <= 0:
             break
 

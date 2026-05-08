@@ -11,6 +11,7 @@ SKILL_INDUCTION_SCHEMA_VERSION = "skill-induction/v1"
 EVAL_SCHEMA_VERSIONS = {
     "heldout-eval/v1",
     "pattern-similarity-eval/v1",
+    "train-example-quality-audit/v1",
     "writingbench-official-eval/v1",
     "presentbench-official-score/v1",
 }

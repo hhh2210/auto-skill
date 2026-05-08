@@ -265,7 +265,7 @@ def build_judge_prompt(
     return f"""Score the candidate output for the task.
 
 Use the benchmark rubric/checklist below only for evaluation. It is not user-visible input.
-This is a Qwen LLM rubric/checklist surrogate judge, not an official visual/PPT evaluator.
+This is an LLM rubric/checklist surrogate judge, not an official visual/PPT evaluator.
 Follow the JSON schema below even if the original benchmark prompt used a different output format.
 Return strict JSON with:
 - overall_score: number from 1 to 10

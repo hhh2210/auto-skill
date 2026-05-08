@@ -61,6 +61,11 @@ Current MIMO train-example audit:
 - Expanded MIMO WritingBench audit sample: 6/6 success with mean score 6.43
   using `--judge-max-tokens 4096`. A 1024-token judge cap caused
   `judge_incomplete` false failures and should not be reused for MIMO audits.
+- Expanded PresentBench audit sample: Qwen judge 2/2 success with mean score
+  7.5 using a material-aware generic rubric/checklist surrogate. MIMO on the
+  same path remains connection-unstable for long material-aware prompts
+  (latest sample: 1 success, 1 APIConnectionError). This is a quality
+  diagnostic, not the official PresentBench visual/PPT evaluator.
 
 ## Current Readiness
 
@@ -94,8 +99,9 @@ Known blockers:
 - PresentBench official score rows are missing.
 - Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
 - Smoke data is too small for a paper claim.
-- Expanded 30WB/20PB data is still local/ignored and lacks PresentBench
-  train-example quality audit; do not present it as a released dataset snapshot.
+- Expanded 30WB/20PB data is still local/ignored and has only sampled
+  train-example quality audits; do not present it as a released dataset
+  snapshot.
 
 ## Recommended Next Steps
 

@@ -113,6 +113,20 @@ class ArtifactSchemaTests(unittest.TestCase):
                 }
             )
 
+    def test_train_example_quality_audit_schema_is_eval_artifact(self) -> None:
+        validate_eval_row(
+            {
+                "schema_version": "train-example-quality-audit/v1",
+                "pack_id": "pack-1",
+                "task_id": "pack-1::train::0",
+                "mode": "desired_output",
+                "evaluator_kind": "private_train_example_quality_audit",
+                "status": "success",
+                "overall_score": 7.5,
+                "judge_model": "mimo-v2.5-pro",
+            }
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
