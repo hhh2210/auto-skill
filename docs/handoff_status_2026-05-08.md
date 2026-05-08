@@ -74,6 +74,11 @@ Recent WritingBench smoke results:
   -1.0, `examples_plus_feature_skill` -0.625). Treat examples-plus as a
   WritingBench-specific positive signal until this cross-domain failure is
   understood. See `notes/presentbench_examples_plus_failure_diagnostic.md`.
+- A light slide-specific prompt guardrail
+  (`slide_constrained_examples_plus_feature_skill`) also failed on PresentBench
+  surrogate: 8/8 success, mean 6.625, delta -1.0 vs prompt-only. The next
+  PresentBench attempt needs an explicit layout-planning stage, not just a
+  stronger instruction sentence.
 
 Current MIMO train-example audit:
 
@@ -152,8 +157,8 @@ Known blockers:
    packs and debug why the same mechanism is negative on PresentBench surrogate.
    Qwen and MIMO both support the WritingBench direction on this smoke slice,
    but this is not yet a cross-domain method claim. The next PresentBench
-   variant should test constrained slide composition rather than raw
-   examples-plus-skill concatenation.
+   variant should test explicit current-task layout planning rather than raw
+   examples-plus-skill concatenation or a light prompt-only guardrail.
 2. Attribute whether current losses come from skill compression, feature
    extraction, LOO merge, or skill interference with raw examples.
 3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,

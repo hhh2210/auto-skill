@@ -221,6 +221,7 @@ def build_heldout_generation_prompt(
         "few_shot_examples_only",
         "examples_plus_one_shot_skill",
         "examples_plus_feature_skill",
+        "slide_constrained_examples_plus_feature_skill",
     }:
         examples_text = "\n\nUser examples:\n" + "\n\n".join(
             format_user_example(example) for example in examples
@@ -228,12 +229,29 @@ def build_heldout_generation_prompt(
     skill_text = ""
     if skill_md:
         skill_text = f"\n\nReusable skill:\n{skill_md}"
+    mode_guidance = ""
+    if mode == "slide_constrained_examples_plus_feature_skill":
+        mode_guidance = """
+
+Slide-task constraint priority:
+- Treat the heldout task input and material excerpts as the source of truth for
+  slide count, required figures, exact wording, citation placement, bullet
+  limits, and section ordering.
+- Use user examples only as abstract style and coverage references.
+- Do not copy example slide counts, figure allocation, section placement,
+  visual placeholders, or task-specific wording unless the current task asks for
+  the same thing.
+- Before writing the final answer, internally plan the current task's hard slide
+  constraints and ensure every required figure or exact phrase has its own
+  requested placement.
+"""
     return f"""Complete the heldout task below.
 
 Mode: {mode}
 Use only the provided user-visible examples, reusable skill, task input, and material excerpts.
 Do not mention benchmark construction, hidden rubrics, or evaluation metadata.
 Return only the final answer.
+{mode_guidance}
 
 Task ID: {task_id}
 {examples_text}

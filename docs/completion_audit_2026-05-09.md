@@ -12,7 +12,7 @@ benchmark or paper-level claim.
 | Construct and clean WritingBench / PresentBench example data | Checked-in MVP packs: `artifacts/packs/example_packs.v1.jsonl`, 8 packs, 24 generated train examples. Expanded local pass: `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`, 50 packs, 150 frozen train examples, 100 heldout tasks. | Done for MVP and local expanded workspace |
 | Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success, and the expanded PresentBench optional MIMO audit sample is now 2/2 success with `--judge-max-tokens 8192`. | Partial: MIMO works for WritingBench audit/judge-swap and small PresentBench audits, but long material-aware PresentBench usage remains a known risk |
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
-| Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 16/16 success for examples-plus-skill surrogate ablations. | Done as MVP/surrogate eval |
+| Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 24/24 success for examples-plus-skill and slide-constrained surrogate ablations. | Done as MVP/surrogate eval |
 | Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
@@ -121,8 +121,9 @@ Artifacts:
 - `runs/presentbench_surrogate_eval.qwen.mvp.jsonl`
 - `runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl`
 - `runs/presentbench_surrogate_eval.qwen.examples_plus_skill.heldout2.jsonl`
+- `runs/presentbench_surrogate_eval.qwen.slide_constrained_examples_plus_feature.heldout2.jsonl`
 
-Coverage: 56/56 success across the combined files. This is a text/rubric
+Coverage: 64/64 success across the combined files. This is a text/rubric
 surrogate, not the official visual/PPT evaluator.
 
 | Mode | Mean score | Delta vs prompt_only |
@@ -134,13 +135,15 @@ surrogate, not the official visual/PPT evaluator.
 | auto_skill | 8.375 | +0.75 |
 | examples_plus_one_shot_skill | 6.625 | -1.00 |
 | examples_plus_feature_skill | 7.00 | -0.625 |
+| slide_constrained_examples_plus_feature_skill | 6.625 | -1.00 |
 
 Interpretation: PresentBench surrogate looks more favorable than WritingBench,
 but it cannot replace official PresentBench scoring. The examples-plus-skill
 mechanism that is positive on WritingBench is negative on this PresentBench
 surrogate slice, so it is not yet a cross-domain method claim. The failure
 diagnostic in `notes/presentbench_examples_plus_failure_diagnostic.md` points to
-cross-task slide layout interference from raw examples plus skill.
+cross-task slide layout interference from raw examples plus skill. A light
+prompt-only slide-constraint guardrail did not fix the issue.
 
 ## Data-Cleaning Evidence
 
@@ -187,7 +190,8 @@ prove the auto-skill method.
    independent MIMO judge-swap agrees on the 4-pack WritingBench smoke slice,
    but the PresentBench surrogate result is negative, so this is not a
    cross-domain method claim yet. For PresentBench, test constrained slide
-   composition before trying raw examples-plus-skill again.
+   composition with an explicit layout-planning stage before trying raw
+   examples-plus-skill again.
 3. For WritingBench, inspect the negative-transfer cases before expanding the
    method claim.
 4. For expanded 50-pack data, run a small sampled heldout eval before using it

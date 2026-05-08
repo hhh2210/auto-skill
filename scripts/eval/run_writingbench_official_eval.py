@@ -54,6 +54,7 @@ SKILL_REQUIRED_MODES = {
     "auto_skill",
     "examples_plus_one_shot_skill",
     "examples_plus_feature_skill",
+    "slide_constrained_examples_plus_feature_skill",
 }
 
 
@@ -96,7 +97,11 @@ def call_model(
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
     if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
         return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode in {"ours_no_validation", "examples_plus_feature_skill"}:
+    if mode in {
+        "ours_no_validation",
+        "examples_plus_feature_skill",
+        "slide_constrained_examples_plus_feature_skill",
+    }:
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))

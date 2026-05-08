@@ -71,6 +71,10 @@ class WritingBenchEvalTests(unittest.TestCase):
             mode_skill("examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
+        self.assertEqual(
+            mode_skill("slide_constrained_examples_plus_feature_skill", skills, "pack-1"),
+            "Feature Skill",
+        )
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -307,6 +311,25 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertIn("Example output", prompt)
         self.assertIn("Reusable skill:", prompt)
         self.assertIn("Feature Skill", prompt)
+
+    def test_slide_constrained_examples_plus_prompt_prioritizes_current_task(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={"task_id": "task-1", "task_input": "Create slides", "materials": []},
+            mode="slide_constrained_examples_plus_feature_skill",
+            examples=[
+                UserExample(
+                    example_id="ex-1",
+                    task_input="Example task",
+                    output="Example output",
+                )
+            ],
+            skill_md="Feature Skill",
+        )
+
+        self.assertIn("User examples:", prompt)
+        self.assertIn("Reusable skill:", prompt)
+        self.assertIn("Slide-task constraint priority:", prompt)
+        self.assertIn("Do not copy example slide counts", prompt)
 
     def test_parse_score_accepts_fenced_json(self) -> None:
         parsed = parse_writingbench_score('```json\n{"score": 8, "reason": "ok"}\n```')

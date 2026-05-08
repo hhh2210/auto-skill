@@ -88,11 +88,11 @@ language instead of obeying the heldout checklist.
 ## Recommended Fixes To Test
 
 1. Do not use raw examples plus full skill as a default PresentBench mode.
-2. Add a constrained composition mode for slide tasks:
-   - examples only as abstract style signatures, not full task/output pairs;
-   - heldout task constraints must dominate example patterns;
-   - explicit "do not copy slide count, figure allocation, or section placement
-     from examples unless requested by the current task".
+2. A light prompt-only guardrail was tested as
+   `slide_constrained_examples_plus_feature_skill`. It remained negative:
+   mean score 6.625, delta -1.0 vs prompt-only, wins/losses/ties 2/6/0.
+   Therefore, simply telling the solver not to copy example layout is not
+   enough.
 3. Add a layout-plan intermediate step for PresentBench:
    - first extract current-task hard constraints: slide count, required figures,
      exact wording, per-slide limits, citation placement;
@@ -100,4 +100,3 @@ language instead of obeying the heldout checklist.
 4. Keep examples-plus-skill as a WritingBench-positive ablation, not a
    cross-domain method claim, until the constrained slide composition variant is
    tested.
-

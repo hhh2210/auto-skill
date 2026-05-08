@@ -62,6 +62,10 @@ class HeldoutEvalTests(unittest.TestCase):
             mode_skill("examples_plus_feature_skill", skills, "pack-1"),
             "Feature Skill",
         )
+        self.assertEqual(
+            mode_skill("slide_constrained_examples_plus_feature_skill", skills, "pack-1"),
+            "Feature Skill",
+        )
 
     def test_load_skill_rows_merges_repeated_skill_artifacts(self) -> None:
         with TemporaryDirectory() as tmp:
