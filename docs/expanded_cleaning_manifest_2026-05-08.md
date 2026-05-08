@@ -12,9 +12,9 @@ force-add them to the public repo without an explicit data-release decision.
 - Heldout tasks: 100 total, 2 per pack.
 - Primary cleaner: `qwen3.5-plus`.
 - Independent audit model: `mimo-v2.5-pro` sample audit for WritingBench train
-  examples. MIMO targeted generation samples are recorded as viability evidence
-  only; they are not canonical MIMO-cleaned packs because matching MIMO packs
-  have not been frozen and benchmark-flow audited.
+  examples. MIMO also has a local audited subset pack with 15 packs and 45
+  frozen train examples; it is not the canonical expanded dataset because full
+  50-pack MIMO cleaning is not frozen.
 
 Coverage:
 
@@ -41,6 +41,11 @@ Coverage:
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.jsonl` | 2 | 13745 | `b6e3fae7aeb9281865d74e823d837ea054095df5b3af70da3be7efec185c289b` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.summary.json` | 24 | 442 | `254236e53059069864ee7b960152e3d52bee13e61505ea55606962b3a712116e` |
 | `runs/expanded/expanded_cleaning_status.json` | 93 | 2475 | `ed58ef6cd5a7afc896ee4ad93ba24cb993e70479a1961141e8413964d78f92c3` |
+| `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` | 15 | 987162 | `e28bb208ff8391fb03ed455f54a0d8c545b4f38a1f6b206470910cd86aab7cfc` |
+| `runs/expanded/example_generation_jobs.30wb_20pb.mimo.sample.jsonl` | 45 | 546968 | `739bb92a2be9f42dd0c15b95bbf77e5b69b3816e4fd668a02077354642b44df9` |
+| `runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample.latest_success.jsonl` | 45 | 367831 | `fc9c2b00b58addc7fe49057654bc89f4f1dc04e73771fdc12bec88a07d2a0f35` |
+| `runs/expanded/example_private_eval.30wb_20pb.mimo.sample.jsonl` | 15 | 1201405 | `fa99debf418850ce7961e790caf7ad29ac8e32900328d26575db84bc82eff867` |
+| `runs/expanded/benchmark_flow_audit.mimo.sample.json` | 6 | 102 | `f9b9b9d265a2299ad7393c678248e3af381c92c4f79675d93599355e07be1479` |
 
 The generated-output file has 154 append-only rows because failed rows were
 kept for traceability. The latest row per `(job_id, prompt_sha256)` is 150/150
@@ -221,7 +226,7 @@ MIMO on the same PresentBench audit path succeeds on the current sample when
 ```
 
 MIMO targeted desired-output generation samples are also green in latest-row
-view, but remain raw generation evidence:
+view:
 
 - `runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample20.jsonl`:
   36/36 latest unique WritingBench rows are `success`.
@@ -229,9 +234,16 @@ view, but remain raw generation evidence:
   10/10 latest unique PresentBench rows are `success` after raising
   `--max-tokens` to 8192.
 
+These rows were frozen into a local subset pack:
+
+- `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`: 15 packs
+  (12 WritingBench, 3 PresentBench), 45 frozen train examples.
+- `runs/expanded/benchmark_flow_audit.mimo.sample.json`: `status=ok`, no
+  errors or warnings.
+
 See `notes/mimo_generation_retry_2026-05-09.md` for the retry trace. Do not
-describe these files as a MIMO cleaned dataset until matching packs are frozen
-and `audit_benchmark_flow.py` is run against those packs and MIMO outputs.
+describe this subset as the canonical expanded dataset; full 50-pack MIMO
+cleaning has not been frozen.
 
 ## Failure Trace
 
@@ -253,7 +265,7 @@ Final latest status: 150/150 success.
   official visual/PPT evaluator and has only been sampled on 2 examples in this
   manifest.
 - MIMO is used as audit/targeted-regeneration evidence, not as a complete
-  alternative cleaner. Current MIMO generation samples are raw latest-row
-  success evidence, not frozen/audited MIMO packs.
+  alternative cleaner. The current MIMO subset is frozen/audited locally, but it
+  covers only 15 packs rather than the full 50-pack expanded split.
 - The expanded artifacts are local ignored run outputs. A release decision is
   needed before committing or publishing them as a dataset snapshot.

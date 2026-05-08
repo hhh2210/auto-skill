@@ -9,9 +9,9 @@ Use Qwen3.5-Plus as the primary desired-output generation model for the next
 expanded cleaning pass. Use MIMO as an independent audit / targeted regeneration
 model, especially for shorter WritingBench text tasks. MIMO targeted generation
 samples now have green latest-row status, including a small PresentBench sample
-after raising `--max-tokens` to 8192, but this is raw generated-output evidence.
-Do not call MIMO a primary cleaner until matching MIMO packs are frozen and
-benchmark-flow audited.
+after raising `--max-tokens` to 8192, and the complete subset was frozen into a
+15-pack local MIMO sample with benchmark-flow `status=ok`. Do not call MIMO the
+primary cleaner until full 50-pack MIMO cleaning is frozen.
 
 ## Expanded Split Trial
 
@@ -71,9 +71,9 @@ checks are necessary.
 | MIMO v2.5 Pro | 10 / 10 | default `--max-tokens 4096` recovered connection errors into `finish_reason=length`; `--max-tokens 8192` fixed the two long jobs | 1.04 jobs/min first pass |
 
 Takeaway: PresentBench prompts are long and latency-bound. Qwen is currently the
-canonical primary cleaner for the frozen 30WB/20PB pack. MIMO can generate a
-small PresentBench sample when token budget is raised, but this is not yet a
-frozen/audited MIMO pack.
+canonical primary cleaner for the frozen 30WB/20PB pack. MIMO can generate and
+freeze a small PresentBench-containing subset when token budget is raised, but
+this is not full/canonical 50-pack MIMO cleaning.
 
 ## Operational Rules
 
@@ -107,9 +107,10 @@ Latest local result:
   7.5 with the generic rubric/checklist surrogate judge. MIMO on the same path
   succeeds 2/2 when `--judge-max-tokens 8192` is used.
 - MIMO targeted desired-output generation samples: 36/36 latest WritingBench
-  rows and 10/10 latest PresentBench rows are `success`; see
-  `notes/mimo_generation_retry_2026-05-09.md`. These are raw generated-output
-  samples, not canonical MIMO-cleaned packs.
+  rows and 10/10 latest PresentBench rows are `success`; the complete subset is
+  frozen at `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` with
+  15 packs / 45 train examples and benchmark-flow `status=ok`. See
+  `notes/mimo_generation_retry_2026-05-09.md`.
 
 ## Reproduction Commands
 

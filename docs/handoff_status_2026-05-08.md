@@ -21,11 +21,11 @@ Current freeze status:
 
 - WritingBench: 4/4 selected packs have 3 generated train examples each.
 - PresentBench: 4/4 selected packs have 3 generated train examples each.
-- MIMO targeted generation samples are viable but not canonical packs:
-  WritingBench latest rows are 36/36 success, and PresentBench latest rows are
-  10/10 success after raising PresentBench `--max-tokens` to 8192. Treat them
-  as audit/targeted-regeneration evidence until matching MIMO packs are frozen
-  and benchmark-flow audited.
+- MIMO targeted generation samples have been frozen into an audited local subset
+  pack: `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` covers
+  15 packs / 45 train examples and has benchmark-flow `status=ok`. It is
+  audit/targeted-regeneration evidence, not the canonical expanded dataset,
+  because full 50-pack MIMO cleaning is not frozen.
 
 Expanded local-cleaning status:
 

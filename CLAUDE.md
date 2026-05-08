@@ -83,10 +83,10 @@ Expected surfaces:
 - Current expanded-cleaning evidence lives in
   `notes/expanded_cleaning_strategy_2026-05-08.md`, with local artifact hashes in
   `docs/expanded_cleaning_manifest_2026-05-08.md`: Qwen3.5-Plus completed the
-  30WB/20PB local pass. MIMO has targeted generation viability samples
-  (`36/36` latest WritingBench rows and `10/10` latest PresentBench rows after
-  raising PresentBench `--max-tokens` to 8192), but it is not a canonical
-  expanded cleaned pack until matching MIMO packs are frozen and audited.
+  30WB/20PB local pass. MIMO has an audited local subset pack
+  (`runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`: 15 packs, 45
+  frozen train examples, benchmark-flow `status=ok`), but it is not the
+  canonical expanded dataset because the full 50-pack MIMO pass is not frozen.
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.
