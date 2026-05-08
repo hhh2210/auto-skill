@@ -119,6 +119,7 @@ uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 ```
 
 MVP readiness now uses the current MVP artifact contract and paths:

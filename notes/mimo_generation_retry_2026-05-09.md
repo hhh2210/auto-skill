@@ -117,6 +117,14 @@ uv run python scripts/data/audit_benchmark_flow.py \
   --out runs/expanded/benchmark_flow_audit.mimo.sample.json
 ```
 
+Aggregate gate including the MIMO subset:
+
+```bash
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --require-mimo-subset \
+  --expect-status ready
+```
+
 ## Handoff Guidance
 
 - Do not describe this MIMO subset as the canonical expanded cleaned dataset;

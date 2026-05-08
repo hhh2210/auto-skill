@@ -242,6 +242,390 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             self.assertEqual(json.loads(result.stdout)["status"], "ready")
 
+    def test_reports_optional_mimo_subset_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            jobs = [
+                generation_job_row("WritingBench", "pack-writing"),
+                generation_job_row("PresentBench", "pack-present"),
+            ]
+            generated = [
+                generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(tmp / "jobs.jsonl", jobs)
+            write_jsonl(tmp / "generated.jsonl", generated)
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+            write_jsonl(tmp / "audit-present.jsonl", [audit_row("pack-present", "PresentBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--required-audit",
+                    "audit-present.jsonl",
+                    "--mimo-subset-packs",
+                    "packs.jsonl",
+                    "--mimo-subset-private-eval",
+                    "private.jsonl",
+                    "--mimo-subset-jobs",
+                    "jobs.jsonl",
+                    "--mimo-subset-generated-outputs",
+                    "generated.jsonl",
+                    "--expect-mimo-subset-packs",
+                    "2",
+                    "--expect-mimo-subset-train-examples",
+                    "2",
+                    "--expect-mimo-subset-heldout-tasks",
+                    "2",
+                    "--expect-mimo-subset-generation-jobs",
+                    "2",
+                    "--expect-mimo-subset-writing-packs",
+                    "1",
+                    "--expect-mimo-subset-present-packs",
+                    "1",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(report["artifacts"]["mimo_subset"]["status"], "ok")
+            self.assertEqual(report["artifacts"]["mimo_subset"]["packs"]["packs"], 2)
+            self.assertEqual(
+                report["artifacts"]["mimo_subset"]["generated_outputs"]["latest_status_counts"],
+                {"success": 2},
+            )
+
+    def test_require_mimo_subset_fails_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            split = split_row("WritingBench", "writing::demo")
+            pack = pack_row("WritingBench", "writing::demo", "pack-writing")
+            write_jsonl(tmp / "splits.jsonl", [split, split_row("PresentBench", "present::demo")])
+            write_jsonl(tmp / "packs.jsonl", [pack])
+            write_jsonl(
+                tmp / "private.jsonl",
+                [private_row("WritingBench", "writing::demo", "pack-writing")],
+            )
+            write_jsonl(tmp / "jobs.jsonl", [generation_job_row("WritingBench", "pack-writing")])
+            write_jsonl(
+                tmp / "generated.jsonl",
+                [generation_row(job_id_for_pack("pack-writing"), "pack-writing")],
+            )
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--expect-packs",
+                    "1",
+                    "--expect-train-examples",
+                    "1",
+                    "--expect-heldout-tasks",
+                    "1",
+                    "--expect-generation-jobs",
+                    "1",
+                    "--require-mimo-subset",
+                    "--expect-status",
+                    "not_ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "not_ready")
+            self.assertTrue(
+                any("MIMO subset artifacts missing" in error for error in report["errors"])
+            )
+
+    def test_require_mimo_subset_fails_when_subset_is_self_consistent_but_incomplete(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            split = split_row("WritingBench", "writing::demo")
+            pack = pack_row("WritingBench", "writing::demo", "pack-writing")
+            write_jsonl(tmp / "splits.jsonl", [split, split_row("PresentBench", "present::demo")])
+            write_jsonl(tmp / "packs.jsonl", [pack])
+            write_jsonl(
+                tmp / "private.jsonl",
+                [private_row("WritingBench", "writing::demo", "pack-writing")],
+            )
+            write_jsonl(tmp / "jobs.jsonl", [generation_job_row("WritingBench", "pack-writing")])
+            write_jsonl(
+                tmp / "generated.jsonl",
+                [generation_row(job_id_for_pack("pack-writing"), "pack-writing")],
+            )
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--mimo-subset-packs",
+                    "packs.jsonl",
+                    "--mimo-subset-private-eval",
+                    "private.jsonl",
+                    "--mimo-subset-jobs",
+                    "jobs.jsonl",
+                    "--mimo-subset-generated-outputs",
+                    "generated.jsonl",
+                    "--expect-packs",
+                    "1",
+                    "--expect-train-examples",
+                    "1",
+                    "--expect-heldout-tasks",
+                    "1",
+                    "--expect-generation-jobs",
+                    "1",
+                    "--require-mimo-subset",
+                    "--expect-status",
+                    "not_ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            errors = json.loads(result.stdout)["errors"]
+            self.assertTrue(any("MIMO subset expected 15 packs" in error for error in errors))
+            self.assertTrue(any("MIMO subset source counts mismatch" in error for error in errors))
+
+    def test_optional_mimo_subset_invalid_file_is_structured_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            jobs = [
+                generation_job_row("WritingBench", "pack-writing"),
+                generation_job_row("PresentBench", "pack-present"),
+            ]
+            generated = [
+                generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(tmp / "jobs.jsonl", jobs)
+            write_jsonl(tmp / "generated.jsonl", generated)
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+            write_jsonl(tmp / "audit-present.jsonl", [audit_row("pack-present", "PresentBench")])
+            (tmp / "bad.jsonl").write_text("{not-json}\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--required-audit",
+                    "audit-present.jsonl",
+                    "--mimo-subset-packs",
+                    "bad.jsonl",
+                    "--mimo-subset-private-eval",
+                    "private.jsonl",
+                    "--mimo-subset-jobs",
+                    "jobs.jsonl",
+                    "--mimo-subset-generated-outputs",
+                    "generated.jsonl",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "ready")
+            self.assertTrue(
+                any("MIMO subset artifacts invalid" in item for item in report["warnings"])
+            )
+
+    def test_optional_mimo_subset_bad_row_shape_is_structured_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            jobs = [
+                generation_job_row("WritingBench", "pack-writing"),
+                generation_job_row("PresentBench", "pack-present"),
+            ]
+            generated = [
+                generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(tmp / "jobs.jsonl", jobs)
+            write_jsonl(tmp / "generated.jsonl", generated)
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+            write_jsonl(tmp / "audit-present.jsonl", [audit_row("pack-present", "PresentBench")])
+            (tmp / "bad-shape.jsonl").write_text("[]\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--required-audit",
+                    "audit-present.jsonl",
+                    "--mimo-subset-packs",
+                    "bad-shape.jsonl",
+                    "--mimo-subset-private-eval",
+                    "private.jsonl",
+                    "--mimo-subset-jobs",
+                    "jobs.jsonl",
+                    "--mimo-subset-generated-outputs",
+                    "generated.jsonl",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "ready")
+            self.assertTrue(any("row 1 must be an object" in item for item in report["warnings"]))
+
     def test_reports_not_ready_when_latest_generation_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

@@ -137,6 +137,7 @@ Run the aggregate expanded-cleaning gate:
 
 ```bash
 uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --require-mimo-subset \
   --expect-status ready \
   --out runs/expanded/expanded_cleaning_status.json
 ```
@@ -152,8 +153,8 @@ Observed result:
 ```
 
 This gate recomputes split counts, pack freeze counts, latest generation status,
-benchmark-flow audit, and train-example audit schema/status coverage from the
-local ignored artifacts.
+benchmark-flow audit, train-example audit schema/status coverage, and the local
+MIMO subset status from the ignored artifacts.
 
 Run a small independent MIMO quality audit for WritingBench train examples:
 
