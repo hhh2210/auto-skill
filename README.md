@@ -429,7 +429,8 @@ old/small coverage, `mvp` requires current MVP coverage, and `full` requires
 `--skills`, `--writing-eval`, `--present-surrogate-eval`, and
 `--present-official-scores` may be repeated when a phase is split across
 multiple JSONL artifacts; the `full` profile default already merges the MVP
-skill rows with the WritingBench `ours_full` skill rows.
+skill rows, WritingBench/PresentBench `ours_full` skill rows, and the
+PresentBench surrogate `auto_skill` rows.
 
 ## MVP Metrics
 

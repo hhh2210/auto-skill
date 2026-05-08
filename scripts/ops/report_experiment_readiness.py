@@ -35,11 +35,15 @@ PROFILE_DEFAULT_PATHS = {
         "skills": [
             Path("runs/skill_mvp.qwen.mvp.jsonl"),
             Path("runs/skill_mvp.qwen.ours_full.writingbench.jsonl"),
+            Path("runs/skill_mvp.qwen.ours_full.presentbench.jsonl"),
         ],
         "writing_eval": [
             Path("runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl")
         ],
-        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
+        "present_surrogate_eval": [
+            Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+            Path("runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl"),
+        ],
     },
 }
 
