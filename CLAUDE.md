@@ -147,6 +147,7 @@ uv run python -m unittest discover -s tests
 diff -q AGENTS.md CLAUDE.md
 uv run python -c "import google.genai, PIL, pptx, requests, tqdm"
 uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl
+uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/ops/validate_run_artifacts.py --generated-outputs tests/fixtures/generated_outputs.valid.jsonl --skills tests/fixtures/skill_rows.valid.jsonl --eval tests/fixtures/eval_rows.valid.jsonl
 uv run python scripts/data/inspect_benchmarks.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --limit 2 --out-dir artifacts
 uv run python scripts/data/build_fewshot_splits.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --train-size 3 --heldout-size 2 --max-groups 4 --out artifacts/splits/fewshot_splits.jsonl --summary-out artifacts/splits/fewshot_split_summary.json

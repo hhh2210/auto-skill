@@ -222,6 +222,12 @@ uv run python scripts/data/apply_generated_outputs.py \
   --out artifacts/packs/example_packs.v1.jsonl
 ```
 
+Audit the frozen benchmark-flow boundary before using packs for induction:
+
+```bash
+uv run python scripts/data/audit_benchmark_flow.py
+```
+
 ## Baselines
 
 The first stable experiment matrix should stay small:

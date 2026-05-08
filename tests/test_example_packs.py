@@ -42,6 +42,7 @@ class ExamplePackTests(unittest.TestCase):
         self.assertEqual(clean_example["desired_output"]["status"], "needs_generation")
         self.assertIn("supervision", private["train_private"][0])
         self.assertNotIn("private_builder_context", jobs[0])
+        self.assertNotIn("private_eval_ref", pack)
         self.assertEqual(
             jobs[0]["private_eval_ref"],
             "artifacts/private/example_private_eval.jsonl",

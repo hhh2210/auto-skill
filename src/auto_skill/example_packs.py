@@ -310,7 +310,7 @@ def build_pack(
             "auto_skill_module_can_use": [
                 "train_examples.task_input",
                 "train_examples.materials",
-                "train_examples.desired_output after generation",
+                "train_examples.desired_output.text",
                 "optional user notes if added later",
             ],
             "must_not_use_for_induction": [
@@ -322,7 +322,6 @@ def build_pack(
         },
         "train_examples": train_examples,
         "heldout_tasks": heldout_tasks,
-        "private_eval_ref": "artifacts/private/example_private_eval.jsonl",
     }
     private = {
         "schema_version": SCHEMA_VERSION,

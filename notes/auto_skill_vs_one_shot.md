@@ -29,7 +29,30 @@ But it has predictable weaknesses:
 - It does not naturally test whether the generated skill improves heldout tasks.
 - It has no built-in admission or rollback mechanism when a skill hurts.
 
-## Mechanisms Our Auto-skill Module Can Add
+## Current Experimental Read
+
+The current smoke experiments do not support treating `Feature-Driven Auto-Skill`
+or `LOO validation` as the main method claim yet. They should be treated as
+components under mechanism ablation.
+
+Observed pattern so far:
+
+| Strategy | Current signal | Working interpretation |
+| --- | --- | --- |
+| `few_shot_examples_only` | strongest overall | examples still contain information not captured by current skill artifacts |
+| `one_shot_skill_from_examples` | strongest skill baseline | one-shot skill drafting is currently the most stable compression baseline |
+| `Feature-Driven Auto-Skill` / `ours_no_validation` | weaker than one-shot | feature extraction may over-abstract and drop concrete constraints or writing moves |
+| `LOO validation` / `auto_skill_ours_full` | weaker and longer | current merge may dilute useful rules rather than repair them |
+
+This means the next experiment should not be a larger benchmark sweep. It should
+first answer where the failure happens:
+
+1. skill compression versus examples-only context;
+2. feature extraction versus direct one-shot drafting;
+3. old LOO merge versus no validation versus majority-vote validation;
+4. skill-only versus examples-plus-skill marginal value.
+
+## Candidate Mechanisms To Test
 
 ### 1. Visible Example Decomposition
 
@@ -67,7 +90,11 @@ For WritingBench and PresentBench, the skill should not only say "write better".
 - anti-hallucination checks;
 - "before final answer, verify X" checklists.
 
-This is a direct advantage over one-shot skill drafting if we show better heldout benchmark gains without exposing benchmark rubrics to the induction module.
+This is only a real advantage if it beats direct one-shot skill drafting under
+the same inputs. Current smoke results do not show that yet. The likely failure
+mode is excessive abstraction: the feature schema focuses the model, but may
+discard concrete output moves, phrasing constraints, and example-specific
+structure that matter to the heldout evaluator.
 
 ### 4. Skill Schema And Separation Of Concerns
 
@@ -96,7 +123,11 @@ Auto-skill should self-evaluate the candidate skill on train/example tasks befor
 - compress redundant instructions;
 - add missing self-checks from recurring visible patterns.
 
-This creates a concrete delta against one-shot: one-shot writes; auto-skill writes, tests, and repairs.
+This is a hypothesis, not an established result. The current LOO merge appears
+to hurt more than help, probably because it merges away useful specificity and
+turns sharp rules into longer, softer guidance. Keep validation as an ablation:
+`feature_no_validation` versus `feature_with_old_LOO` versus
+`feature_with_majority_vote_LOO`.
 
 ### 6. Negative Transfer Control
 
@@ -135,26 +166,65 @@ We should evaluate at two distances:
 - near transfer: same domain2/category;
 - medium transfer: same domain1/category family, different subtopic.
 
-## Experimental Baselines
+## Mechanism Ablation Matrix
 
-The fair baseline stack should include:
+The next run should be named mechanism ablation, not a larger headline
+experiment. Run it first on the existing 4 WritingBench packs, using the same
+candidate outputs where possible and evaluating with Qwen plus an independent
+judge swap.
 
 | Condition | What it tests |
 | --- | --- |
 | `prompt_only` | raw model ability |
 | `few_shot_examples_only` | direct in-context learning from examples |
-| `one_shot_skill_from_examples` | whether a strong model can summarize examples into a skill |
-| `ours_no_validation` | ablation: structured extraction without validation |
-| `ours_no_feature_schema` | ablation: validation without structured feature extraction |
-| `ours_full` | full auto-skill module |
+| `one_shot_skill_from_examples` | strongest current skill compression baseline |
+| `feature_skill_no_validation` | whether feature extraction and aggregation help over one-shot |
+| `feature_skill_old_LOO` | whether the current LOO merge repairs or damages the feature skill |
+| `feature_skill_majority_LOO` | whether support-count / majority-vote validation helps |
+| `examples_plus_one_shot_skill` | whether one-shot skill has marginal value beyond raw examples |
+| `examples_plus_feature_skill` | whether feature skill has marginal value beyond raw examples |
 
-The most important comparison is:
+The key comparisons are:
 
 ```text
-ours_full > one_shot_skill_from_examples
+few_shot_examples_only vs one_shot_skill_from_examples
+one_shot_skill_from_examples vs feature_skill_no_validation
+feature_skill_no_validation vs feature_skill_old_LOO vs feature_skill_majority_LOO
+few_shot_examples_only vs examples_plus_one_shot_skill vs examples_plus_feature_skill
 ```
 
-This must be same-input: both conditions receive only user examples. Rubric/critique/full-evidence variants can be diagnostic upper baselines, but they are not the main fair comparison.
+This must remain same-input: the skill induction side receives only user
+examples, optional user emphasis, and materials that are part of the examples.
+Rubric, critique trace, weak/strong diff, and heldout feedback remain
+benchmark-private and can only appear in diagnostics or explicit oracle upper
+bounds.
+
+## Mechanism Questions
+
+### 1. Does skill compression inherently lose information?
+
+Compare `few_shot_examples_only` against `one_shot_skill_from_examples`. If
+few-shot stays stronger, the contribution should become "cheaper skill
+compression that approaches few-shot quality" rather than "skill always beats
+examples".
+
+### 2. Does feature-driven compilation beat direct one-shot drafting?
+
+Compare `one_shot_skill_from_examples` against
+`feature_extract + aggregate + compile`. If the latter is weaker, the feature
+schema is over-abstracting or missing concrete example evidence.
+
+### 3. Is LOO validation a repair mechanism or a damage mechanism?
+
+Compare no validation, old LOO, and a stricter majority-vote LOO. Keep LOO only
+if it improves heldout score, lowers negative transfer, or improves robustness
+without making the skill materially longer and weaker.
+
+### 4. Does the skill add marginal information to examples?
+
+Compare `few_shot_examples_only` against `few_shot_examples + skill`. If adding
+the skill does not improve score, the skill is redundant. If it lowers score,
+the skill is actively interfering with example-following.
 
 ## Metrics That Reveal The Advantage
 
@@ -212,8 +282,18 @@ This lets us describe the contribution as "skill induction compiler from example
 
 ## Strongest Claim To Aim For
 
-The strongest defensible claim is:
+The old target claim was:
 
 > Compared with one-shot skill drafting from the same user examples, our auto-skill compiler produces skills that are more operational, more compact, and less likely to cause negative transfer, leading to better heldout performance under the original benchmark evaluators.
 
-This is better than claiming universal superiority over all self-evolving agents.
+Current evidence does not justify this as a result claim. The near-term
+defensible claim is narrower:
+
+> We build a controlled harness for isolating where example-to-skill induction
+> succeeds or fails, separating skill compression loss, feature abstraction loss,
+> validation/merge effects, negative transfer, and marginal value over raw
+> examples.
+
+Only promote a full auto-skill method claim after mechanism ablation shows a
+component that consistently improves over `one_shot_skill_from_examples` or
+delivers a clear cost/robustness tradeoff against `few_shot_examples_only`.

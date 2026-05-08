@@ -290,10 +290,11 @@ def main() -> int:
     }
     examples = writing_examples + present_examples
 
+    seed_examples_path = args.out_dir / "seed" / "seed_examples.jsonl"
     write_json(args.out_dir / "benchmark_inspection.json", report)
-    write_jsonl(args.out_dir / "seed_examples.jsonl", examples)
+    write_jsonl(seed_examples_path, examples)
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"Wrote {len(examples)} example seeds to {args.out_dir / 'seed_examples.jsonl'}")
+    print(f"Wrote {len(examples)} diagnostic example seeds to {seed_examples_path}")
     return 0
 
 

@@ -56,6 +56,7 @@ Engineering checks are green:
 uv run python -m unittest discover -s tests
 uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
+uv run python scripts/data/audit_benchmark_flow.py
 ```
 
 MVP readiness now uses the current MVP artifact contract and paths:
@@ -72,6 +73,9 @@ uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-
 
 Known blockers:
 
+- `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts,
+  so the known blockers are experiment completeness/evaluator issues rather than
+  benchmark-flow leakage.
 - Current MVP PresentBench surrogate rows include model errors on some cells.
 - PresentBench official score rows are missing.
 - Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
@@ -79,11 +83,15 @@ Known blockers:
 
 ## Recommended Next Steps
 
-1. Expand to 8-12 WritingBench packs and 4-8 PresentBench packs with at least 2
-   heldout tasks each.
-2. Run failure attribution on negative-transfer packs, especially where
-   `auto_skill` loses to prompt-only or few-shot examples.
-3. Improve skill induction and LOO merge before regenerating all examples.
+1. Run a mechanism ablation on the existing 4 WritingBench packs before expanding
+   benchmark size. Include `prompt_only`, `few_shot_examples_only`,
+   `one_shot_skill_from_examples`, `feature_skill_no_validation`,
+   `feature_skill_old_LOO`, `feature_skill_majority_LOO`,
+   `examples_plus_one_shot_skill`, and `examples_plus_feature_skill`.
+2. Attribute whether current losses come from skill compression, feature
+   extraction, LOO merge, or skill interference with raw examples.
+3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,
+   not as proven main-method claims.
 4. Regenerate only examples that are independently audited as low quality.
 5. Keep solver and judge models separated and record model inventory for every run.
 
