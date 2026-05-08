@@ -250,7 +250,8 @@ Provider retries and parse retries are intentionally separate. `--max-retries`
 covers SDK transport/rate-limit/server failures; add `--parse-max-attempts 3`
 to `run_skill_mvp.py`, `run_writingbench_official_eval.py`, or
 `run_heldout_eval.py` only when complete model responses intermittently return
-malformed JSON or invalid judge scores.
+malformed JSON or invalid judge scores. `audit_train_examples.py` supports the
+same flag for train-example quality audits.
 
 Use `--dry-run` before spending API calls:
 

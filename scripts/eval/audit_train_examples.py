@@ -131,6 +131,50 @@ def chat_result_json(result: Any) -> dict[str, Any]:
     }
 
 
+def generic_audit_with_parse_retry(
+    *,
+    judge_client: ChatCompletionClient,
+    judge_prompt: str,
+    max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[Any, dict[str, Any], float | None, str, list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    judge = None
+    judge_report: dict[str, Any] = {"parse_error": "judge_not_called"}
+    overall_score: float | None = None
+    status = "judge_parse_error"
+    judge_calls: list[dict[str, Any]] = []
+    for attempt in range(1, attempts + 1):
+        judge = judge_client.complete(
+            [
+                {"role": "system", "content": GENERIC_AUDIT_SYSTEM_PROMPT},
+                {"role": "user", "content": judge_prompt},
+            ],
+            temperature=0.0,
+            max_tokens=max_tokens,
+        )
+        judge_report = parse_json_object(judge.text)
+        overall_score = extract_overall_score(judge_report)
+        status = generic_judge_status(
+            finish_reason=judge.finish_reason,
+            judge_report=judge_report,
+            overall_score=overall_score,
+        )
+        judge_calls.append(
+            chat_result_json(judge)
+            | {
+                "attempt": attempt,
+                "status": status,
+                "parse_error": judge_report.get("parse_error"),
+                "overall_score": overall_score,
+            }
+        )
+        if status in {"success", "judge_incomplete"}:
+            break
+    assert judge is not None
+    return judge, judge_report, overall_score, status, judge_calls
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -169,9 +213,22 @@ def main() -> int:
     )
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Retry judge calls when a complete audit response cannot be parsed "
+            "or does not contain a valid numeric score. Provider/network retries "
+            "remain controlled by --max-retries."
+        ),
+    )
     parser.add_argument("--allow-partial", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
 
     packs = load_jsonl(args.packs)
     if args.source:
@@ -308,6 +365,7 @@ def main() -> int:
                         criteria=criteria,
                         max_tokens=args.judge_max_tokens,
                         judge_client=judge_client,
+                        parse_max_attempts=args.parse_max_attempts,
                     )
                 except Exception as exc:  # noqa: BLE001 - audit should record flaky API calls.
                     rows.append(
@@ -380,20 +438,13 @@ def main() -> int:
                     candidate_output=text or "",
                     private_eval=private_eval,
                 )
-                judge = judge_client.complete(
-                    [
-                        {"role": "system", "content": GENERIC_AUDIT_SYSTEM_PROMPT},
-                        {"role": "user", "content": judge_prompt},
-                    ],
-                    temperature=0.0,
-                    max_tokens=args.judge_max_tokens,
-                )
-                judge_report = parse_json_object(judge.text)
-                overall_score = extract_overall_score(judge_report)
-                status = generic_judge_status(
-                    finish_reason=judge.finish_reason,
-                    judge_report=judge_report,
-                    overall_score=overall_score,
+                judge, judge_report, overall_score, status, judge_calls = (
+                    generic_audit_with_parse_retry(
+                        judge_client=judge_client,
+                        judge_prompt=judge_prompt,
+                        max_tokens=args.judge_max_tokens,
+                        parse_max_attempts=args.parse_max_attempts,
+                    )
                 )
             except Exception as exc:  # noqa: BLE001 - audit should record flaky API calls.
                 rows.append(
@@ -426,7 +477,7 @@ def main() -> int:
                     "scores": judge_report.get("criterion_scores") or {},
                     "overall_score": overall_score if status == "success" else None,
                     "judge_report": judge_report,
-                    "judge_calls": [chat_result_json(judge)],
+                    "judge_calls": judge_calls,
                     "judge_model": judge.model or judge_config.model,
                 }
             )
