@@ -376,8 +376,10 @@ uv run python scripts/eval/export_presentbench_official_artifacts.py \
 uv run python scripts/eval/check_presentbench_official_eval_ready.py \
   --packs artifacts/packs/example_packs.v1.jsonl \
   --code-root data/PresentBench_code \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
   --judge-model gemini-3-flash-preview \
-  --pack-id presentbench_education_CSAPP-Lectures_2015Fall
+  --limit-heldout 1
 ```
 
 For CI smoke checks where slide artifacts or generated PresentBench examples are
@@ -391,11 +393,18 @@ Readiness statuses are intentionally separated:
 - `scored`: an upstream `*_score.yaml` is already present.
 
 Once readiness is `ready_for_official_judge` or `ready_for_zero_score`, run the
-upstream evaluator from the official code checkout:
+upstream evaluator once per mode/result root from the official code checkout:
 
 ```bash
 uv run python data/PresentBench_code/judge_all.py \
-  --agent_name auto-skill \
+  --agent_name prompt_only \
+  --data_root data/PresentBench_repo \
+  --result_root ../PresentBench/results/prompt_only \
+  --api_type gemini \
+  --model gemini-3-flash-preview
+
+uv run python data/PresentBench_code/judge_all.py \
+  --agent_name auto_skill \
   --data_root data/PresentBench_repo \
   --result_root ../PresentBench/results/auto_skill \
   --api_type gemini \

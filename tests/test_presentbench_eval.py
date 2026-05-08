@@ -10,9 +10,31 @@ from auto_skill.presentbench_eval import (
     find_score_artifact,
     load_presentbench_score,
 )
+from scripts.eval.check_presentbench_official_eval_ready import parse_mode_result_roots
 
 
 class PresentBenchEvalTests(unittest.TestCase):
+    def test_parse_mode_result_roots_defaults_to_auto_skill(self) -> None:
+        self.assertEqual(
+            parse_mode_result_roots(None, default_root=Path("results/auto_skill")),
+            {"auto_skill": Path("results/auto_skill")},
+        )
+
+    def test_parse_mode_result_roots_requires_mode_mapping(self) -> None:
+        with self.assertRaisesRegex(ValueError, "MODE=PATH"):
+            parse_mode_result_roots(["bad"], default_root=Path("results/auto_skill"))
+
+        self.assertEqual(
+            parse_mode_result_roots(
+                ["prompt_only=results/prompt", "auto_skill=results/auto"],
+                default_root=Path("unused"),
+            ),
+            {
+                "prompt_only": Path("results/prompt"),
+                "auto_skill": Path("results/auto"),
+            },
+        )
+
     def test_readiness_requires_slide_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

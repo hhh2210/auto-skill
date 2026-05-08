@@ -107,10 +107,11 @@ Known blockers:
 - `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts,
   so the known blockers are experiment completeness/evaluator issues rather than
   benchmark-flow leakage.
-- PresentBench official result artifacts are missing/incomplete. The local
-  `runs/presentbench_official_scores.jsonl` file exists, but its rows are
-  `missing_official_eval_artifacts` placeholders rather than successful official
-  scores.
+- PresentBench official slide artifacts now exist for prompt_only and auto_skill,
+  and `check_presentbench_official_eval_ready.py` reports `ready_for_official_judge`.
+  The local `runs/presentbench_official_scores.jsonl` file still contains
+  `missing_score_artifact` rows because upstream `*_score.yaml` files have not
+  been produced by `judge_all.py`.
 - Full-profile skill and surrogate rows now cover all 8 smoke packs locally.
   `report_experiment_readiness.py --profile full` merges split MVP,
   WritingBench `ours_full`, PresentBench `ours_full`, and PresentBench

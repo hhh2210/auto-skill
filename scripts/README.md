@@ -40,7 +40,7 @@ stable.
 | `eval/audit_train_examples.py` | Private quality audit for generated train-example outputs; supports judge parse retries. | diagnostic/API |
 | `eval/run_heldout_eval.py` | Text-only surrogate eval, mainly PresentBench smoke/debug; supports judge parse retries. | surrogate/debug |
 | `eval/export_presentbench_official_artifacts.py` | Export PresentBench text generations as simple `slides.pdf` result-tree artifacts for official-judge readiness. | bridge/debug |
-| `eval/check_presentbench_official_eval_ready.py` | Check official PresentBench artifact readiness. | core gate |
+| `eval/check_presentbench_official_eval_ready.py` | Check official PresentBench artifact readiness; repeat `--mode-result-root` for multiple modes. | core gate |
 | `eval/summarize_presentbench_official_scores.py` | Summarize upstream PresentBench score YAMLs. | core once official scores exist |
 
 ### Metrics And Gates
