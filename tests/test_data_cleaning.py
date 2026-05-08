@@ -12,6 +12,7 @@ from auto_skill.data_cleaning import (
 )
 from scripts.data.build_fewshot_splits import (
     KNOWN_BAD_PRESENTBENCH_CASES,
+    build_writing_splits,
     summarize_group_selection,
 )
 from scripts.data.inspect_benchmarks import presentbench_case_dirs
@@ -127,6 +128,39 @@ class DataCleaningTests(unittest.TestCase):
         self.assertEqual(summary["skipped_too_small"], 1)
         self.assertEqual(summary["truncated_by_max_groups"], 1)
         self.assertGreaterEqual(len(KNOWN_BAD_PRESENTBENCH_CASES), 1)
+
+    def test_build_writing_splits_respects_source_specific_max_groups(self) -> None:
+        import random
+        from unittest.mock import patch
+
+        rows = []
+        for group_index in range(3):
+            for item_index in range(5):
+                rows.append(
+                    {
+                        "index": f"{group_index}-{item_index}",
+                        "domain1": "D",
+                        "domain2": f"G{group_index}",
+                        "lang": "en",
+                        "query": "Write.",
+                        "checklist": [],
+                    }
+                )
+
+        with patch("scripts.data.build_fewshot_splits.writing_groups") as mock_groups:
+            groups = {}
+            for row in rows:
+                groups.setdefault((row["domain1"], row["domain2"], row["lang"]), []).append(row)
+            mock_groups.return_value = groups
+            splits = build_writing_splits(
+                Path("/unused"),
+                train_size=3,
+                heldout_size=2,
+                max_groups=2,
+                rng=random.Random(1),
+            )
+
+        self.assertEqual(len(splits), 2)
 
     def test_presentbench_case_dirs_returns_leaf_cases(self) -> None:
         with TemporaryDirectory() as tmpdir:

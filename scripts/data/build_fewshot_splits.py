@@ -287,6 +287,16 @@ def main() -> int:
     parser.add_argument("--train-size", type=int, default=3)
     parser.add_argument("--heldout-size", type=int, default=2)
     parser.add_argument("--max-groups", type=int, default=5)
+    parser.add_argument(
+        "--max-writing-groups",
+        type=int,
+        help="Override --max-groups for WritingBench only.",
+    )
+    parser.add_argument(
+        "--max-present-groups",
+        type=int,
+        help="Override --max-groups for PresentBench only.",
+    )
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--out", type=Path, default=Path("artifacts/splits/fewshot_splits.jsonl"))
     parser.add_argument(
@@ -295,6 +305,8 @@ def main() -> int:
         default=Path("artifacts/splits/fewshot_split_summary.json"),
     )
     args = parser.parse_args()
+    max_writing_groups = args.max_writing_groups or args.max_groups
+    max_present_groups = args.max_present_groups or args.max_groups
 
     rng = random.Random(args.seed)
     writing_splits = (
@@ -302,7 +314,7 @@ def main() -> int:
             args.writingbench_root,
             args.train_size,
             args.heldout_size,
-            args.max_groups,
+            max_writing_groups,
             rng,
         )
     )
@@ -311,7 +323,7 @@ def main() -> int:
             args.presentbench_root,
             args.train_size,
             args.heldout_size,
-            args.max_groups,
+            max_present_groups,
             rng,
         )
     )
@@ -324,6 +336,8 @@ def main() -> int:
             "train_size": args.train_size,
             "heldout_size": args.heldout_size,
             "max_groups": args.max_groups,
+            "max_writing_groups": max_writing_groups,
+            "max_present_groups": max_present_groups,
             "seed": args.seed,
         },
         "sources": {
@@ -331,14 +345,14 @@ def main() -> int:
                 writing_groups(args.writingbench_root),
                 train_size=args.train_size,
                 heldout_size=args.heldout_size,
-                max_groups=args.max_groups,
+                max_groups=max_writing_groups,
                 selected_groups=len(writing_splits),
             ),
             "PresentBench": summarize_group_selection(
                 present_groups(args.presentbench_root),
                 train_size=args.train_size,
                 heldout_size=args.heldout_size,
-                max_groups=args.max_groups,
+                max_groups=max_present_groups,
                 selected_groups=len(present_splits),
             )
             | {

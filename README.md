@@ -111,6 +111,25 @@ uv run python scripts/data/build_fewshot_splits.py \
   --summary-out artifacts/splits/fewshot_split_summary.json
 ```
 
+For the next non-MVP expansion, prefer a stratified medium run rather than a
+full benchmark clean:
+
+```bash
+uv run python scripts/data/build_fewshot_splits.py \
+  --writingbench-root ../WritingBench \
+  --presentbench-root data/PresentBench_repo \
+  --train-size 3 \
+  --heldout-size 2 \
+  --max-writing-groups 30 \
+  --max-present-groups 20 \
+  --out runs/expanded/fewshot_splits.30wb_20pb.jsonl \
+  --summary-out runs/expanded/fewshot_split_summary.30wb_20pb.json
+```
+
+Only move to full cleaning after this expanded split passes
+`validate_splits.py`, `audit_benchmark_flow.py`, and a sampled example-quality
+audit with acceptable failure rate.
+
 The split builder excludes known source-data mismatches, currently
 `education/CSAPP-Lectures_2015Fall/Lecture15`, whose instructions ask for
 Chapter 10 System-Level I/O while its judge checklist scores Chapter 8
@@ -148,11 +167,17 @@ Run desired-output generation jobs through Bailian:
 uv run python scripts/data/run_generation_jobs.py \
   --jobs artifacts/jobs/example_generation_jobs.jsonl \
   --out artifacts/jobs/generated_desired_outputs.jsonl \
+  --config-prefix MIMO \
   --limit 2 \
   --num-threads 16 \
   --timeout-seconds 600 \
   --max-retries 0
 ```
+
+Use `--config-prefix MIMO` or `--config-prefix QWEN` when constructing a
+parallel set of examples from another OpenAI-compatible model configured in
+`.env` (`MIMO_MODEL`, `MIMO_BASE_URL`, `MIMO_API_KEY`, etc.). The default path
+still uses the legacy `BAILIAN_*` / `OPENAI_*` chain.
 
 The script prints per-job `duration_seconds` and total jobs/minute. Current
 Qwen3.5-Plus PresentBench runs are latency-bound rather than RPM-bound; use the

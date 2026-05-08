@@ -73,6 +73,13 @@ Expected surfaces:
 - Keep `main` usable. Do not push broken scripts or failing tests.
 - Use `uv` for environment and command execution. Do not add a Makefile unless there is a concrete non-Python workflow that needs it.
 - External API config lives in local `.env`; never commit real keys. `.env.example` documents the required Bailian/OpenAI-compatible variables.
+- Desired-output generation supports `--config-prefix MIMO` / `--config-prefix QWEN`
+  for building parallel example sets from separately configured OpenAI-compatible
+  models in one `.env`.
+- Do not jump from the 8-pack MVP directly to all benchmark cases. Prefer a
+  stratified medium expansion first (for example `--max-writing-groups 30
+  --max-present-groups 20`) and require split validation, benchmark-flow audit,
+  and sampled example-quality audit before full cleaning.
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.

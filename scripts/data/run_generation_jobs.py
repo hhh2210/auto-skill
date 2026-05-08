@@ -323,6 +323,14 @@ def main() -> int:
         default=Path("artifacts/jobs/generated_desired_outputs.jsonl"),
     )
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument(
+        "--config-prefix",
+        help=(
+            "Optional environment prefix for model config, e.g. MIMO or QWEN. "
+            "When set, {PREFIX}_MODEL is required; {PREFIX}_BASE_URL/API_KEY "
+            "fall back to BAILIAN/OpenAI if unset."
+        ),
+    )
     parser.add_argument("--pack-id")
     parser.add_argument("--limit", type=int)
     parser.add_argument(
@@ -396,7 +404,7 @@ def main() -> int:
         return 0
 
     try:
-        config = ChatCompletionConfig.from_env(args.env_file)
+        config = ChatCompletionConfig.from_env(args.env_file, prefix=args.config_prefix)
     except ConfigError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
