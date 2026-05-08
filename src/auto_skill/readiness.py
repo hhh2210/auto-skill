@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,19 +15,77 @@ from auto_skill.schemas import (
     validate_skill_row,
 )
 
-DEFAULT_SKILL_MODES = (
+FULL_SKILL_MODES = (
     "one_shot_skill_from_examples",
     "auto_skill_feature_driven_no_validation",
     "auto_skill_ours_full",
 )
 
-DEFAULT_EVAL_MODES = (
+MVP_SKILL_MODES = (
+    "one_shot_skill_from_examples",
+    "auto_skill_feature_driven_no_validation",
+)
+
+FULL_EVAL_MODES = (
     "prompt_only",
     "few_shot_examples_only",
     "one_shot_skill_from_examples",
     "ours_no_validation",
     "auto_skill",
 )
+
+MVP_EVAL_MODES = (
+    "prompt_only",
+    "few_shot_examples_only",
+    "one_shot_skill_from_examples",
+    "ours_no_validation",
+)
+
+PRESENTBENCH_OFFICIAL_MODES = ("prompt_only", "auto_skill")
+
+
+@dataclass(frozen=True)
+class ReadinessProfile:
+    """Readiness contract for a named experiment phase."""
+
+    name: str
+    skill_modes: tuple[str, ...]
+    eval_modes: tuple[str, ...]
+    require_presentbench_official: bool
+    require_complete_coverage: bool
+
+
+READINESS_PROFILES: dict[str, ReadinessProfile] = {
+    "smoke": ReadinessProfile(
+        name="smoke",
+        skill_modes=MVP_SKILL_MODES,
+        eval_modes=MVP_EVAL_MODES,
+        require_presentbench_official=False,
+        require_complete_coverage=False,
+    ),
+    "mvp": ReadinessProfile(
+        name="mvp",
+        skill_modes=MVP_SKILL_MODES,
+        eval_modes=MVP_EVAL_MODES,
+        require_presentbench_official=False,
+        require_complete_coverage=True,
+    ),
+    "full": ReadinessProfile(
+        name="full",
+        skill_modes=FULL_SKILL_MODES,
+        eval_modes=FULL_EVAL_MODES,
+        require_presentbench_official=True,
+        require_complete_coverage=True,
+    ),
+}
+
+
+def readiness_profile(name: str) -> ReadinessProfile:
+    try:
+        return READINESS_PROFILES[name]
+    except KeyError as exc:
+        known = ", ".join(sorted(READINESS_PROFILES))
+        raise ValueError(f"unknown readiness profile {name!r}; expected one of: {known}") from exc
 
 
 def load_optional_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -90,7 +149,7 @@ def generated_example_counts(packs: list[dict[str, Any]]) -> dict[str, dict[str,
 def skill_coverage(
     skill_rows: list[dict[str, Any]],
     *,
-    required_modes: tuple[str, ...] = DEFAULT_SKILL_MODES,
+    required_modes: tuple[str, ...] = MVP_SKILL_MODES,
 ) -> dict[str, dict[str, Any]]:
     by_pack: dict[str, dict[str, Any]] = defaultdict(lambda: {"modes": {}, "failures": []})
     for row in skill_rows:
@@ -122,7 +181,7 @@ def skill_coverage(
 def eval_coverage(
     rows: list[dict[str, Any]],
     *,
-    required_modes: tuple[str, ...] = DEFAULT_EVAL_MODES,
+    required_modes: tuple[str, ...] = MVP_EVAL_MODES,
 ) -> dict[str, dict[str, Any]]:
     by_pack_task: dict[tuple[str, str], dict[str, Any]] = defaultdict(
         lambda: {"modes": {}, "status_counts": Counter()}
@@ -220,18 +279,26 @@ def readiness_report(
     present_surrogate_rows: list[dict[str, Any]],
     present_official_rows: list[dict[str, Any]],
     limit_heldout: int | None = None,
-    require_presentbench_official: bool = True,
+    require_presentbench_official: bool = False,
+    required_skill_modes: tuple[str, ...] = MVP_SKILL_MODES,
+    required_eval_modes: tuple[str, ...] = MVP_EVAL_MODES,
+    required_presentbench_official_modes: tuple[str, ...] = PRESENTBENCH_OFFICIAL_MODES,
+    require_complete_coverage: bool = True,
+    profile: str = "mvp",
     artifact_blockers: list[str] | None = None,
     artifact_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     pack_by_id = pack_index(packs)
     generated_counts = generated_example_counts(packs)
-    skill_cov = skill_coverage(skill_rows)
-    writing_cov = eval_coverage(writing_eval_rows)
-    present_surrogate_cov = eval_coverage(present_surrogate_rows)
+    skill_cov = skill_coverage(skill_rows, required_modes=required_skill_modes)
+    writing_cov = eval_coverage(writing_eval_rows, required_modes=required_eval_modes)
+    present_surrogate_cov = eval_coverage(
+        present_surrogate_rows,
+        required_modes=required_eval_modes,
+    )
     present_official_cov = eval_coverage(
         present_official_rows,
-        required_modes=("prompt_only", "auto_skill"),
+        required_modes=required_presentbench_official_modes,
     )
 
     expected_writing = expected_eval_targets(
@@ -294,17 +361,19 @@ def readiness_report(
         if counts["needs_generation"] or counts["invalid_desired_outputs"]:
             blockers.append(f"{pack_id}: desired outputs are not fully frozen")
 
-    for pack_id in pack_by_id:
-        coverage = skill_cov.get(pack_id)
-        if coverage is None:
-            blockers.append(f"{pack_id}: no skill rows")
-            continue
-        if not coverage["ready"]:
-            blockers.append(f"{pack_id}: missing skill modes {coverage['missing_modes']}")
+    if require_complete_coverage:
+        for pack_id in pack_by_id:
+            coverage = skill_cov.get(pack_id)
+            if coverage is None:
+                blockers.append(f"{pack_id}: no skill rows")
+                continue
+            if not coverage["ready"]:
+                blockers.append(f"{pack_id}: missing skill modes {coverage['missing_modes']}")
 
     writing_keys = {(value["pack_id"], value["task_id"]) for value in writing_cov.values()}
-    for target in sorted(expected_writing - writing_keys):
-        blockers.append(f"{target[0]}::{target[1]}: missing WritingBench eval rows")
+    if require_complete_coverage:
+        for target in sorted(expected_writing - writing_keys):
+            blockers.append(f"{target[0]}::{target[1]}: missing WritingBench eval rows")
     for key, coverage in sorted(writing_cov.items()):
         if not coverage["ready"]:
             blockers.append(f"{key}: incomplete WritingBench eval coverage")
@@ -312,11 +381,17 @@ def readiness_report(
     present_surrogate_keys = {
         (value["pack_id"], value["task_id"]) for value in present_surrogate_cov.values()
     }
-    for target in sorted(expected_present - present_surrogate_keys):
-        warnings.append(f"{target[0]}::{target[1]}: missing PresentBench surrogate eval rows")
+    present_surrogate_issues = blockers if require_complete_coverage else warnings
+    if require_complete_coverage:
+        for target in sorted(expected_present - present_surrogate_keys):
+            present_surrogate_issues.append(
+                f"{target[0]}::{target[1]}: missing PresentBench surrogate eval rows"
+            )
     for key, coverage in sorted(present_surrogate_cov.items()):
         if not coverage["ready"]:
-            warnings.append(f"{key}: incomplete PresentBench surrogate eval coverage")
+            present_surrogate_issues.append(
+                f"{key}: incomplete PresentBench surrogate eval coverage"
+            )
 
     present_official_issues = blockers if require_presentbench_official else warnings
     present_official_keys = {
@@ -324,10 +399,11 @@ def readiness_report(
     }
     if expected_present and not present_official_rows:
         present_official_issues.append("PresentBench official score rows are absent")
-    for target in sorted(expected_present - present_official_keys):
-        present_official_issues.append(
-            f"{target[0]}::{target[1]}: missing PresentBench official score rows"
-        )
+    if require_complete_coverage:
+        for target in sorted(expected_present - present_official_keys):
+            present_official_issues.append(
+                f"{target[0]}::{target[1]}: missing PresentBench official score rows"
+            )
     for key, coverage in sorted(present_official_cov.items()):
         if not coverage["ready"]:
             present_official_issues.append(
@@ -335,6 +411,14 @@ def readiness_report(
             )
 
     return {
+        "profile": {
+            "name": profile,
+            "required_skill_modes": list(required_skill_modes),
+            "required_eval_modes": list(required_eval_modes),
+            "required_presentbench_official_modes": list(required_presentbench_official_modes),
+            "require_presentbench_official": require_presentbench_official,
+            "require_complete_coverage": require_complete_coverage,
+        },
         "packs": {
             "total": len(packs),
             "sources": dict(Counter(str(pack.get("source")) for pack in packs)),

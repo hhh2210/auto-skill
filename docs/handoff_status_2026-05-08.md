@@ -58,19 +58,23 @@ uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
 ```
 
-Experiment readiness is intentionally not green:
+MVP readiness now uses the current MVP artifact contract and paths:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --allow-not-ready
+```
+
+Full experiment readiness is intentionally not green yet:
+
+```bash
+uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
 ```
 
 Known blockers:
 
+- Current MVP PresentBench surrogate rows include model errors on some cells.
 - PresentBench official score rows are missing.
-- Skills and heldout eval rows do not cover all 8 smoke packs yet.
-- Some default readiness paths still point at older smoke artifacts; pass
-  explicit `--skills`, `--writingbench-eval`, and related paths when checking a
-  specific run.
+- Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
 - Smoke data is too small for a paper claim.
 
 ## Recommended Next Steps

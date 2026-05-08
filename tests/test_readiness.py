@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import unittest
 
-from auto_skill.readiness import model_inventory, readiness_report
+from auto_skill.readiness import (
+    FULL_EVAL_MODES,
+    FULL_SKILL_MODES,
+    MVP_EVAL_MODES,
+    MVP_SKILL_MODES,
+    model_inventory,
+    readiness_profile,
+    readiness_report,
+)
 
 
 def pack(pack_id: str, source: str = "WritingBench") -> dict:
@@ -25,9 +33,9 @@ def pack(pack_id: str, source: str = "WritingBench") -> dict:
     }
 
 
-def skill_rows(pack_id: str) -> list[dict]:
-    return [
-        {
+def skill_rows(pack_id: str, *, modes: tuple[str, ...] = FULL_SKILL_MODES) -> list[dict]:
+    rows = {
+        "one_shot_skill_from_examples": {
             "schema_version": "skill-induction/v1",
             "pack_id": pack_id,
             "mode": "one_shot_skill_from_examples",
@@ -35,7 +43,7 @@ def skill_rows(pack_id: str) -> list[dict]:
             "skill_md": "Skill",
             "model_calls": [],
         },
-        {
+        "auto_skill_feature_driven_no_validation": {
             "schema_version": "skill-induction/v1",
             "pack_id": pack_id,
             "mode": "auto_skill_feature_driven_no_validation",
@@ -43,7 +51,7 @@ def skill_rows(pack_id: str) -> list[dict]:
             "skill_md": "Skill",
             "model_calls": [],
         },
-        {
+        "auto_skill_ours_full": {
             "schema_version": "skill-induction/v1",
             "pack_id": pack_id,
             "mode": "auto_skill_ours_full",
@@ -51,10 +59,11 @@ def skill_rows(pack_id: str) -> list[dict]:
             "skill_md": "Skill",
             "model_calls": [],
         },
-    ]
+    }
+    return [rows[mode] for mode in modes]
 
 
-def eval_rows(pack_id: str) -> list[dict]:
+def eval_rows(pack_id: str, *, modes: tuple[str, ...] = FULL_EVAL_MODES) -> list[dict]:
     task_id = f"{pack_id}::heldout::0"
     return [
         {
@@ -66,13 +75,7 @@ def eval_rows(pack_id: str) -> list[dict]:
             "status": "success",
             "overall_score": 8,
         }
-        for mode in (
-            "prompt_only",
-            "few_shot_examples_only",
-            "one_shot_skill_from_examples",
-            "ours_no_validation",
-            "auto_skill",
-        )
+        for mode in modes
     ]
 
 
@@ -126,6 +129,82 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(report["status"], "not_ready")
         self.assertTrue(any("missing skill modes" in item for item in report["blockers"]))
 
+    def test_mvp_profile_does_not_require_ours_full_or_auto_skill(self) -> None:
+        profile = readiness_profile("mvp")
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=skill_rows("pack-1", modes=MVP_SKILL_MODES),
+            writing_eval_rows=eval_rows("pack-1", modes=MVP_EVAL_MODES),
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            require_presentbench_official=profile.require_presentbench_official,
+            required_skill_modes=profile.skill_modes,
+            required_eval_modes=profile.eval_modes,
+            require_complete_coverage=profile.require_complete_coverage,
+            profile=profile.name,
+        )
+
+        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["profile"]["name"], "mvp")
+
+    def test_full_profile_requires_ours_full_and_auto_skill(self) -> None:
+        profile = readiness_profile("full")
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=skill_rows("pack-1", modes=MVP_SKILL_MODES),
+            writing_eval_rows=eval_rows("pack-1", modes=MVP_EVAL_MODES),
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            require_presentbench_official=profile.require_presentbench_official,
+            required_skill_modes=profile.skill_modes,
+            required_eval_modes=profile.eval_modes,
+            require_complete_coverage=profile.require_complete_coverage,
+            profile=profile.name,
+        )
+
+        self.assertEqual(report["status"], "not_ready")
+        self.assertTrue(any("auto_skill_ours_full" in item for item in report["blockers"]))
+        self.assertTrue(
+            any("incomplete WritingBench eval coverage" in item for item in report["blockers"])
+        )
+
+    def test_smoke_profile_allows_partial_coverage_but_keeps_schema_gate(self) -> None:
+        profile = readiness_profile("smoke")
+        report = readiness_report(
+            packs=[pack("pack-1"), pack("pack-2")],
+            skill_rows=skill_rows("pack-1", modes=MVP_SKILL_MODES),
+            writing_eval_rows=eval_rows("pack-1", modes=MVP_EVAL_MODES),
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            require_presentbench_official=profile.require_presentbench_official,
+            required_skill_modes=profile.skill_modes,
+            required_eval_modes=profile.eval_modes,
+            require_complete_coverage=profile.require_complete_coverage,
+            profile=profile.name,
+        )
+
+        self.assertEqual(report["status"], "ready")
+
+        malformed = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=[{"pack_id": "pack-1", "mode": "one_shot_skill_from_examples"}],
+            writing_eval_rows=[],
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            require_presentbench_official=profile.require_presentbench_official,
+            required_skill_modes=profile.skill_modes,
+            required_eval_modes=profile.eval_modes,
+            require_complete_coverage=profile.require_complete_coverage,
+            profile=profile.name,
+        )
+
+        self.assertEqual(malformed["status"], "not_ready")
+        self.assertTrue(malformed["schema_errors"]["skills"])
+
     def test_readiness_blocks_missing_required_presentbench_official_scores(self) -> None:
         report = readiness_report(
             packs=[pack("pack-1", source="PresentBench")],
@@ -134,6 +213,7 @@ class ReadinessTests(unittest.TestCase):
             present_surrogate_rows=eval_rows("pack-1"),
             present_official_rows=[],
             limit_heldout=1,
+            require_presentbench_official=True,
         )
 
         self.assertEqual(report["status"], "not_ready")

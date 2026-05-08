@@ -358,10 +358,22 @@ Gate the combined experiment state before reporting results:
 uv run python scripts/ops/report_experiment_readiness.py --limit-heldout 1
 ```
 
-This command fails closed when input artifact paths, skill rows, WritingBench
-eval rows, or official PresentBench score rows are missing or malformed. For
-incomplete smoke artifacts, use `--expect-status not_ready` to assert that the
-repo is not silently passing.
+By default this uses `--profile mvp`, which expects the current MVP artifact
+contract: `skill_mvp.qwen.mvp.jsonl`, 4-mode WritingBench eval, 4-mode
+PresentBench surrogate eval, and no `auto_skill_ours_full` / official
+PresentBench requirement. The command exits non-zero if the current MVP rows are
+incomplete or contain non-success statuses; use `--allow-not-ready` when you only
+want to write and inspect the report. Use explicit profiles when checking other
+phases:
+
+```bash
+uv run python scripts/ops/report_experiment_readiness.py --profile smoke --limit-heldout 1
+uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+```
+
+All profiles still fail on schema-invalid rows. `smoke` permits partial
+old/small coverage, `mvp` requires current MVP coverage, and `full` requires
+`auto_skill_ours_full`, `auto_skill`, and official PresentBench score rows.
 
 ## MVP Metrics
 

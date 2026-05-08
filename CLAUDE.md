@@ -159,7 +159,8 @@ uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs art
 uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 1
 uv run python scripts/metrics/run_self_consistency_metric.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --out runs/self_consistency.writingbench.qwen.mvp.jsonl --modes one_shot_skill_from_examples,auto_skill_feature_driven_no_validation --dry-run
 uv run python scripts/metrics/summarize_mvp_metrics.py --skills runs/skill_mvp.qwen.mvp.jsonl --packs artifacts/packs/example_packs.v1.jsonl --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation --limit-heldout 1 --eval runs/writingbench_official_eval.qwen.mvp.jsonl --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl --out runs/mvp_metrics.summary.json
-uv run python scripts/ops/report_experiment_readiness.py --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --allow-not-ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
 uv run ruff check .
 ```
 
@@ -168,7 +169,8 @@ uv run ruff check .
 non-zero missing/rejected count as a failed data freeze.
 
 For CI or smoke work where the current checked-in artifacts are intentionally
-incomplete, use `report_experiment_readiness.py --expect-status not_ready` to
-assert that the gate fails closed. Use
-`--allow-missing-presentbench-official` only for exploratory smoke inspection;
-full experiment readiness requires official PresentBench score rows.
+incomplete, use `report_experiment_readiness.py --profile full --expect-status
+not_ready` to assert that the gate fails closed. Use `--profile smoke` for
+partial smoke inspection. The default `--profile mvp` reads current MVP
+artifacts and does not require `auto_skill_ours_full`, `auto_skill`, or official
+PresentBench score rows; full experiment readiness requires those rows.
