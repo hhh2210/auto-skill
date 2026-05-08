@@ -488,6 +488,7 @@ uv run python scripts/metrics/summarize_mvp_metrics.py \
   --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
   --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl \
+  --eval runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl \
   --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl \
   --out runs/mvp_metrics.heldout2.current.summary.json
 ```
