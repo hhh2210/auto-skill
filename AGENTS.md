@@ -186,6 +186,7 @@ uv run python scripts/metrics/summarize_mvp_metrics.py --skills runs/skill_mvp.q
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
 uv run ruff check .
 ```
 

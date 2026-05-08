@@ -142,7 +142,16 @@ To re-check the local expanded-cleaning handoff state:
 
 ```bash
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
 ```
+
+The taxonomy validator is a calibration handoff gate for the expanded
+Qwen-vs-MIMO WritingBench sample. It verifies that every sign-flip packet has
+exactly one provisional label and that the labels are tied to the candidate and
+baseline output hashes.
 
 The split builder excludes known source-data mismatches, currently
 `education/CSAPP-Lectures_2015Fall/Lecture15`, whose instructions ask for
@@ -436,6 +445,10 @@ Gate the combined experiment state before reporting results:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
 ```
 
 By default this uses `--profile mvp`, which expects the current MVP artifact
