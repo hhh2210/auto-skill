@@ -173,12 +173,12 @@ uv run python scripts/data/run_generation_jobs.py --jobs artifacts/jobs/example_
 uv run python scripts/skills/run_skill_mvp.py --packs artifacts/packs/example_packs.v1.jsonl --out runs/skill_mvp.qwen.mvp.jsonl --stream --resume --allow-partial --no-enable-thinking --no-leave-one-out --temperature 0.2 --json-temperature 0 --timeout-seconds 900 --max-retries 0 --max-tokens 8192
 RUN_SKILL_MVP=0 RUN_MEMORY=1 RUN_WRITINGBENCH=1 RUN_PRESENTBENCH=1 RUN_VALIDATE=1 PRESENTBENCH_NUM_THREADS=4 scripts/ops/run_mvp_pipeline.sh
 uv run python scripts/eval/run_writingbench_official_eval.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --private-eval artifacts/private/example_private_eval.jsonl --writingbench-root ../WritingBench --limit-heldout 1 --resume --num-threads 16 --dry-run
-uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --judge-model gemini-3-flash-preview --limit-heldout 1 --allow-missing --allow-empty
-uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 1
+uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --judge-model gemini-3-flash-preview --allow-missing --allow-empty
+uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill
 uv run python scripts/metrics/run_self_consistency_metric.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --out runs/self_consistency.writingbench.qwen.mvp.jsonl --modes one_shot_skill_from_examples,auto_skill_feature_driven_no_validation --dry-run
 uv run python scripts/metrics/summarize_mvp_metrics.py --skills runs/skill_mvp.qwen.mvp.jsonl --packs artifacts/packs/example_packs.v1.jsonl --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation --limit-heldout 1 --eval runs/writingbench_official_eval.qwen.mvp.jsonl --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl --out runs/mvp_metrics.summary.json
-uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --expect-status ready
-uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run ruff check .
 ```

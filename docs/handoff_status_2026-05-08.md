@@ -51,8 +51,13 @@ Current runnable surfaces:
 
 Recent WritingBench smoke results:
 
-- Qwen judge, 4 packs x 5 modes: complete.
-- MIMO judge-swap on the same Qwen candidates, 4 packs x 5 modes: complete.
+- Qwen judge, 4 packs x 2 heldout x 5 modes: 40/40 success.
+- MIMO judge-swap on the same Qwen candidates, 4 packs x 2 heldout x 5 modes:
+  39/40 success with one persistent `judge_incomplete` on
+  `writingbench_Finance_Business_Tender_Document_zh::heldout::0`
+  `few_shot_examples_only`, even after retrying with `--judge-max-tokens 16384`.
+  Treat this as partial judge-swap evidence and a MIMO long-document stability
+  issue, not as a complete cross-judge result.
 - Current `auto_skill_ours_full` does not beat `few_shot_examples_only` or
   `one_shot_skill_from_examples` on this smoke slice.
 
@@ -85,13 +90,17 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status rea
 MVP readiness now uses the current MVP artifact contract and paths:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 ```
 
-Current MVP smoke readiness is green:
+Current MVP readiness is green across both checked-in heldout tasks:
 
-- WritingBench official-prompt eval: 16/16 success.
-- PresentBench surrogate eval: 16/16 success.
+- WritingBench official-prompt eval: 4 packs x 2 heldout x 4 required MVP
+  modes = 32/32 required success. The same artifact also includes `auto_skill`
+  rows, giving 40/40 total success.
+- PresentBench surrogate eval: 4 packs x 2 heldout x 4 required MVP modes =
+  32/32 required success. The separate `auto_skill` surrogate artifact adds
+  8/8 success.
 - Required MVP skill modes: covered for all 8 smoke packs.
 - Readiness warning remains: all solver/judge rows are Qwen3.5-Plus
   monoculture, so this is smoke evidence only.
@@ -99,7 +108,7 @@ Current MVP smoke readiness is green:
 Full experiment readiness is intentionally not green yet:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 ```
 
 Known blockers:
@@ -108,7 +117,8 @@ Known blockers:
   so the known blockers are experiment completeness/evaluator issues rather than
   benchmark-flow leakage.
 - PresentBench official slide artifacts now exist for prompt_only and auto_skill,
-  and `check_presentbench_official_eval_ready.py` reports `ready_for_official_judge`.
+  and `check_presentbench_official_eval_ready.py` reports
+  `ready_for_official_judge: 16` across 4 packs x 2 heldout x 2 official modes.
   The local `runs/presentbench_official_scores.jsonl` file still contains
   `missing_score_artifact` rows because upstream `*_score.yaml` files have not
   been produced by `judge_all.py`.
