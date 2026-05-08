@@ -207,7 +207,12 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
             tmp = Path(tmp_dir)
             write_jsonl(tmp / "artifacts/packs/example_packs.v1.jsonl", [pack_row()])
             write_jsonl(tmp / "runs/skill_mvp.qwen.mvp.jsonl", skill_rows())
-            write_jsonl(tmp / "runs/writingbench_official_eval.qwen.mvp.jsonl", eval_rows())
+            write_jsonl(
+                tmp
+                / "runs"
+                / "writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl",
+                eval_rows(),
+            )
             write_jsonl(tmp / "runs/presentbench_surrogate_eval.qwen.mvp.jsonl", [])
 
             result = subprocess.run(

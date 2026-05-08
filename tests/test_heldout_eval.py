@@ -11,6 +11,7 @@ from scripts.eval.run_heldout_eval import (
     is_valid_overall_score,
     judge_with_parse_retry,
     load_resume_success_rows,
+    load_skill_rows,
     mode_skill,
     score_row_status,
     successful_score_cells,
@@ -44,6 +45,31 @@ class HeldoutEvalTests(unittest.TestCase):
 
         self.assertIsNone(mode_skill("auto_skill", skills, "pack-1"))
         self.assertEqual(mode_skill("ours_no_validation", skills, "pack-1"), "Skill")
+
+    def test_load_skill_rows_merges_repeated_skill_artifacts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            first = Path(tmp) / "mvp.jsonl"
+            second = Path(tmp) / "ours_full.jsonl"
+            first.write_text(
+                '{"pack_id":"pack-1","mode":"one_shot_skill_from_examples",'
+                '"skill_md":"one shot"}\n',
+                encoding="utf-8",
+            )
+            second.write_text(
+                '{"pack_id":"pack-1","mode":"auto_skill_ours_full",'
+                '"skill_md":"ours full"}\n',
+                encoding="utf-8",
+            )
+
+            rows = load_skill_rows([first, second])
+
+        self.assertEqual(
+            [(row["pack_id"], row["mode"]) for row in rows],
+            [
+                ("pack-1", "one_shot_skill_from_examples"),
+                ("pack-1", "auto_skill_ours_full"),
+            ],
+        )
 
     def test_score_row_status_rejects_truncated_generation(self) -> None:
         status = score_row_status(

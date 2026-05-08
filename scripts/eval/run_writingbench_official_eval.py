@@ -39,6 +39,7 @@ from auto_skill.writingbench_eval import (  # noqa: E402
 from scripts.eval.run_heldout_eval import (  # noqa: E402
     GENERATION_SYSTEM_PROMPT,
     append_checkpoint_row,
+    load_skill_rows,
     private_eval_index,
     select_packs,
     skill_index,
@@ -499,7 +500,15 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/packs/example_packs.v1.jsonl"),
     )
-    parser.add_argument("--skills", type=Path, default=Path("runs/skill_mvp.qwen.jsonl"))
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        help=(
+            "Skill rows JSONL. Repeat to merge MVP and ours_full skill artifacts. "
+            "Defaults to runs/skill_mvp.qwen.jsonl."
+        ),
+    )
     parser.add_argument(
         "--private-eval",
         type=Path,
@@ -736,7 +745,8 @@ def main() -> int:
             f"{len(reuse_index)} source rows indexed",
             flush=True,
         )
-    skills = {} if reuse_enabled else skill_index(load_jsonl(args.skills))
+    skill_paths = args.skills or [Path("runs/skill_mvp.qwen.jsonl")]
+    skills = {} if reuse_enabled else skill_index(load_skill_rows(skill_paths))
 
     expected_cells = expected_score_cells(
         selected,
