@@ -19,6 +19,7 @@ benchmark or paper-level claim.
 | Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
+| Compact feature-signature ablation | `notes/feature_signature_ablation_2026-05-09.md` records a one-cell WritingBench smoke using `cross_example_report`-derived abstract signatures. `feature_signatures_only` and `examples_plus_feature_signatures` both ran successfully, but remained below prompt-only/few-shot. | Done as negative mechanism smoke |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -34,6 +35,7 @@ uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.mimo.sample.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.mimo.sample.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample.latest_success.jsonl
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
@@ -122,6 +124,34 @@ to user examples than as a replacement for examples. This weakens the current
 mechanism direction: use induced skills to organize or constrain examples rather
 than compressing examples away.
 
+### WritingBench, Compact Feature Signatures Smoke
+
+Artifact:
+`runs/expanded/writingbench_official_eval.qwen.feature_signatures_smoke.jsonl`
+
+Coverage: 2/2 success for one expanded WritingBench pack x one heldout x two
+new modes. This is a mechanism smoke, not a benchmark result.
+
+Pack: `writingbench_Academic_Engineering_Paper_Outline_en`
+
+Task: `writingbench_Academic_Engineering_Paper_Outline_en::heldout::0`
+
+| Mode | Qwen WritingBench score |
+| --- | ---: |
+| prompt_only | 4.0 |
+| few_shot_examples_only | 4.4 |
+| one_shot_skill_from_examples | 2.4 |
+| ours_no_validation | 2.8 |
+| examples_plus_one_shot_skill | 2.8 |
+| examples_plus_feature_skill | 2.8 |
+| feature_signatures_only | 2.6 |
+| examples_plus_feature_signatures | 3.0 |
+
+Interpretation: compact signatures derived from `cross_example_report` do not
+recover the task-completion information lost by skill compression on this cell.
+They are slightly better than the corresponding full-feature skill modes on this
+single task, but still well below few-shot examples.
+
 ### PresentBench Surrogate
 
 Artifacts:
@@ -200,7 +230,10 @@ prove the auto-skill method.
    than for prompt-only on that probe, so the next method loop should address
    skill-only compression loss and task-specific constraint extraction before
    blaming raw example copying. The current compression diagnostic is in
-   `notes/skill_compression_diagnostic_2026-05-09.md`.
+   `notes/skill_compression_diagnostic_2026-05-09.md`. A compact
+   feature-signature smoke in `notes/feature_signature_ablation_2026-05-09.md`
+   also stayed below prompt-only/few-shot, so shorter context alone is not the
+   missing mechanism.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -222,5 +255,6 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
-5. Test abstract example signatures or compact constraint packs before another
-   broad benchmark run; current data suggests skill-only is cheap but unstable.
+5. Redesign how transferable constraints are grounded in the current task before
+   another broad benchmark run; current compact-signature evidence suggests that
+   shortening the skill context alone is insufficient.
