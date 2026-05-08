@@ -85,7 +85,23 @@ long requests and should not block Qwen-based expansion.
 - Use `--retry-existing-failures-only` for cleanup retries so failed rows are
   retried without expanding the sample window.
 
-## Next Cleaning Step
+## Completed 30WB/20PB Cleaning Pass
+
+The Qwen expanded pass has completed locally. See
+`docs/expanded_cleaning_manifest_2026-05-08.md` for the artifact hashes,
+commands, and audit evidence.
+
+Latest local result:
+
+- `runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl`: latest row per
+  `(job_id, prompt_sha256)` is 150/150 `success`.
+- `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`: 50 frozen packs, 150
+  generated train examples, 100 heldout tasks.
+- `audit_benchmark_flow.py`: `status=ok`, no errors or warnings.
+- MIMO WritingBench audit sample: 6/6 success, mean score 6.43 with
+  `--judge-max-tokens 4096`.
+
+## Reproduction Commands
 
 Run the 30WB/20PB expanded clean with Qwen first:
 
@@ -125,6 +141,6 @@ uv run python scripts/data/audit_benchmark_flow.py \
   --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl
 ```
 
-Only consider full benchmark cleaning after this expanded pass has acceptable
-failure rate, passes benchmark-flow audit, and has a sampled independent quality
-audit.
+Only consider full benchmark cleaning after the remaining quality-audit gap is
+closed, especially PresentBench train-example audit or official-score-based
+inspection for generated slide examples.

@@ -81,9 +81,10 @@ Expected surfaces:
   --max-present-groups 20`) and require split validation, benchmark-flow audit,
   and sampled example-quality audit before full cleaning.
 - Current expanded-cleaning evidence lives in
-  `notes/expanded_cleaning_strategy_2026-05-08.md`: use Qwen3.5-Plus as the
-  primary cleaner for the 30WB/20PB pass, and use MIMO as audit/targeted
-  regeneration until its long PresentBench request failures are resolved.
+  `notes/expanded_cleaning_strategy_2026-05-08.md`, with local artifact hashes in
+  `docs/expanded_cleaning_manifest_2026-05-08.md`: Qwen3.5-Plus completed the
+  30WB/20PB local pass; use MIMO as audit/targeted regeneration until its long
+  PresentBench request failures are resolved.
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.

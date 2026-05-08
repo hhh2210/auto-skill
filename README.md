@@ -131,10 +131,12 @@ Only move to full cleaning after this expanded split passes
 audit with acceptable failure rate.
 
 Current expanded-run evidence is summarized in
-`notes/expanded_cleaning_strategy_2026-05-08.md`. The short version: Qwen3.5-Plus
-is currently the safer primary cleaner for the 30WB/20PB pass; MIMO is better
-used as an independent audit or targeted regeneration model until its long
-PresentBench request failures are resolved.
+`notes/expanded_cleaning_strategy_2026-05-08.md`; artifact hashes and handoff
+commands are in `docs/expanded_cleaning_manifest_2026-05-08.md`. The short
+version: Qwen3.5-Plus completed the local 30WB/20PB clean with 150/150 latest
+generation success and a passing benchmark-flow audit. MIMO is better used as an
+independent audit or targeted regeneration model until its long PresentBench
+request failures are resolved.
 
 The split builder excludes known source-data mismatches, currently
 `education/CSAPP-Lectures_2015Fall/Lecture15`, whose instructions ask for
