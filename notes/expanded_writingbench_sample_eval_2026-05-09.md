@@ -12,6 +12,10 @@ checked-in MVP four-pack slice.
   `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl`
 - MIMO judge-swap, reusing the Qwen candidate outputs:
   `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl`
+- Calibration packet:
+  `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl`
+  and
+  `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.md`
 
 Selected packs:
 
@@ -72,3 +76,19 @@ The strongest sign flips are:
 
 These cells should be inspected manually before using either judge as the
 primary decision signal.
+
+The calibration packet was generated with:
+
+```bash
+uv run python scripts/metrics/export_judge_disagreements.py \
+  --left runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl \
+  --right runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl \
+  --left-label qwen_judge \
+  --right-label mimo_judge \
+  --modes few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,examples_plus_one_shot_skill,examples_plus_feature_skill \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --out runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --summary-out runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.md \
+  --max-output-chars 3000
+```

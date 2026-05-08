@@ -54,6 +54,7 @@ stable.
 | `ops/validate_run_artifacts.py` | Validate generated-output, skill, and eval artifacts. | CI/core |
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge. | debug-only metric |
+| `metrics/export_judge_disagreements.py` | Export judge delta sign-disagreement packets for evaluator calibration review. | diagnostic |
 
 ### Orchestration
 
