@@ -21,11 +21,13 @@ from scripts.eval.run_heldout_eval import (
 
 
 class SequencedCompletionClient:
-    def __init__(self, texts: list[str]) -> None:
+    def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
         self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
 
     def complete(self, *_args, **_kwargs):
         text = self.texts.pop(0)
+        finish_reason = self.finish_reasons.pop(0)
         return type(
             "Completion",
             (),
@@ -33,7 +35,7 @@ class SequencedCompletionClient:
                 "text": text,
                 "model": "judge",
                 "usage": {"total_tokens": 1},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
                 "request_id": "req",
             },
         )()
@@ -91,6 +93,16 @@ class HeldoutEvalTests(unittest.TestCase):
 
         self.assertEqual(status, "judge_incomplete")
 
+    def test_score_row_status_marks_content_filter_as_refusal(self) -> None:
+        status = score_row_status(
+            generation=PromptRunResult(text="answer", finish_reason="stop"),
+            judge=PromptRunResult(text="blocked", finish_reason="content_filter"),
+            judge_report={"parse_error": "no_json_object_found"},
+            overall_score=None,
+        )
+
+        self.assertEqual(status, "judge_refusal")
+
     def test_score_row_status_requires_parseable_score(self) -> None:
         status = score_row_status(
             generation=PromptRunResult(text="answer", finish_reason="stop"),
@@ -117,6 +129,26 @@ class HeldoutEvalTests(unittest.TestCase):
             [attempt["status"] for attempt in attempts],
             ["judge_parse_error", "success"],
         )
+
+    def test_judge_with_parse_retry_does_not_retry_refusal(self) -> None:
+        judge, report, score, attempts = judge_with_parse_retry(
+            judge_client=SequencedCompletionClient(
+                [
+                    "The request was rejected because it was considered high risk",
+                    '{"overall_score": 8}',
+                ],
+                finish_reasons=["content_filter", "stop"],
+            ),
+            judge_prompt="score this",
+            generation=PromptRunResult(text="answer", finish_reason="stop"),
+            judge_max_tokens=128,
+            parse_max_attempts=3,
+        )
+
+        self.assertEqual(judge.finish_reason, "content_filter")
+        self.assertIn("parse_error", report)
+        self.assertIsNone(score)
+        self.assertEqual([attempt["status"] for attempt in attempts], ["judge_refusal"])
 
     def test_score_row_status_rejects_out_of_range_score(self) -> None:
         status = score_row_status(

@@ -13,6 +13,7 @@ from auto_skill.writingbench_eval import (
 )
 from scripts.eval.run_heldout_eval import append_checkpoint_row
 from scripts.eval.run_writingbench_official_eval import (
+    existing_rows_outside_expected_cells,
     has_non_success_rows,
     is_reusable_candidate_row,
     load_compatible_resume_success_rows,
@@ -27,11 +28,13 @@ from scripts.eval.run_writingbench_official_eval import (
 
 
 class SequencedCompletionClient:
-    def __init__(self, texts: list[str]) -> None:
+    def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
         self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
 
     def complete(self, *_args, **_kwargs):
         text = self.texts.pop(0)
+        finish_reason = self.finish_reasons.pop(0)
         return type(
             "Completion",
             (),
@@ -39,7 +42,7 @@ class SequencedCompletionClient:
                 "text": text,
                 "model": "judge",
                 "usage": {"total_tokens": 1},
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
                 "request_id": "req",
             },
         )()
@@ -221,7 +224,39 @@ class WritingBenchEvalTests(unittest.TestCase):
                 metadata=metadata,
             )
 
-        self.assertEqual([row["mode"] for row in resumed], ["prompt_only"])
+            self.assertEqual([row["mode"] for row in resumed], ["prompt_only"])
+
+    def test_existing_rows_outside_expected_cells_detects_prune_risk(self) -> None:
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "rows.jsonl"
+            rows = []
+            append_checkpoint_row(
+                out,
+                rows,
+                {
+                    "pack_id": "pack",
+                    "task_id": "task",
+                    "mode": "prompt_only",
+                    "status": "success",
+                },
+            )
+            append_checkpoint_row(
+                out,
+                rows,
+                {
+                    "pack_id": "other",
+                    "task_id": "task",
+                    "mode": "prompt_only",
+                    "status": "success",
+                },
+            )
+
+            outside = existing_rows_outside_expected_cells(
+                out,
+                [("pack", "task", "prompt_only")],
+            )
+
+        self.assertEqual(outside, [("other", "task", "prompt_only")])
 
     def test_process_gen_field_removes_thinking_trace(self) -> None:
         self.assertEqual(process_gen_field("trace</think>\n\nfinal"), "final")
@@ -270,6 +305,26 @@ class WritingBenchEvalTests(unittest.TestCase):
             [call["parse_error"] for call in judge_calls],
             ["no_json_object_found", None],
         )
+
+    def test_score_with_writingbench_prompt_marks_content_filter_as_refusal(self) -> None:
+        status, scores, judge_calls = score_with_writingbench_prompt(
+            client=SequencedCompletionClient(
+                ["The request was rejected because it was considered high risk"],
+                finish_reasons=["content_filter"],
+            ),
+            system_prompt="system",
+            prompt_template="{query}|{response}|{criteria}",
+            query="Q",
+            response="R",
+            criteria=[{"name": "C"}],
+            max_tokens=128,
+            parse_max_attempts=3,
+        )
+
+        self.assertEqual(status, "judge_refusal")
+        self.assertEqual(len(judge_calls), 1)
+        self.assertEqual(judge_calls[0]["finish_reason"], "content_filter")
+        self.assertEqual(scores["C"][0]["parse_error"], "no_json_object_found")
 
     def test_average_scores_matches_writingbench_mean(self) -> None:
         self.assertEqual(

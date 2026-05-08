@@ -47,6 +47,7 @@ from scripts.eval.run_heldout_eval import (  # noqa: E402
 )
 
 JUDGE_KIND = "writingbench_official_prompt_qwen_judge"
+REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
 SKILL_REQUIRED_MODES = {
     "one_shot_skill_from_examples",
     "ours_no_validation",
@@ -190,6 +191,22 @@ def load_compatible_resume_success_rows(
     return rows
 
 
+def existing_rows_outside_expected_cells(
+    out: Path, expected_cells: list[ScoreCell]
+) -> list[ScoreCell]:
+    if not out.exists():
+        return []
+    expected = set(expected_cells)
+    outside: list[ScoreCell] = []
+    seen: set[ScoreCell] = set()
+    for row in load_jsonl(out):
+        cell = row_score_cell(row)
+        if cell not in expected and cell not in seen:
+            outside.append(cell)
+            seen.add(cell)
+    return outside
+
+
 def summarize_rows(
     rows: list[dict[str, Any]],
     *,
@@ -269,6 +286,9 @@ def score_with_writingbench_prompt(
         assert judge is not None
         assert parsed is not None
         scores.setdefault(name, []).append(parsed)
+        if judge.finish_reason in REFUSAL_FINISH_REASONS:
+            status = "judge_refusal"
+            break
         if judge.finish_reason != "stop":
             status = "judge_incomplete"
             break
@@ -612,6 +632,15 @@ def main() -> int:
         help="Exit 0 when filters select no evaluable rows. Default is fail-closed.",
     )
     parser.add_argument(
+        "--allow-output-prune",
+        action="store_true",
+        help=(
+            "Allow rewriting an existing --out file with only the currently selected "
+            "cells. Without this flag, --resume fails closed when --out contains "
+            "rows outside the selected pack/task/mode set."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Load existing success rows from --out and skip completed pack/task/mode cells.",
@@ -762,6 +791,19 @@ def main() -> int:
         judge_max_tokens=args.judge_max_tokens,
         max_material_chars=args.max_material_chars,
     )
+    outside_cells = existing_rows_outside_expected_cells(args.out, expected_cells)
+    if args.resume and outside_cells and not args.allow_output_prune:
+        preview = [
+            {"pack_id": pack_id, "task_id": task_id, "mode": mode}
+            for pack_id, task_id, mode in outside_cells[:5]
+        ]
+        print(
+            "error: existing --out contains rows outside the selected cells; "
+            "use a new --out path or pass --allow-output-prune if truncating is intentional. "
+            f"examples={json.dumps(preview, ensure_ascii=False)}",
+            file=sys.stderr,
+        )
+        return 2
     rows = (
         load_compatible_resume_success_rows(
             args.out,

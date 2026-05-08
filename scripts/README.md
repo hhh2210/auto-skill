@@ -41,6 +41,7 @@ stable.
 | `eval/run_heldout_eval.py` | Text-only surrogate eval, mainly PresentBench smoke/debug; supports judge parse retries. | surrogate/debug |
 | `eval/export_presentbench_official_artifacts.py` | Export PresentBench text generations as simple `slides.pdf` result-tree artifacts for official-judge readiness. | bridge/debug |
 | `eval/check_presentbench_official_eval_ready.py` | Check official PresentBench artifact readiness; repeat `--mode-result-root` for multiple modes. | core gate |
+| `eval/run_presentbench_official_judge.py` | Preflight and run upstream PresentBench `judge_all.py` for each official mode/result root. | core once official artifacts exist |
 | `eval/summarize_presentbench_official_scores.py` | Summarize upstream PresentBench score YAMLs. | core once official scores exist |
 
 ### Metrics And Gates

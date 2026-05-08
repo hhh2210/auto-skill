@@ -39,6 +39,7 @@ Use only user-visible examples, reusable skills, task input, and visible materia
 
 JUDGE_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
+REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,8 @@ def score_row_status(
 
     if generation.finish_reason != "stop":
         return "generation_incomplete"
+    if judge.finish_reason in REFUSAL_FINISH_REASONS:
+        return "judge_refusal"
     if judge.finish_reason != "stop":
         return "judge_incomplete"
     if "parse_error" in judge_report or overall_score is None:
@@ -268,7 +271,7 @@ def judge_with_parse_retry(
         last_judge = judge
         last_report = judge_report
         last_score = overall_score
-        if status in {"success", "judge_incomplete"}:
+        if status in {"success", "judge_incomplete", "judge_refusal"}:
             break
         if status == "judge_invalid_score" and attempt >= attempts:
             break

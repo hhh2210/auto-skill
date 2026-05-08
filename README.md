@@ -393,23 +393,22 @@ Readiness statuses are intentionally separated:
 - `scored`: an upstream `*_score.yaml` is already present.
 
 Once readiness is `ready_for_official_judge` or `ready_for_zero_score`, run the
-upstream evaluator once per mode/result root from the official code checkout:
+repo-local wrapper. It loads `.env`, renders the exact upstream `judge_all.py`
+commands, and fails before any API call when the required Gemini key is missing.
 
 ```bash
-uv run python data/PresentBench_code/judge_all.py \
-  --agent_name prompt_only \
-  --data_root data/PresentBench_repo \
-  --result_root ../PresentBench/results/prompt_only \
-  --api_type gemini \
-  --model gemini-3-flash-preview
-
-uv run python data/PresentBench_code/judge_all.py \
-  --agent_name auto_skill \
-  --data_root data/PresentBench_repo \
-  --result_root ../PresentBench/results/auto_skill \
-  --api_type gemini \
-  --model gemini-3-flash-preview
+uv run python scripts/eval/run_presentbench_official_judge.py \
+  --code-root data/PresentBench_code \
+  --data-root data/PresentBench_repo \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --api-type gemini \
+  --model gemini-3-flash-preview \
+  --max-workers 4
 ```
+
+Use `--dry-run --allow-missing-env` to verify commands without `GENAI_API_KEY`.
+Do not use `--allow-missing-env` for a real run.
 
 After upstream score YAMLs exist, summarize official PresentBench scores and paired
 deltas with explicit mode roots:

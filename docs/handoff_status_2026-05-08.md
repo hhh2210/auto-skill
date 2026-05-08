@@ -53,11 +53,10 @@ Recent WritingBench smoke results:
 
 - Qwen judge, 4 packs x 2 heldout x 5 modes: 40/40 success.
 - MIMO judge-swap on the same Qwen candidates, 4 packs x 2 heldout x 5 modes:
-  39/40 success with one persistent `judge_incomplete` on
-  `writingbench_Finance_Business_Tender_Document_zh::heldout::0`
-  `few_shot_examples_only`, even after retrying with `--judge-max-tokens 16384`.
-  Treat this as partial judge-swap evidence and a MIMO long-document stability
-  issue, not as a complete cross-judge result.
+  40/40 success. One earlier MIMO `content_filter` refusal and one transient
+  `APIConnectionError` were recovered by targeted/full-scope resume retries.
+  Treat this as complete judge-swap smoke evidence, not as full benchmark
+  evidence.
 - Current `auto_skill_ours_full` does not beat `few_shot_examples_only` or
   `one_shot_skill_from_examples` on this smoke slice.
 

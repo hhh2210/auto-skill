@@ -72,21 +72,22 @@ WritingBench. Negative transfer is common.
 
 Artifact: `runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl`
 
-Coverage: 39/40 success. The remaining non-success cell is
+Coverage: 40/40 success. The earlier MIMO `content_filter` refusal on
 `writingbench_Finance_Business_Tender_Document_zh::heldout::0`,
-`few_shot_examples_only`, status `judge_incomplete`, after retrying with
-`--judge-max-tokens 16384`.
+`few_shot_examples_only` was retried successfully after classifying provider
+refusals separately from parse errors.
 
 | Mode | Mean score | Delta vs prompt_only | Wins / losses / ties |
 | --- | ---: | ---: | --- |
 | prompt_only | 6.925 | n/a | n/a |
-| few_shot_examples_only | 6.77 over 7 successes | -0.114 over 7 pairs | 3 / 3 / 1 |
-| one_shot_skill_from_examples | 6.35 | -0.575 | 4 / 3 / 1 |
-| ours_no_validation | 6.20 | -0.725 | 0 / 5 / 3 |
-| auto_skill | 6.50 | -0.425 | 3 / 4 / 1 |
+| few_shot_examples_only | 6.75 | -0.175 | 3 / 3 / 2 |
+| one_shot_skill_from_examples | 6.425 | -0.50 | 2 / 4 / 2 |
+| ours_no_validation | 6.15 | -0.775 | 1 / 6 / 1 |
+| auto_skill | 6.30 | -0.625 | 3 / 5 / 0 |
 
 Interpretation: switching the judge to MIMO does not rescue the auto-skill
-claim. It also surfaces a concrete long-document judge stability issue.
+claim. It also shows MIMO judge runs need retry support for provider refusals
+and transient API errors.
 
 ### PresentBench Surrogate
 

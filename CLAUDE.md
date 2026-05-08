@@ -97,6 +97,10 @@ Expected surfaces:
 - `run_writingbench_official_eval.py` and `run_heldout_eval.py` checkpoint every
   evaluated row to `--out`. Use `--resume` on long benchmark runs so successful
   pack/task/mode cells are reused and non-success cells are retried.
+- When resuming into an existing eval `--out`, keep the selected pack/task/mode
+  scope at least as broad as the existing file. The WritingBench runner fails
+  closed if a filtered resume would prune rows outside the selected cells; use a
+  new output path for one-cell probes.
 - Provider retries and parse retries are separate. `--max-retries` handles SDK
   transport/rate-limit/server errors; use `--parse-max-attempts 3` only when a
   complete model response is occasionally malformed JSON or an invalid judge
@@ -174,6 +178,7 @@ uv run python scripts/skills/run_skill_mvp.py --packs artifacts/packs/example_pa
 RUN_SKILL_MVP=0 RUN_MEMORY=1 RUN_WRITINGBENCH=1 RUN_PRESENTBENCH=1 RUN_VALIDATE=1 PRESENTBENCH_NUM_THREADS=4 scripts/ops/run_mvp_pipeline.sh
 uv run python scripts/eval/run_writingbench_official_eval.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --private-eval artifacts/private/example_private_eval.jsonl --writingbench-root ../WritingBench --limit-heldout 1 --resume --num-threads 16 --dry-run
 uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --judge-model gemini-3-flash-preview --allow-missing --allow-empty
+uv run python scripts/eval/run_presentbench_official_judge.py --dry-run --allow-missing-env
 uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill
 uv run python scripts/metrics/run_self_consistency_metric.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --out runs/self_consistency.writingbench.qwen.mvp.jsonl --modes one_shot_skill_from_examples,auto_skill_feature_driven_no_validation --dry-run
 uv run python scripts/metrics/summarize_mvp_metrics.py --skills runs/skill_mvp.qwen.mvp.jsonl --packs artifacts/packs/example_packs.v1.jsonl --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation --limit-heldout 1 --eval runs/writingbench_official_eval.qwen.mvp.jsonl --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl --out runs/mvp_metrics.summary.json
