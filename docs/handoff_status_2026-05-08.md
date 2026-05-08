@@ -85,8 +85,16 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status rea
 MVP readiness now uses the current MVP artifact contract and paths:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --allow-not-ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --expect-status ready
 ```
+
+Current MVP smoke readiness is green:
+
+- WritingBench official-prompt eval: 16/16 success.
+- PresentBench surrogate eval: 16/16 success.
+- Required MVP skill modes: covered for all 8 smoke packs.
+- Readiness warning remains: all solver/judge rows are Qwen3.5-Plus
+  monoculture, so this is smoke evidence only.
 
 Full experiment readiness is intentionally not green yet:
 
@@ -99,7 +107,6 @@ Known blockers:
 - `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts,
   so the known blockers are experiment completeness/evaluator issues rather than
   benchmark-flow leakage.
-- Current MVP PresentBench surrogate rows include model errors on some cells.
 - PresentBench official score rows are missing.
 - Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
 - Smoke data is too small for a paper claim.
