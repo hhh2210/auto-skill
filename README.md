@@ -364,6 +364,15 @@ official PresentBench visual/PPT score. Check readiness before claiming an
 official PresentBench run:
 
 ```bash
+uv run python scripts/eval/export_presentbench_official_artifacts.py \
+  --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --overwrite
+```
+
+```bash
 uv run python scripts/eval/check_presentbench_official_eval_ready.py \
   --packs artifacts/packs/example_packs.v1.jsonl \
   --code-root data/PresentBench_code \

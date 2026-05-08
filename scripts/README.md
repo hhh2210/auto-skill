@@ -39,6 +39,7 @@ stable.
 | `eval/run_writingbench_official_eval.py` | Generate heldout outputs and score with WritingBench prompt; supports cell-level `--num-threads`, judge-side thinking controls, and judge parse retries. | core/API |
 | `eval/audit_train_examples.py` | Private quality audit for generated train-example outputs; supports judge parse retries. | diagnostic/API |
 | `eval/run_heldout_eval.py` | Text-only surrogate eval, mainly PresentBench smoke/debug; supports judge parse retries. | surrogate/debug |
+| `eval/export_presentbench_official_artifacts.py` | Export PresentBench text generations as simple `slides.pdf` result-tree artifacts for official-judge readiness. | bridge/debug |
 | `eval/check_presentbench_official_eval_ready.py` | Check official PresentBench artifact readiness. | core gate |
 | `eval/summarize_presentbench_official_scores.py` | Summarize upstream PresentBench score YAMLs. | core once official scores exist |
 
