@@ -10,7 +10,7 @@ benchmark or paper-level claim.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Construct and clean WritingBench / PresentBench example data | Checked-in MVP packs: `artifacts/packs/example_packs.v1.jsonl`, 8 packs, 24 generated train examples. Expanded local pass: `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`, 50 packs, 150 frozen train examples, 100 heldout tasks. | Done for MVP and local expanded workspace |
-| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. | Partial: MIMO works for audit/judge-swap, not stable enough for all long PresentBench/Tender judge paths |
+| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success. | Partial: MIMO works for WritingBench audit/judge-swap, but remains unstable for long material-aware PresentBench audit prompts |
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
 | Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes. | Done as MVP/surrogate eval |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
@@ -136,8 +136,10 @@ prove the auto-skill method.
 2. Current auto-skill design is not winning on WritingBench and is only
    surrogate-positive on PresentBench. Treat feature-driven extraction and LOO
    validation as ablation components, not as proven main-method claims.
-3. MIMO judge-swap is still partial for one long Tender cell. This should be
-   reported as a judge stability limitation unless a later run succeeds.
+3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
+   slice, but MIMO remains unstable on long material-aware PresentBench audit
+   prompts. Treat MIMO PresentBench audits as optional diagnostics until that
+   path is redesigned or stabilized.
 4. Some old skill/eval rows lack top-level `solver_model` / `judge_model`.
    New runners record model identity, but old artifacts should not be used as
    paper-facing evidence without this caveat.
