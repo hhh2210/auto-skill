@@ -184,7 +184,7 @@ def eval_coverage(
     required_modes: tuple[str, ...] = MVP_EVAL_MODES,
 ) -> dict[str, dict[str, Any]]:
     by_pack_task: dict[tuple[str, str], dict[str, Any]] = defaultdict(
-        lambda: {"modes": {}, "status_counts": Counter()}
+        lambda: {"modes": {}, "mode_statuses": defaultdict(list), "status_counts": Counter()}
     )
     for row in rows:
         pack_id = str(row.get("pack_id") or "")
@@ -195,19 +195,30 @@ def eval_coverage(
         status = str(row.get("status") or "unknown")
         item = by_pack_task[(pack_id, task_id)]
         item["modes"][mode] = status
+        item["mode_statuses"][mode].append(status)
         item["status_counts"][status] += 1
 
     result = {}
     for (pack_id, task_id), item in by_pack_task.items():
         missing = [mode for mode in required_modes if mode not in item["modes"]]
-        non_success = {
-            mode: status for mode, status in item["modes"].items() if status != "success"
-        }
+        non_success = {}
+        duplicate_modes = {}
+        for mode, statuses in item["mode_statuses"].items():
+            if len(statuses) > 1:
+                duplicate_modes[mode] = list(statuses)
+            failed_statuses = [status for status in statuses if status != "success"]
+            if failed_statuses:
+                non_success[mode] = (
+                    failed_statuses[0]
+                    if len(statuses) == 1
+                    else f"duplicate_statuses:{sorted(set(statuses))}"
+                )
         key = f"{pack_id}::{task_id}"
         result[key] = {
             "pack_id": pack_id,
             "task_id": task_id,
             "modes": item["modes"],
+            "duplicate_modes": duplicate_modes,
             "missing_modes": missing,
             "non_success_modes": non_success,
             "status_counts": dict(item["status_counts"]),

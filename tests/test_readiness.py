@@ -254,6 +254,38 @@ class ReadinessTests(unittest.TestCase):
             any("missing WritingBench eval rows" in item for item in report["blockers"])
         )
 
+    def test_readiness_blocks_duplicate_eval_cell_with_any_failure(self) -> None:
+        rows = eval_rows("pack-1", modes=MVP_EVAL_MODES)
+        rows.append(
+            {
+                **rows[0],
+                "status": "judge_parse_error",
+                "overall_score": None,
+            }
+        )
+
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=skill_rows("pack-1", modes=MVP_SKILL_MODES),
+            writing_eval_rows=rows,
+            present_surrogate_rows=[],
+            present_official_rows=[],
+            limit_heldout=1,
+            required_skill_modes=MVP_SKILL_MODES,
+            required_eval_modes=MVP_EVAL_MODES,
+        )
+
+        self.assertEqual(report["status"], "not_ready")
+        self.assertTrue(
+            any("incomplete WritingBench eval coverage" in item for item in report["blockers"])
+        )
+        coverage = next(iter(report["evaluations"]["writingbench"]["coverage"].values()))
+        self.assertEqual(
+            coverage["duplicate_modes"]["prompt_only"],
+            ["success", "judge_parse_error"],
+        )
+        self.assertIn("prompt_only", coverage["non_success_modes"])
+
     def test_readiness_blocks_malformed_success_rows_without_scores(self) -> None:
         report = readiness_report(
             packs=[pack("pack-1", source="PresentBench")],

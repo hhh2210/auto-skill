@@ -22,21 +22,24 @@ from auto_skill.readiness import (  # noqa: E402
 
 PROFILE_DEFAULT_PATHS = {
     "smoke": {
-        "skills": Path("runs/skill_mvp.qwen.mvp.jsonl"),
-        "writing_eval": Path("runs/writingbench_official_eval.qwen.mvp.jsonl"),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [Path("runs/skill_mvp.qwen.mvp.jsonl")],
+        "writing_eval": [Path("runs/writingbench_official_eval.qwen.mvp.jsonl")],
+        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
     },
     "mvp": {
-        "skills": Path("runs/skill_mvp.qwen.mvp.jsonl"),
-        "writing_eval": Path("runs/writingbench_official_eval.qwen.mvp.jsonl"),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [Path("runs/skill_mvp.qwen.mvp.jsonl")],
+        "writing_eval": [Path("runs/writingbench_official_eval.qwen.mvp.jsonl")],
+        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
     },
     "full": {
-        "skills": Path("runs/skill_mvp.qwen.ours_full.writingbench.jsonl"),
-        "writing_eval": Path(
-            "runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl"
-        ),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [
+            Path("runs/skill_mvp.qwen.mvp.jsonl"),
+            Path("runs/skill_mvp.qwen.ours_full.writingbench.jsonl"),
+        ],
+        "writing_eval": [
+            Path("runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl")
+        ],
+        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
     },
 }
 
@@ -51,6 +54,24 @@ def load_readiness_jsonl(
         missing_messages.append(f"{label}: file not found: {path}")
         return []
     return load_jsonl(path)
+
+
+def load_readiness_jsonls(
+    paths: list[Path],
+    *,
+    label: str,
+    missing_messages: list[str],
+) -> list[dict]:
+    rows: list[dict] = []
+    for path in paths:
+        rows.extend(
+            load_readiness_jsonl(
+                path,
+                label=label,
+                missing_messages=missing_messages,
+            )
+        )
+    return rows
 
 
 def main() -> int:
@@ -70,19 +91,32 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/packs/example_packs.v1.jsonl"),
     )
-    parser.add_argument("--skills", type=Path)
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        help="Skill artifact JSONL. Repeat to merge multiple skill row files.",
+    )
     parser.add_argument(
         "--writing-eval",
         type=Path,
+        action="append",
+        help="WritingBench eval JSONL. Repeat to merge multiple eval row files.",
     )
     parser.add_argument(
         "--present-surrogate-eval",
         type=Path,
+        action="append",
+        help="PresentBench surrogate eval JSONL. Repeat to merge multiple eval row files.",
     )
     parser.add_argument(
         "--present-official-scores",
         type=Path,
-        default=Path("runs/presentbench_official_scores.jsonl"),
+        action="append",
+        help=(
+            "PresentBench official score JSONL. Repeat to merge multiple score row files. "
+            "Defaults to runs/presentbench_official_scores.jsonl."
+        ),
     )
     parser.add_argument("--limit-heldout", type=int)
     parser.add_argument("--out", type=Path, default=Path("runs/experiment_readiness.json"))
@@ -107,11 +141,14 @@ def main() -> int:
     args = parser.parse_args()
     profile = readiness_profile(args.profile)
     profile_paths = PROFILE_DEFAULT_PATHS[args.profile]
-    skills_path = args.skills or profile_paths["skills"]
-    writing_eval_path = args.writing_eval or profile_paths["writing_eval"]
-    present_surrogate_eval_path = (
+    skills_paths = args.skills or profile_paths["skills"]
+    writing_eval_paths = args.writing_eval or profile_paths["writing_eval"]
+    present_surrogate_eval_paths = (
         args.present_surrogate_eval or profile_paths["present_surrogate_eval"]
     )
+    present_official_paths = args.present_official_scores or [
+        Path("runs/presentbench_official_scores.jsonl")
+    ]
     require_presentbench_official = (
         profile.require_presentbench_official and not args.allow_missing_presentbench_official
     )
@@ -126,23 +163,23 @@ def main() -> int:
         label="packs",
         missing_messages=artifact_blockers,
     )
-    skill_rows = load_readiness_jsonl(
-        skills_path,
+    skill_rows = load_readiness_jsonls(
+        skills_paths,
         label="skills",
         missing_messages=artifact_blockers,
     )
-    writing_eval_rows = load_readiness_jsonl(
-        writing_eval_path,
+    writing_eval_rows = load_readiness_jsonls(
+        writing_eval_paths,
         label="writingbench_eval",
         missing_messages=artifact_blockers,
     )
-    present_surrogate_rows = load_readiness_jsonl(
-        present_surrogate_eval_path,
+    present_surrogate_rows = load_readiness_jsonls(
+        present_surrogate_eval_paths,
         label="presentbench_surrogate_eval",
         missing_messages=artifact_blockers,
     )
-    present_official_rows = load_readiness_jsonl(
-        args.present_official_scores,
+    present_official_rows = load_readiness_jsonls(
+        present_official_paths,
         label="presentbench_official_scores",
         missing_messages=present_official_missing_messages,
     )

@@ -193,3 +193,6 @@ not_ready` to assert that the gate fails closed. Use `--profile smoke` for
 partial smoke inspection. The default `--profile mvp` reads current MVP
 artifacts and does not require `auto_skill_ours_full`, `auto_skill`, or official
 PresentBench score rows; full experiment readiness requires those rows.
+Readiness input flags (`--skills`, `--writing-eval`, `--present-surrogate-eval`,
+and `--present-official-scores`) are repeatable so split artifacts can be merged
+without fabricating concatenated run files.

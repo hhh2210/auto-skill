@@ -426,6 +426,10 @@ uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-
 All profiles still fail on schema-invalid rows. `smoke` permits partial
 old/small coverage, `mvp` requires current MVP coverage, and `full` requires
 `auto_skill_ours_full`, `auto_skill`, and official PresentBench score rows.
+`--skills`, `--writing-eval`, `--present-surrogate-eval`, and
+`--present-official-scores` may be repeated when a phase is split across
+multiple JSONL artifacts; the `full` profile default already merges the MVP
+skill rows with the WritingBench `ours_full` skill rows.
 
 ## MVP Metrics
 

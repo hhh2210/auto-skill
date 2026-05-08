@@ -109,6 +109,9 @@ Known blockers:
   benchmark-flow leakage.
 - PresentBench official score rows are missing.
 - Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
+  `report_experiment_readiness.py --profile full` merges split MVP and
+  WritingBench `ours_full` skill artifacts by default, so remaining blockers
+  should be real coverage/evaluator gaps rather than single-file artifact drift.
 - Smoke data is too small for a paper claim.
 - Expanded 30WB/20PB data is still local/ignored and has only sampled
   train-example quality audits; do not present it as a released dataset

@@ -54,6 +54,27 @@ def skill_rows() -> list[dict]:
     ]
 
 
+def ours_full_skill_rows() -> list[dict]:
+    return [
+        {
+            "schema_version": "skill-induction/v1",
+            "pack_id": "pack-1",
+            "mode": "auto_skill_feature_driven_no_validation",
+            "status": "success",
+            "skill_md": "Skill",
+            "model_calls": [],
+        },
+        {
+            "schema_version": "skill-induction/v1",
+            "pack_id": "pack-1",
+            "mode": "auto_skill_ours_full",
+            "status": "success",
+            "skill_md": "Skill",
+            "model_calls": [],
+        },
+    ]
+
+
 def eval_rows() -> list[dict]:
     return [
         {
@@ -72,6 +93,22 @@ def eval_rows() -> list[dict]:
             "ours_no_validation",
         )
     ]
+
+
+def full_eval_rows() -> list[dict]:
+    rows = eval_rows()
+    rows.append(
+        {
+            "schema_version": "heldout-eval/v1",
+            "pack_id": "pack-1",
+            "task_id": "pack-1::heldout::0",
+            "mode": "auto_skill",
+            "evaluator_kind": "qwen_llm_rubric_surrogate",
+            "status": "success",
+            "overall_score": 8,
+        }
+    )
+    return rows
 
 
 class ReportExperimentReadinessCliTests(unittest.TestCase):
@@ -134,6 +171,106 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
             report = json.loads((tmp / "runs/readiness.json").read_text(encoding="utf-8"))
             self.assertEqual(report["profile"]["name"], "full")
             self.assertEqual(report["status"], "not_ready")
+
+    def test_full_profile_default_merges_mvp_and_ours_full_skill_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            write_jsonl(tmp / "artifacts/packs/example_packs.v1.jsonl", [pack_row()])
+            write_jsonl(tmp / "runs/skill_mvp.qwen.mvp.jsonl", skill_rows())
+            write_jsonl(
+                tmp / "runs/skill_mvp.qwen.ours_full.writingbench.jsonl",
+                ours_full_skill_rows(),
+            )
+            write_jsonl(
+                tmp
+                / "runs"
+                / "writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl",
+                full_eval_rows(),
+            )
+            write_jsonl(tmp / "runs/presentbench_surrogate_eval.qwen.mvp.jsonl", [])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--profile",
+                    "full",
+                    "--limit-heldout",
+                    "1",
+                    "--expect-status",
+                    "not_ready",
+                    "--out",
+                    "runs/readiness.json",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads((tmp / "runs/readiness.json").read_text(encoding="utf-8"))
+            self.assertFalse(
+                any("missing skill modes" in item for item in report["blockers"]),
+                report["blockers"],
+            )
+            self.assertTrue(
+                any(
+                    "presentbench_official_scores: file not found" in item
+                    for item in report["blockers"]
+                ),
+                report["blockers"],
+            )
+
+    def test_cli_can_merge_repeated_skill_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            write_jsonl(tmp / "packs.jsonl", [pack_row()])
+            write_jsonl(
+                tmp / "one.jsonl",
+                [row for row in skill_rows() if row["mode"] == "one_shot_skill_from_examples"],
+            )
+            write_jsonl(
+                tmp / "feature.jsonl",
+                [
+                    row
+                    for row in skill_rows()
+                    if row["mode"] == "auto_skill_feature_driven_no_validation"
+                ],
+            )
+            write_jsonl(tmp / "writing.jsonl", eval_rows())
+            write_jsonl(tmp / "present.jsonl", [])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--profile",
+                    "mvp",
+                    "--packs",
+                    "packs.jsonl",
+                    "--skills",
+                    "one.jsonl",
+                    "--skills",
+                    "feature.jsonl",
+                    "--writing-eval",
+                    "writing.jsonl",
+                    "--present-surrogate-eval",
+                    "present.jsonl",
+                    "--limit-heldout",
+                    "1",
+                    "--expect-status",
+                    "ready",
+                    "--out",
+                    "runs/readiness.json",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
     def test_smoke_profile_defaults_to_current_artifacts_with_looser_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
