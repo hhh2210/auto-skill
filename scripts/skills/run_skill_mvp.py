@@ -56,13 +56,16 @@ class StageCallConfig:
     thinking_budget: int | None
     stream: bool
     max_attempts: int = 1
+    parse_max_attempts: int = 1
     retry_base_seconds: float = 2.0
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
     def stable_hash(self) -> str:
-        return prompt_sha256(json.dumps(self.to_json(), ensure_ascii=False, sort_keys=True))
+        data = self.to_json()
+        data.pop("parse_max_attempts", None)
+        return prompt_sha256(json.dumps(data, ensure_ascii=False, sort_keys=True))
 
 
 def retryable_provider_error(exc: Exception) -> bool:
@@ -248,15 +251,36 @@ def run_stage(
         call_config=call_config,
     )
     run: PromptRunResult | None = None
+    parsed: dict[str, Any] | None = None
+    parse_attempts = max(1, call_config.parse_max_attempts) if parse_json else 1
+    parse_attempt = 0
     try:
-        run = call_model(client, prompt, config=call_config)
-        require_complete_run(run, stage=stage)
-        parsed = parse_required_json(run.text, stage=stage) if parse_json else None
+        for parse_attempt in range(1, parse_attempts + 1):
+            run = call_model(client, prompt, config=call_config)
+            require_complete_run(run, stage=stage)
+            if not parse_json:
+                break
+            parsed_candidate = parse_json_object(run.text)
+            if "parse_error" not in parsed_candidate:
+                parsed = parsed_candidate
+                break
+            if parse_attempt >= parse_attempts:
+                raise InductionError(
+                    f"{stage} returned invalid JSON after {parse_attempts} attempt(s): "
+                    f"{parsed_candidate['parse_error']}"
+                )
+            print(
+                f"  parse error on {stage} attempt {parse_attempt}/{parse_attempts}: "
+                f"{parsed_candidate['parse_error']}; retrying stage",
+                file=sys.stderr,
+                flush=True,
+            )
     except InductionError as exc:
         failure = {
             **base,
             "status": "stage_error",
             "run": run.to_json() if run is not None else None,
+            "parse_attempts": parse_attempt,
             "error": str(exc),
         }
         ledger.append(failure)
@@ -268,6 +292,7 @@ def run_stage(
             "status": "success",
             "run": run.to_json(),
             "parsed_json": parsed,
+            "parse_attempts": parse_attempt,
         }
     )
     return run, parsed
@@ -620,6 +645,7 @@ def build_stage_config_factory(
             thinking_budget=thinking_budget,
             stream=client_config.stream,
             max_attempts=args.stage_max_attempts,
+            parse_max_attempts=args.parse_max_attempts,
             retry_base_seconds=args.retry_base_seconds,
         )
 
@@ -667,6 +693,16 @@ def main() -> int:
         ),
     )
     parser.add_argument("--stage-max-attempts", type=int, default=1)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Retry JSON-producing stages when the provider returns complete but "
+            "unparseable JSON. Provider/network retries remain controlled by "
+            "--stage-max-attempts and --max-retries."
+        ),
+    )
     parser.add_argument("--retry-base-seconds", type=float, default=2.0)
     parser.add_argument("--stream", action="store_true", help="Use streaming chat completions.")
     parser.add_argument(
@@ -711,6 +747,9 @@ def main() -> int:
     modes = {mode.strip() for mode in args.modes.split(",") if mode.strip()}
     if args.stage_max_attempts <= 0:
         print("error: --stage-max-attempts must be positive", file=sys.stderr)
+        return 2
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
         return 2
     if args.retry_base_seconds <= 0:
         print("error: --retry-base-seconds must be positive", file=sys.stderr)

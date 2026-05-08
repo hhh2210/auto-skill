@@ -97,6 +97,11 @@ Expected surfaces:
 - `run_writingbench_official_eval.py` and `run_heldout_eval.py` checkpoint every
   evaluated row to `--out`. Use `--resume` on long benchmark runs so successful
   pack/task/mode cells are reused and non-success cells are retried.
+- Provider retries and parse retries are separate. `--max-retries` handles SDK
+  transport/rate-limit/server errors; use `--parse-max-attempts 3` only when a
+  complete model response is occasionally malformed JSON or an invalid judge
+  score. This is supported by `run_skill_mvp.py`, `run_writingbench_official_eval.py`,
+  and `run_heldout_eval.py`.
 - Do not globally enable Qwen thinking for skill induction. Default to
   `--no-enable-thinking`; only use `--thinking-stages ... --thinking-budget N`
   for targeted A/B runs on analysis or merge stages.

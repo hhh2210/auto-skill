@@ -226,6 +226,7 @@ def score_with_writingbench_prompt(
     criteria: list[dict[str, Any]],
     max_tokens: int,
     judge_client: ChatCompletionClient | None = None,
+    parse_max_attempts: int = 1,
 ) -> tuple[str, dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     scores: dict[str, list[dict[str, Any]]] = {}
     judge_calls: list[dict[str, Any]] = []
@@ -240,23 +241,33 @@ def score_with_writingbench_prompt(
             response=response,
             criteria=criterion,
         )
-        judge = call_model(
-            judge_runner,
-            system_prompt=system_prompt,
-            user_prompt=prompt,
-            temperature=0.0,
-            max_tokens=max_tokens,
-        )
-        parsed = parse_writingbench_score(judge.text)
+        parsed: dict[str, Any] | None = None
+        judge: PromptRunResult | None = None
+        for attempt in range(1, max(1, parse_max_attempts) + 1):
+            judge = call_model(
+                judge_runner,
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                temperature=0.0,
+                max_tokens=max_tokens,
+            )
+            parsed = parse_writingbench_score(judge.text)
+            judge_calls.append(
+                {
+                    "criterion": name,
+                    "attempt": attempt,
+                    "finish_reason": judge.finish_reason,
+                    "model": judge.model,
+                    "usage": judge.usage,
+                    "parse_error": parsed.get("parse_error"),
+                    "score": parsed.get("score"),
+                }
+            )
+            if judge.finish_reason != "stop" or "parse_error" not in parsed:
+                break
+        assert judge is not None
+        assert parsed is not None
         scores.setdefault(name, []).append(parsed)
-        judge_calls.append(
-            {
-                "criterion": name,
-                "finish_reason": judge.finish_reason,
-                "model": judge.model,
-                "usage": judge.usage,
-            }
-        )
         if judge.finish_reason != "stop":
             status = "judge_incomplete"
             break
@@ -330,6 +341,7 @@ def evaluate_writingbench_job(
     max_material_chars: int,
     metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = 1,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -385,6 +397,7 @@ def evaluate_writingbench_job(
             criteria=job.criteria,
             max_tokens=judge_max_tokens,
             judge_client=judge_client,
+            parse_max_attempts=parse_max_attempts,
         )
         overall_score = average_writingbench_scores(scores) if status == "success" else None
         first_judge_model = next(
@@ -437,6 +450,7 @@ def run_eval_jobs(
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = 1,
 ) -> None:
     def run_one(job: WritingBenchEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_writingbench_job(
@@ -449,6 +463,7 @@ def run_eval_jobs(
             max_material_chars=max_material_chars,
             metadata=metadata,
             judge_config=judge_config,
+            parse_max_attempts=parse_max_attempts,
         )
 
     if num_threads == 1:
@@ -547,6 +562,16 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Retry each WritingBench judge criterion when a complete response "
+            "cannot be parsed as a valid score. Provider/network retries remain "
+            "controlled by --max-retries."
+        ),
+    )
+    parser.add_argument(
         "--num-threads",
         type=int,
         default=None,
@@ -594,6 +619,9 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
     if not selected and not args.dry_run and not args.allow_empty:
         print(
             "error: no WritingBench packs selected for official-prompt evaluation",
@@ -845,6 +873,7 @@ def main() -> int:
         rows=rows,
         completed_cells=completed_cells,
         judge_config=judge_config,
+        parse_max_attempts=args.parse_max_attempts,
     )
 
     write_jsonl(args.out, rows)

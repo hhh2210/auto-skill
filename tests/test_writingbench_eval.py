@@ -20,9 +20,29 @@ from scripts.eval.run_writingbench_official_eval import (
     mode_skill,
     row_matches_runtime,
     runtime_metadata,
+    score_with_writingbench_prompt,
     summarize_rows,
     write_empty_eval_result,
 )
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str]) -> None:
+        self.texts = list(texts)
+
+    def complete(self, *_args, **_kwargs):
+        text = self.texts.pop(0)
+        return type(
+            "Completion",
+            (),
+            {
+                "text": text,
+                "model": "judge",
+                "usage": {"total_tokens": 1},
+                "finish_reason": "stop",
+                "request_id": "req",
+            },
+        )()
 
 
 class WritingBenchEvalTests(unittest.TestCase):
@@ -231,6 +251,25 @@ class WritingBenchEvalTests(unittest.TestCase):
         parsed = parse_writingbench_score('{"score": true, "reason": "ok"}')
 
         self.assertEqual(parsed["parse_error"], "score_must_be_integer_1_to_10")
+
+    def test_score_with_writingbench_prompt_retries_parse_error(self) -> None:
+        status, scores, judge_calls = score_with_writingbench_prompt(
+            client=SequencedCompletionClient(["bad", '{"score": 8, "reason": "ok"}']),
+            system_prompt="system",
+            prompt_template="{query}|{response}|{criteria}",
+            query="Q",
+            response="R",
+            criteria=[{"name": "C"}],
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(status, "success")
+        self.assertEqual(scores["C"], [{"score": 8, "reason": "ok"}])
+        self.assertEqual(
+            [call["parse_error"] for call in judge_calls],
+            ["no_json_object_found", None],
+        )
 
     def test_average_scores_matches_writingbench_mean(self) -> None:
         self.assertEqual(

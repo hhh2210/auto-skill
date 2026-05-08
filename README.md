@@ -246,6 +246,12 @@ uv run python scripts/skills/run_skill_mvp.py \
   --max-tokens 8192
 ```
 
+Provider retries and parse retries are intentionally separate. `--max-retries`
+covers SDK transport/rate-limit/server failures; add `--parse-max-attempts 3`
+to `run_skill_mvp.py`, `run_writingbench_official_eval.py`, or
+`run_heldout_eval.py` only when complete model responses intermittently return
+malformed JSON or invalid judge scores.
+
 Use `--dry-run` before spending API calls:
 
 ```bash

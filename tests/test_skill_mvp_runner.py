@@ -16,7 +16,27 @@ from scripts.skills.run_skill_mvp import (
     parse_required_json,
     requested_output_modes,
     require_complete_run,
+    run_stage,
 )
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str]) -> None:
+        self.texts = list(texts)
+
+    def complete(self, *_args, **_kwargs):
+        text = self.texts.pop(0)
+        return type(
+            "Completion",
+            (),
+            {
+                "text": text,
+                "model": "qwen-plus",
+                "usage": {"total_tokens": 1},
+                "finish_reason": "stop",
+                "request_id": "req",
+            },
+        )()
 
 
 class SkillMVPRunnerTests(unittest.TestCase):
@@ -37,6 +57,64 @@ class SkillMVPRunnerTests(unittest.TestCase):
     def test_parse_required_json_rejects_parse_error(self) -> None:
         with self.assertRaisesRegex(InductionError, "invalid JSON"):
             parse_required_json("not json", stage="validation")
+
+    def test_stage_config_hash_ignores_parse_retries(self) -> None:
+        base = StageCallConfig(
+            model="qwen-plus",
+            temperature=0,
+            max_tokens=128,
+            enable_thinking=False,
+            thinking_budget=None,
+            stream=False,
+        )
+        explicit_default = StageCallConfig(
+            model="qwen-plus",
+            temperature=0,
+            max_tokens=128,
+            enable_thinking=False,
+            thinking_budget=None,
+            stream=False,
+            parse_max_attempts=1,
+        )
+        retrying = StageCallConfig(
+            model="qwen-plus",
+            temperature=0,
+            max_tokens=128,
+            enable_thinking=False,
+            thinking_budget=None,
+            stream=False,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(base.stable_hash(), explicit_default.stable_hash())
+        self.assertEqual(base.stable_hash(), retrying.stable_hash())
+
+    def test_run_stage_retries_json_parse_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ledger = StageLedger(Path(tmp_dir) / "stages.jsonl", resume=False)
+            config = StageCallConfig(
+                model="qwen-plus",
+                temperature=0,
+                max_tokens=128,
+                enable_thinking=False,
+                thinking_budget=None,
+                stream=False,
+                parse_max_attempts=2,
+            )
+
+            run, parsed = run_stage(
+                client=SequencedCompletionClient(["bad json", '{"features": []}']),
+                ledger=ledger,
+                pack_id="pack-1",
+                stage="feature_extraction",
+                prompt="prompt",
+                call_config=config,
+                parse_json=True,
+            )
+
+            self.assertEqual(run.text, '{"features": []}')
+            self.assertEqual(parsed, {"features": []})
+            self.assertEqual(load_jsonl(ledger.path)[0]["parse_attempts"], 2)
 
     def test_requested_output_modes_include_full_only_when_loo_possible(self) -> None:
         pack = {

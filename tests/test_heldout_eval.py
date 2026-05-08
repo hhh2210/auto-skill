@@ -9,6 +9,7 @@ from scripts.eval.run_heldout_eval import (
     append_checkpoint_row,
     has_non_success_rows,
     is_valid_overall_score,
+    judge_with_parse_retry,
     load_resume_success_rows,
     mode_skill,
     score_row_status,
@@ -16,6 +17,25 @@ from scripts.eval.run_heldout_eval import (
     summarize_rows,
     write_empty_eval_result,
 )
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str]) -> None:
+        self.texts = list(texts)
+
+    def complete(self, *_args, **_kwargs):
+        text = self.texts.pop(0)
+        return type(
+            "Completion",
+            (),
+            {
+                "text": text,
+                "model": "judge",
+                "usage": {"total_tokens": 1},
+                "finish_reason": "stop",
+                "request_id": "req",
+            },
+        )()
 
 
 class HeldoutEvalTests(unittest.TestCase):
@@ -54,6 +74,23 @@ class HeldoutEvalTests(unittest.TestCase):
         )
 
         self.assertEqual(status, "judge_parse_error")
+
+    def test_judge_with_parse_retry_recovers_from_bad_json(self) -> None:
+        judge, report, score, attempts = judge_with_parse_retry(
+            judge_client=SequencedCompletionClient(["not json", '{"overall_score": 8}']),
+            judge_prompt="score this",
+            generation=PromptRunResult(text="answer", finish_reason="stop"),
+            judge_max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.text, '{"overall_score": 8}')
+        self.assertEqual(report, {"overall_score": 8})
+        self.assertEqual(score, 8.0)
+        self.assertEqual(
+            [attempt["status"] for attempt in attempts],
+            ["judge_parse_error", "success"],
+        )
 
     def test_score_row_status_rejects_out_of_range_score(self) -> None:
         status = score_row_status(

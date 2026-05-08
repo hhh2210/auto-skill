@@ -216,6 +216,62 @@ def score_row_status(
     return "success"
 
 
+def judge_with_parse_retry(
+    *,
+    judge_client: ChatCompletionClient,
+    judge_prompt: str,
+    generation: PromptRunResult,
+    judge_max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[PromptRunResult, dict[str, Any], float | None, list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    parse_attempts: list[dict[str, Any]] = []
+    last_judge: PromptRunResult | None = None
+    last_report: dict[str, Any] = {"parse_error": "judge_not_called"}
+    last_score: float | None = None
+
+    for attempt in range(1, attempts + 1):
+        judge = call_model(
+            judge_client,
+            system_prompt=JUDGE_SYSTEM_PROMPT,
+            user_prompt=judge_prompt,
+            temperature=0.0,
+            max_tokens=judge_max_tokens,
+        )
+        judge_report = parse_json_object(judge.text)
+        overall_score = extract_overall_score(judge_report)
+        status = score_row_status(
+            generation=generation,
+            judge=judge,
+            judge_report=judge_report,
+            overall_score=overall_score,
+        )
+        parse_attempts.append(
+            {
+                "attempt": attempt,
+                "status": status,
+                "finish_reason": judge.finish_reason,
+                "model": judge.model,
+                "request_id": judge.request_id,
+                "usage": judge.usage,
+                "parse_error": judge_report.get("parse_error"),
+                "overall_score": overall_score,
+            }
+        )
+        last_judge = judge
+        last_report = judge_report
+        last_score = overall_score
+        if status in {"success", "judge_incomplete"}:
+            break
+        if status == "judge_invalid_score" and attempt >= attempts:
+            break
+        if status == "judge_parse_error" and attempt >= attempts:
+            break
+
+    assert last_judge is not None
+    return last_judge, last_report, last_score, parse_attempts
+
+
 def eval_failure_row(
     *,
     pack: dict[str, Any],
@@ -276,6 +332,7 @@ def evaluate_heldout_job(
     judge_max_tokens: int,
     max_material_chars: int,
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = 1,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -323,15 +380,13 @@ def evaluate_heldout_job(
             candidate_output=generation.text,
             private_eval=job.private_eval,
         )
-        judge = call_model(
-            judge_client,
-            system_prompt=JUDGE_SYSTEM_PROMPT,
-            user_prompt=judge_prompt,
-            temperature=0.0,
-            max_tokens=judge_max_tokens,
+        judge, judge_report, overall_score, judge_parse_attempts = judge_with_parse_retry(
+            judge_client=judge_client,
+            judge_prompt=judge_prompt,
+            generation=generation,
+            judge_max_tokens=judge_max_tokens,
+            parse_max_attempts=parse_max_attempts,
         )
-        judge_report = parse_json_object(judge.text)
-        overall_score = extract_overall_score(judge_report)
         status = score_row_status(
             generation=generation,
             judge=judge,
@@ -348,6 +403,7 @@ def evaluate_heldout_job(
             "status": status,
             "generation": generation.to_json(),
             "judge": judge.to_json(),
+            "judge_parse_attempts": judge_parse_attempts,
             "judge_report": judge_report,
             "overall_score": overall_score,
             "solver_model": generation.model or solver_model_id,
@@ -380,6 +436,7 @@ def run_eval_jobs(
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = 1,
 ) -> None:
     def run_one(job: HeldoutEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_heldout_job(
@@ -390,6 +447,7 @@ def run_eval_jobs(
             judge_max_tokens=judge_max_tokens,
             max_material_chars=max_material_chars,
             judge_config=judge_config,
+            parse_max_attempts=parse_max_attempts,
         )
 
     if num_threads == 1:
@@ -461,6 +519,16 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Retry judge calls when a complete response cannot be parsed into "
+            "a valid numeric score. Provider/network retries remain controlled "
+            "by --max-retries."
+        ),
+    )
+    parser.add_argument(
         "--num-threads",
         type=int,
         help=(
@@ -504,6 +572,9 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
     if not selected and not args.dry_run and not args.allow_empty:
         print("error: no packs selected for heldout evaluation", file=sys.stderr)
         return 3
@@ -688,6 +759,7 @@ def main() -> int:
         rows=rows,
         completed_cells=completed_cells,
         judge_config=judge_config,
+        parse_max_attempts=args.parse_max_attempts,
     )
 
     write_jsonl(args.out, rows)
