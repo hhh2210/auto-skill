@@ -21,6 +21,11 @@ Current freeze status:
 
 - WritingBench: 4/4 selected packs have 3 generated train examples each.
 - PresentBench: 4/4 selected packs have 3 generated train examples each.
+- MIMO targeted generation samples are viable but not canonical packs:
+  WritingBench latest rows are 36/36 success, and PresentBench latest rows are
+  10/10 success after raising PresentBench `--max-tokens` to 8192. Treat them
+  as audit/targeted-regeneration evidence until matching MIMO packs are frozen
+  and benchmark-flow audited.
 
 Expanded local-cleaning status:
 

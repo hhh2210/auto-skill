@@ -7,9 +7,11 @@ without jumping directly to a full benchmark clean.
 
 Use Qwen3.5-Plus as the primary desired-output generation model for the next
 expanded cleaning pass. Use MIMO as an independent audit / targeted regeneration
-model, especially for shorter WritingBench text tasks. Do not use MIMO as the
-primary cleaner for long PresentBench prompts until its long-request connection
-failure mode is resolved.
+model, especially for shorter WritingBench text tasks. MIMO targeted generation
+samples now have green latest-row status, including a small PresentBench sample
+after raising `--max-tokens` to 8192, but this is raw generated-output evidence.
+Do not call MIMO a primary cleaner until matching MIMO packs are frozen and
+benchmark-flow audited.
 
 ## Expanded Split Trial
 
@@ -54,7 +56,7 @@ Initial 20-job WritingBench sample:
 | Model | Latest unique success | Main failure mode | Throughput note |
 | --- | ---: | --- | --- |
 | Qwen3.5-Plus | 39 / 39 | one `finish_reason=length`, fixed by `--max-tokens 8192` | about 8.3 jobs/min in first pass |
-| MIMO v2.5 Pro | 35 / 36 | persistent `APIConnectionError` on one job after retry; one private-leak rejection fixed on retry | 17.5 jobs/min first pass, slower on retries |
+| MIMO v2.5 Pro | 36 / 36 | transient `APIConnectionError` and one private-leak rejection, both fixed by targeted retry | 17.5 jobs/min first pass, slower on retries |
 
 Takeaway: Qwen is more stable. MIMO can be useful, but retries and private-leak
 checks are necessary.
@@ -66,11 +68,12 @@ checks are necessary.
 | Model | Latest unique success | Main failure mode | Throughput |
 | --- | ---: | --- | ---: |
 | Qwen3.5-Plus | 10 / 10 | none in sample | 1.30 jobs/min |
-| MIMO v2.5 Pro | 8 / 10 | persistent `APIConnectionError` on two long prompts, even after retry-only rerun | 1.04 jobs/min first pass |
+| MIMO v2.5 Pro | 10 / 10 | default `--max-tokens 4096` recovered connection errors into `finish_reason=length`; `--max-tokens 8192` fixed the two long jobs | 1.04 jobs/min first pass |
 
 Takeaway: PresentBench prompts are long and latency-bound. Qwen is currently the
-safer primary cleaner for slide-generation examples. MIMO failures cluster around
-long requests and should not block Qwen-based expansion.
+canonical primary cleaner for the frozen 30WB/20PB pack. MIMO can generate a
+small PresentBench sample when token budget is raised, but this is not yet a
+frozen/audited MIMO pack.
 
 ## Operational Rules
 
@@ -102,7 +105,11 @@ Latest local result:
   `--judge-max-tokens 4096`.
 - PresentBench material-aware audit sample: Qwen judge 2/2 success, mean score
   7.5 with the generic rubric/checklist surrogate judge. MIMO on the same path
-  remains connection-unstable for long material-aware prompts.
+  succeeds 2/2 when `--judge-max-tokens 8192` is used.
+- MIMO targeted desired-output generation samples: 36/36 latest WritingBench
+  rows and 10/10 latest PresentBench rows are `success`; see
+  `notes/mimo_generation_retry_2026-05-09.md`. These are raw generated-output
+  samples, not canonical MIMO-cleaned packs.
 
 ## Reproduction Commands
 

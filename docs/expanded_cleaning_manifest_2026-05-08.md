@@ -12,9 +12,9 @@ force-add them to the public repo without an explicit data-release decision.
 - Heldout tasks: 100 total, 2 per pack.
 - Primary cleaner: `qwen3.5-plus`.
 - Independent audit model: `mimo-v2.5-pro` sample audit for WritingBench train
-  examples. PresentBench audit is material-aware and currently uses Qwen as the
-  stable judge path, with a MIMO partial run recorded to document long-request
-  instability.
+  examples. MIMO targeted generation samples are recorded as viability evidence
+  only; they are not canonical MIMO-cleaned packs because matching MIMO packs
+  have not been frozen and benchmark-flow audited.
 
 Coverage:
 
@@ -220,6 +220,19 @@ MIMO on the same PresentBench audit path succeeds on the current sample when
 }
 ```
 
+MIMO targeted desired-output generation samples are also green in latest-row
+view, but remain raw generation evidence:
+
+- `runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample20.jsonl`:
+  36/36 latest unique WritingBench rows are `success`.
+- `runs/expanded/generated_desired_outputs.30wb_20pb.pb_mimo.sample10.jsonl`:
+  10/10 latest unique PresentBench rows are `success` after raising
+  `--max-tokens` to 8192.
+
+See `notes/mimo_generation_retry_2026-05-09.md` for the retry trace. Do not
+describe these files as a MIMO cleaned dataset until matching packs are frozen
+and `audit_benchmark_flow.py` is run against those packs and MIMO outputs.
+
 ## Failure Trace
 
 Initial Qwen expanded generation produced 147/150 success. The three failures
@@ -240,6 +253,7 @@ Final latest status: 150/150 success.
   official visual/PPT evaluator and has only been sampled on 2 examples in this
   manifest.
 - MIMO is used as audit/targeted-regeneration evidence, not as a complete
-  alternative cleaner for long PresentBench prompts.
+  alternative cleaner. Current MIMO generation samples are raw latest-row
+  success evidence, not frozen/audited MIMO packs.
 - The expanded artifacts are local ignored run outputs. A release decision is
   needed before committing or publishing them as a dataset snapshot.

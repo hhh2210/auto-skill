@@ -134,9 +134,12 @@ Current expanded-run evidence is summarized in
 `notes/expanded_cleaning_strategy_2026-05-08.md`; artifact hashes and handoff
 commands are in `docs/expanded_cleaning_manifest_2026-05-08.md`. The short
 version: Qwen3.5-Plus completed the local 30WB/20PB clean with 150/150 latest
-generation success and a passing benchmark-flow audit. MIMO is better used as an
-independent audit or targeted regeneration model until its long PresentBench
-request failures are resolved.
+generation success and a passing benchmark-flow audit. MIMO targeted generation
+samples are now viable (`36/36` latest WritingBench rows and `10/10` latest
+PresentBench rows after raising PresentBench `--max-tokens` to 8192), but they
+are raw generated-output evidence, not a canonical MIMO-cleaned pack. Claim MIMO
+cleaning readiness only after freezing matching MIMO packs and running the
+benchmark-flow audit on those packs.
 
 To re-check the local expanded-cleaning handoff state:
 
