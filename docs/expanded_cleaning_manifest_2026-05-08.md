@@ -36,8 +36,8 @@ Coverage:
 | `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl` | 50 | 3996521 | `52c43d3cce30def3666ecfdc9c5482b2a13c43987b6ac56b35f5309d0a4b622a` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.writingbench.sample6.jsonl` | 6 | 40003 | `0fd31d1138cce9a3a83d7a6455611d203607227c1505d4c311c5b4ce61c8836a` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.writingbench.sample6.summary.json` | 24 | 456 | `649e346ca97b5403f4539930c543836e1a49cd442f7301904bf7cbd00ffe6917` |
-| `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.jsonl` | 2 | 5787 | `606385b1e9c76289adf10a3422c8c73e3c5aa72c9f7ebe7834f428bc921fedbb` |
-| `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.summary.json` | 27 | 512 | `cd968e93800168b33c4beb869d7dce76a4505d7abdf0d315ed1b71802b610596` |
+| `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.jsonl` | 2 | 11448 | `8b48b762434ee960337ddba6694d2c11ef161f7a4432e1e4395b71a976bf2981` |
+| `runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.summary.json` | 23 | 442 | `bac7646ebb442dd07e5d28105b79051cc218c6e74a74e7efb131dec0036c7325` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.jsonl` | 2 | 13745 | `b6e3fae7aeb9281865d74e823d837ea054095df5b3af70da3be7efec185c289b` |
 | `runs/expanded/train_example_quality_audit.30wb_20pb.qwen.presentbench.sample2.summary.json` | 24 | 442 | `254236e53059069864ee7b960152e3d52bee13e61505ea55606962b3a712116e` |
 | `runs/expanded/expanded_cleaning_status.json` | 93 | 2475 | `ed58ef6cd5a7afc896ee4ad93ba24cb993e70479a1961141e8413964d78f92c3` |
@@ -140,9 +140,7 @@ Observed result:
 {
   "status": "ready",
   "errors": [],
-  "warnings": [
-    "optional audit has non-success rows: runs/expanded/train_example_quality_audit.30wb_20pb.mimo.presentbench.sample2.jsonl: {'model_error': 1, 'success': 1}"
-  ]
+  "warnings": []
 }
 ```
 
@@ -210,14 +208,13 @@ This PresentBench audit uses a generic rubric/checklist surrogate judge over
 the generated text artifact and material excerpts. It is a quality diagnostic,
 not the official PresentBench visual/PPT evaluator.
 
-MIMO on the same PresentBench audit path remains connection-unstable for long
-material-aware prompts. The latest sample2 MIMO run had one success and one
-`APIConnectionError` after retries:
+MIMO on the same PresentBench audit path succeeds on the current sample when
+`--judge-max-tokens 8192` is used:
 
 ```json
 {
-  "status_counts": {"model_error": 1, "success": 1},
-  "mean_train_example_quality_score": 8.2
+  "status_counts": {"success": 2},
+  "mean_train_example_quality_score": 8.4
 }
 ```
 

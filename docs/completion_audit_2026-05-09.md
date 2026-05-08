@@ -10,7 +10,7 @@ benchmark or paper-level claim.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Construct and clean WritingBench / PresentBench example data | Checked-in MVP packs: `artifacts/packs/example_packs.v1.jsonl`, 8 packs, 24 generated train examples. Expanded local pass: `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`, 50 packs, 150 frozen train examples, 100 heldout tasks. | Done for MVP and local expanded workspace |
-| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success. | Partial: MIMO works for WritingBench audit/judge-swap, but remains unstable for long material-aware PresentBench audit prompts |
+| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success, and the expanded PresentBench optional MIMO audit sample is now 2/2 success with `--judge-max-tokens 8192`. | Partial: MIMO works for WritingBench audit/judge-swap and small PresentBench audits, but long material-aware PresentBench usage remains a known risk |
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
 | Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 16/16 success for examples-plus-skill surrogate ablations. | Done as MVP/surrogate eval |
 | Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
@@ -152,7 +152,8 @@ Expanded local pass:
 - Required audits:
   - MIMO WritingBench sample: 6/6 success.
   - Qwen PresentBench material-aware sample: 2/2 success.
-- Optional MIMO PresentBench audit remains partial: 1 success, 1 model error.
+- Optional MIMO PresentBench audit: 2/2 success after rerun with
+  `--judge-max-tokens 8192`; mean score 8.4.
 
 Interpretation: expanded cleaning is usable for handoff and follow-up
 experiments, but it is not a released dataset snapshot and does not by itself
@@ -169,9 +170,9 @@ prove the auto-skill method.
    promising augmentation mechanism rather than a proven standalone replacement
    for examples.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
-   slice, but MIMO remains unstable on long material-aware PresentBench audit
-   prompts. Treat MIMO PresentBench audits as optional diagnostics until that
-   path is redesigned or stabilized.
+   slice. A small PresentBench material-aware MIMO audit is also 2/2 success
+   when `--judge-max-tokens 8192` is used, but larger PresentBench MIMO usage
+   remains a risk until tested beyond this tiny sample.
 4. Some old skill/eval rows lack top-level `solver_model` / `judge_model`.
    New runners record model identity, but old artifacts should not be used as
    paper-facing evidence without this caveat.

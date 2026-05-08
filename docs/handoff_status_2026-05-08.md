@@ -31,7 +31,8 @@ Expanded local-cleaning status:
 - Expanded benchmark-flow audit: `status=ok`, no errors or warnings.
 - Expanded aggregate gate:
   `uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready`
-  is green, with a warning only for MIMO PresentBench long-request instability.
+  is green with no warnings after rerunning the optional MIMO PresentBench audit
+  at `--judge-max-tokens 8192`.
 - Manifest with hashes, commands, and audit output:
   `docs/expanded_cleaning_manifest_2026-05-08.md`.
 
@@ -84,9 +85,9 @@ Current MIMO train-example audit:
   `judge_incomplete` false failures and should not be reused for MIMO audits.
 - Expanded PresentBench audit sample: Qwen judge 2/2 success with mean score
   7.5 using a material-aware generic rubric/checklist surrogate. MIMO on the
-  same path remains connection-unstable for long material-aware prompts
-  (latest sample: 1 success, 1 APIConnectionError). This is a quality
-  diagnostic, not the official PresentBench visual/PPT evaluator.
+  same path is now 2/2 success with mean score 8.4 when `--judge-max-tokens`
+  is raised to 8192. This is a quality diagnostic, not the official
+  PresentBench visual/PPT evaluator.
 
 ## Current Readiness
 
