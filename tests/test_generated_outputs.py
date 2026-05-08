@@ -236,6 +236,7 @@ class GeneratedOutputsTests(unittest.TestCase):
         self.assertTrue(private_leak_matches("This mentions a hidden checklist."))
         self.assertTrue(private_leak_matches("This follows grading criteria."))
         self.assertFalse(private_leak_matches("This compares against an industry benchmark."))
+        self.assertFalse(private_leak_matches("The report defines evaluation criteria."))
         self.assertFalse(private_leak_matches("请按以下检查项完成交付。"))
 
 
