@@ -466,7 +466,9 @@ official scores, or benchmark judge traces. Treat output-example similarity as
 debug-only, never as a main effect metric. The summary separates
 `official_benchmark_scores` from `surrogate_debug_scores` and `debug_scores`;
 do not report PresentBench surrogate scores as official visual/PPT benchmark
-results.
+results. When baseline and ablation modes live in separate eval JSONL files,
+use `cross_eval_score_summaries` in the output for paired deltas joined across
+files with the same evaluator and judge model.
 
 ```bash
 uv run python scripts/metrics/run_self_consistency_metric.py \
@@ -480,8 +482,9 @@ uv run python scripts/metrics/summarize_mvp_metrics.py \
   --skills runs/skill_mvp.qwen.ours_full.writingbench.jsonl \
   --skills runs/skill_mvp.qwen.ours_full.presentbench.jsonl \
   --packs artifacts/packs/example_packs.v1.jsonl \
-  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill \
+  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill,examples_plus_one_shot_skill,examples_plus_feature_skill \
   --eval runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl \
+  --eval runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
   --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl \

@@ -187,15 +187,93 @@ def expected_cells_for_eval(
     if not packs or not modes:
         return None
     source = infer_eval_source(path, rows)
+    observed_modes = {
+        str(row.get("mode"))
+        for row in rows
+        if isinstance(row.get("mode"), str) and str(row.get("mode")) in set(modes)
+    }
+    expected_modes = [mode for mode in modes if mode in observed_modes] or modes
     selected = [
         pack for pack in packs if source is None or str(pack.get("source")) == source
     ]
-    return expected_score_cells(selected, modes, limit_heldout=limit_heldout)
+    return expected_score_cells(selected, expected_modes, limit_heldout=limit_heldout)
+
+
+def row_judge_model(row: dict[str, Any]) -> str:
+    value = row.get("judge_model")
+    if isinstance(value, str) and value:
+        return value
+    for call in row.get("judge_calls") or []:
+        if isinstance(call, dict) and isinstance(call.get("model"), str) and call["model"]:
+            return call["model"]
+    return "unknown"
+
+
+def summarize_cross_eval_groups(
+    eval_inputs: list[tuple[Path, list[dict[str, Any]]]],
+    *,
+    packs: list[dict[str, Any]],
+    modes: list[str],
+    baseline_mode: str,
+    limit_heldout: int | None,
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for path, rows in eval_inputs:
+        by_evaluator: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            by_evaluator[str(row.get("evaluator_kind") or "unknown")].append(row)
+        bucket = classify_score_bucket(path=path, evaluator_kinds=by_evaluator)
+        for evaluator, evaluator_rows in by_evaluator.items():
+            by_judge: dict[str, list[dict[str, Any]]] = defaultdict(list)
+            for row in evaluator_rows:
+                by_judge[row_judge_model(row)].append(row)
+            for judge_model, judge_rows in by_judge.items():
+                key = (bucket, evaluator, judge_model)
+                group = groups.setdefault(
+                    key,
+                    {"paths": [], "rows": [], "bucket": bucket, "evaluator": evaluator},
+                )
+                group["paths"].append(str(path))
+                group["rows"].extend(judge_rows)
+
+    summaries = []
+    for (bucket, evaluator, judge_model), group in sorted(groups.items()):
+        rows = group["rows"]
+        expected_cells = expected_cells_for_eval(
+            path=Path("combined_eval_rows.jsonl"),
+            rows=rows,
+            packs=packs,
+            modes=modes,
+            limit_heldout=limit_heldout,
+        )
+        summary = score_and_negative_transfer_summary(
+            rows,
+            evaluator_kind=evaluator,
+            baseline_mode=baseline_mode,
+            expected_cells=expected_cells,
+        )
+        summaries.append(
+            {
+                "score_bucket": bucket,
+                "evaluator_kind": evaluator,
+                "judge_model": judge_model,
+                "paths": sorted(set(group["paths"])),
+                "row_count": len(rows),
+                "summary": summary,
+            }
+        )
+    return summaries
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--skills", type=Path, default=Path("runs/skill_mvp.qwen.mvp.jsonl"))
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        default=None,
+        help="Skill rows JSONL. Repeat to merge split MVP and ours_full skill artifacts.",
+    )
     parser.add_argument(
         "--eval",
         type=Path,
@@ -245,12 +323,17 @@ def main() -> int:
         print("error: --artifact-compare-modes must contain exactly two modes", file=sys.stderr)
         return 2
 
-    skill_rows = load_existing_jsonl(args.skills)
+    skill_paths = args.skills or [Path("runs/skill_mvp.qwen.mvp.jsonl")]
+    skill_rows = []
+    for path in skill_paths:
+        skill_rows.extend(load_existing_jsonl(path))
     packs = load_existing_jsonl(args.packs) if args.packs and args.packs.exists() else []
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
     eval_summaries = []
+    eval_inputs: list[tuple[Path, list[dict[str, Any]]]] = []
     for path in args.eval:
         rows = load_existing_jsonl(path)
+        eval_inputs.append((path, rows))
         expected_cells = expected_cells_for_eval(
             path=path,
             rows=rows,
@@ -270,8 +353,8 @@ def main() -> int:
         self_consistency_rows.extend(load_existing_jsonl(path))
 
     aggregated_eval_rows: list[dict[str, Any]] = []
-    for path in args.eval:
-        aggregated_eval_rows.extend(load_existing_jsonl(path))
+    for _path, rows in eval_inputs:
+        aggregated_eval_rows.extend(rows)
     inventory = model_inventory(
         skill_rows=skill_rows,
         eval_rows=aggregated_eval_rows + self_consistency_rows,
@@ -284,11 +367,18 @@ def main() -> int:
     }
     for eval_summary in eval_summaries:
         score_buckets[eval_summary["score_bucket"]].append(eval_summary)
+    cross_eval_score_summaries = summarize_cross_eval_groups(
+        eval_inputs,
+        packs=packs,
+        modes=modes,
+        baseline_mode=args.baseline_mode,
+        limit_heldout=args.limit_heldout,
+    )
 
     summary = {
         "schema_version": "mvp-metrics-summary/v1",
         "inputs": {
-            "skills": str(args.skills),
+            "skills": [str(path) for path in skill_paths],
             "eval": [str(path) for path in args.eval],
             "self_consistency": [str(path) for path in args.self_consistency],
             "packs": str(args.packs) if args.packs else None,
@@ -301,6 +391,7 @@ def main() -> int:
         "surrogate_debug_scores": score_buckets["surrogate_debug_scores"],
         "debug_scores": score_buckets["debug_scores"],
         "benchmark_score_and_paired_delta": score_buckets["official_benchmark_scores"],
+        "cross_eval_score_summaries": cross_eval_score_summaries,
         "all_score_summaries": eval_summaries,
         "coverage_and_non_success": [
             {"path": eval_summary["path"], **eval_summary["coverage"]}

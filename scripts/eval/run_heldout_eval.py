@@ -127,9 +127,9 @@ def select_packs(
 
 
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
-    if mode == "one_shot_skill_from_examples":
+    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
         return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode == "ours_no_validation":
+    if mode in {"ours_no_validation", "examples_plus_feature_skill"}:
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))
@@ -728,7 +728,14 @@ def main() -> int:
                     continue
                 skill_md = mode_skill(mode, skills, pack_id)
                 if (
-                    mode in {"one_shot_skill_from_examples", "ours_no_validation", "auto_skill"}
+                    mode
+                    in {
+                        "one_shot_skill_from_examples",
+                        "ours_no_validation",
+                        "auto_skill",
+                        "examples_plus_one_shot_skill",
+                        "examples_plus_feature_skill",
+                    }
                     and not skill_md
                 ):
                     append_checkpoint_row(

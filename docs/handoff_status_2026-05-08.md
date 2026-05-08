@@ -59,6 +59,11 @@ Recent WritingBench smoke results:
   evidence.
 - Current `auto_skill_ours_full` does not beat `few_shot_examples_only` or
   `one_shot_skill_from_examples` on this smoke slice.
+- A first examples-plus-skill ablation is positive on the same WritingBench
+  smoke slice: `examples_plus_one_shot_skill` averages 7.525 (+0.425 vs
+  prompt_only, 6/2/0), and `examples_plus_feature_skill` averages 7.775 (+0.675,
+  7/1/0). This suggests the induced skill is currently more useful as an
+  augmentation to examples than as a standalone replacement for examples.
 
 Current MIMO train-example audit:
 
@@ -134,10 +139,9 @@ Known blockers:
 ## Recommended Next Steps
 
 1. Run a mechanism ablation on the existing 4 WritingBench packs before expanding
-   benchmark size. Include `prompt_only`, `few_shot_examples_only`,
-   `one_shot_skill_from_examples`, `feature_skill_no_validation`,
-   `feature_skill_old_LOO`, `feature_skill_majority_LOO`,
-   `examples_plus_one_shot_skill`, and `examples_plus_feature_skill`.
+   benchmark size. The first `examples_plus_one_shot_skill` and
+   `examples_plus_feature_skill` run is complete; next extend it to MIMO judge
+   and compare against old LOO / majority LOO as separate modes.
 2. Attribute whether current losses come from skill compression, feature
    extraction, LOO merge, or skill interference with raw examples.
 3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,

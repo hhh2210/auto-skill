@@ -5,6 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from auto_skill.llm import ChatCompletionConfig
+from auto_skill.mvp import build_heldout_generation_prompt
+from auto_skill.schemas import UserExample
 from auto_skill.writingbench_eval import (
     average_writingbench_scores,
     build_writingbench_official_prompt,
@@ -55,12 +57,28 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertIsNone(mode_skill("auto_skill", skills, "pack-1"))
         self.assertEqual(mode_skill("ours_no_validation", skills, "pack-1"), "Skill")
 
+    def test_examples_plus_modes_select_expected_skill_artifact(self) -> None:
+        skills = {
+            ("pack-1", "one_shot_skill_from_examples"): "One-shot Skill",
+            ("pack-1", "auto_skill_feature_driven_no_validation"): "Feature Skill",
+        }
+
+        self.assertEqual(
+            mode_skill("examples_plus_one_shot_skill", skills, "pack-1"),
+            "One-shot Skill",
+        )
+        self.assertEqual(
+            mode_skill("examples_plus_feature_skill", skills, "pack-1"),
+            "Feature Skill",
+        )
+
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
 
         self.assertTrue(is_reusable_candidate_row(reused))
         self.assertFalse(mode_needs_skill("one_shot_skill_from_examples", reused))
         self.assertTrue(mode_needs_skill("one_shot_skill_from_examples", None))
+        self.assertTrue(mode_needs_skill("examples_plus_feature_skill", None))
 
     def test_reused_candidate_requires_success_generation_text(self) -> None:
         self.assertFalse(is_reusable_candidate_row({"status": "success", "generation": {}}))
@@ -270,6 +288,25 @@ class WritingBenchEvalTests(unittest.TestCase):
         )
 
         self.assertIn('"name": "C"', prompt)
+
+    def test_examples_plus_skill_prompt_includes_examples_and_skill(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={"task_id": "task-1", "task_input": "Write a report", "materials": []},
+            mode="examples_plus_feature_skill",
+            examples=[
+                UserExample(
+                    example_id="ex-1",
+                    task_input="Example task",
+                    output="Example output",
+                )
+            ],
+            skill_md="Feature Skill",
+        )
+
+        self.assertIn("User examples:", prompt)
+        self.assertIn("Example output", prompt)
+        self.assertIn("Reusable skill:", prompt)
+        self.assertIn("Feature Skill", prompt)
 
     def test_parse_score_accepts_fenced_json(self) -> None:
         parsed = parse_writingbench_score('```json\n{"score": 8, "reason": "ok"}\n```')

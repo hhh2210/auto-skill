@@ -13,6 +13,7 @@ benchmark or paper-level claim.
 | Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded examples and solver outputs. MIMO was used for WritingBench train-example audit and WritingBench judge-swap. The current WritingBench MIMO judge-swap artifact is 40/40 success. | Partial: MIMO works for WritingBench audit/judge-swap, but remains unstable for long material-aware PresentBench audit prompts |
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
 | Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes. | Done as MVP/surrogate eval |
+| Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success for `examples_plus_one_shot_skill` and `examples_plus_feature_skill`. | Done for first 4-pack smoke ablation |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -89,6 +90,28 @@ Interpretation: switching the judge to MIMO does not rescue the auto-skill
 claim. It also shows MIMO judge runs need retry support for provider refusals
 and transient API errors.
 
+### WritingBench, Examples Plus Skill Ablation
+
+Artifact: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`
+
+Coverage: 16/16 success across 4 packs x 2 heldout x 2 ablation modes. The
+paired deltas below are computed by joining this artifact with
+`runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl`
+on `(pack_id, task_id)`. The canonical
+`runs/mvp_metrics.heldout2.current.summary.json` now records the same join under
+`cross_eval_score_summaries` for the Qwen judge group.
+
+| Mode | Mean score | Delta vs prompt_only | Wins / losses / ties |
+| --- | ---: | ---: | --- |
+| examples_plus_one_shot_skill | 7.525 | +0.425 | 6 / 2 / 0 |
+| examples_plus_feature_skill | 7.775 | +0.675 | 7 / 1 / 0 |
+
+Interpretation: on this smoke slice, skills are more useful as an augmentation
+to user examples than as a replacement for examples. This weakens the current
+“skill-only reusable package beats examples” claim, but gives a concrete next
+mechanism direction: use induced skills to organize or constrain examples rather
+than compressing examples away.
+
 ### PresentBench Surrogate
 
 Artifacts:
@@ -133,9 +156,11 @@ prove the auto-skill method.
 1. PresentBench official scoring is missing. Need `GENAI_API_KEY` /
    `GENAI_BASE_URL` or equivalent upstream `judge_all.py` configuration, then
    run official scoring for `prompt_only` and `auto_skill`.
-2. Current auto-skill design is not winning on WritingBench and is only
-   surrogate-positive on PresentBench. Treat feature-driven extraction and LOO
-   validation as ablation components, not as proven main-method claims.
+2. Current skill-only auto-skill design is not winning on WritingBench and is
+   only surrogate-positive on PresentBench. The new examples-plus-skill ablation
+   is positive on WritingBench, so treat feature-driven extraction as a
+   promising augmentation mechanism rather than a proven standalone replacement
+   for examples.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice, but MIMO remains unstable on long material-aware PresentBench audit
    prompts. Treat MIMO PresentBench audits as optional diagnostics until that
@@ -147,10 +172,9 @@ prove the auto-skill method.
 ## Next Concrete Steps
 
 1. Run upstream PresentBench official judge once `GENAI_*` is configured.
-2. Add an ablation matrix for:
-   `prompt_only`, `few_shot_examples_only`, `one_shot_skill_from_examples`,
-   `feature_skill_no_validation`, old LOO, majority LOO,
-   `examples_plus_one_shot_skill`, and `examples_plus_feature_skill`.
+2. Extend the positive `examples_plus_feature_skill` ablation to more
+   WritingBench packs and an independent judge. Keep old LOO and majority LOO
+   as separate ablations, not default claims.
 3. For WritingBench, inspect the negative-transfer cases before expanding the
    method claim.
 4. For expanded 50-pack data, run a small sampled heldout eval before using it

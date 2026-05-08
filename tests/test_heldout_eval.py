@@ -48,6 +48,21 @@ class HeldoutEvalTests(unittest.TestCase):
         self.assertIsNone(mode_skill("auto_skill", skills, "pack-1"))
         self.assertEqual(mode_skill("ours_no_validation", skills, "pack-1"), "Skill")
 
+    def test_examples_plus_modes_select_expected_skill_artifact(self) -> None:
+        skills = {
+            ("pack-1", "one_shot_skill_from_examples"): "One-shot Skill",
+            ("pack-1", "auto_skill_feature_driven_no_validation"): "Feature Skill",
+        }
+
+        self.assertEqual(
+            mode_skill("examples_plus_one_shot_skill", skills, "pack-1"),
+            "One-shot Skill",
+        )
+        self.assertEqual(
+            mode_skill("examples_plus_feature_skill", skills, "pack-1"),
+            "Feature Skill",
+        )
+
     def test_load_skill_rows_merges_repeated_skill_artifacts(self) -> None:
         with TemporaryDirectory() as tmp:
             first = Path(tmp) / "mvp.jsonl"

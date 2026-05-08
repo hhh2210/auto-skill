@@ -217,7 +217,11 @@ def build_heldout_generation_prompt(
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
     examples_text = ""
-    if mode == "few_shot_examples_only":
+    if mode in {
+        "few_shot_examples_only",
+        "examples_plus_one_shot_skill",
+        "examples_plus_feature_skill",
+    }:
         examples_text = "\n\nUser examples:\n" + "\n\n".join(
             format_user_example(example) for example in examples
         )
