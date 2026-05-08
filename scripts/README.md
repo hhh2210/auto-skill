@@ -55,6 +55,7 @@ stable.
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge. | debug-only metric |
 | `metrics/export_judge_disagreements.py` | Export judge delta sign-disagreement packets with output stats and optional skill context for evaluator calibration review. | diagnostic |
+| `metrics/validate_disagreement_taxonomy.py` | Validate per-packet calibration labels against judge-disagreement packet hashes. | diagnostic |
 
 ### Orchestration
 

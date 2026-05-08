@@ -41,7 +41,9 @@ Do not expand WritingBench N as paper evidence yet. Larger N will only make the
 judge-dependence problem more expensive unless the evaluator is calibrated.
 
 The first pass of this loop is recorded in
-`notes/judge_disagreement_taxonomy_2026-05-09.md`. The next defensible loop is:
+`notes/judge_disagreement_taxonomy_2026-05-09.md`, with machine-readable labels
+in `notes/judge_disagreement_taxonomy_2026-05-09.jsonl`. The next defensible
+loop is:
 
 1. Validate or revise the provisional sign-flip labels:
    `judge_error`, `candidate_error`, `baseline_error`, `small_delta_noise`, or
@@ -71,4 +73,8 @@ uv run python scripts/data/audit_benchmark_flow.py \
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
 ```

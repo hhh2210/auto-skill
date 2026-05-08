@@ -3,6 +3,9 @@
 This note freezes the first third-review pass over
 `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl`.
 It should be treated as calibration evidence, not as a final human gold label.
+The machine-readable annotations live in
+`notes/judge_disagreement_taxonomy_2026-05-09.jsonl` and are validated against
+packet hashes by `scripts/metrics/validate_disagreement_taxonomy.py`.
 
 The packet contains 10 Qwen-vs-MIMO sign flips on identical candidate and
 baseline outputs. All rows include output hashes/stats, task context, private
@@ -52,3 +55,11 @@ protocol. The safest current interpretation is:
 3. The next method loop should target candidate quality failures before
    expanding N.
 
+## Validation
+
+```bash
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
+```
