@@ -138,7 +138,9 @@ surrogate, not the official visual/PPT evaluator.
 Interpretation: PresentBench surrogate looks more favorable than WritingBench,
 but it cannot replace official PresentBench scoring. The examples-plus-skill
 mechanism that is positive on WritingBench is negative on this PresentBench
-surrogate slice, so it is not yet a cross-domain method claim.
+surrogate slice, so it is not yet a cross-domain method claim. The failure
+diagnostic in `notes/presentbench_examples_plus_failure_diagnostic.md` points to
+cross-task slide layout interference from raw examples plus skill.
 
 ## Data-Cleaning Evidence
 
@@ -184,7 +186,8 @@ prove the auto-skill method.
    why it transfers poorly to PresentBench surrogate tasks. The first
    independent MIMO judge-swap agrees on the 4-pack WritingBench smoke slice,
    but the PresentBench surrogate result is negative, so this is not a
-   cross-domain method claim yet.
+   cross-domain method claim yet. For PresentBench, test constrained slide
+   composition before trying raw examples-plus-skill again.
 3. For WritingBench, inspect the negative-transfer cases before expanding the
    method claim.
 4. For expanded 50-pack data, run a small sampled heldout eval before using it
