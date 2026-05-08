@@ -10,6 +10,8 @@ from typing import Any
 from auto_skill.example_packs import material_context
 from auto_skill.schemas import UserExample
 
+HELDOUT_GENERATION_PROMPT_VERSION = "deliverable-priority-v2"
+
 
 @dataclass(frozen=True)
 class PromptRunResult:
@@ -231,6 +233,18 @@ def build_heldout_generation_prompt(
     if skill_md:
         skill_text = f"\n\nReusable skill:\n{skill_md}"
     mode_guidance = ""
+    deliverable_guidance = """
+Current-task deliverable priority:
+- Produce the completed artifact requested by the heldout task input.
+- Do not answer with a plan, outline, checklist, analysis, rubric mapping, or
+  explanation of how to solve the task unless the heldout task explicitly asks
+  for that artifact type.
+- Treat the heldout task input and material excerpts as higher priority than
+  user-example patterns or reusable-skill rules.
+- Use examples and skills to infer style, structure, and constraints, but do
+  not import example-specific facts, domains, entities, or section topics into
+  the current answer unless they appear in the heldout task.
+"""
     if mode == "slide_constrained_examples_plus_feature_skill":
         mode_guidance = """
 
@@ -265,6 +279,7 @@ Mode: {mode}
 Use only the provided user-visible examples, reusable skill, task input, and material excerpts.
 Do not mention benchmark construction, hidden rubrics, or evaluation metadata.
 Return only the final answer.
+{deliverable_guidance}
 {mode_guidance}
 
 Task ID: {task_id}

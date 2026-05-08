@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from auto_skill.llm import ChatCompletionConfig
 from auto_skill.mvp import (
+    HELDOUT_GENERATION_PROMPT_VERSION,
     build_heldout_generation_prompt,
     build_presentbench_layout_plan_prompt,
 )
@@ -154,6 +155,7 @@ class WritingBenchEvalTests(unittest.TestCase):
             metadata,
             {
                 "reused_candidates_from": None,
+                "heldout_generation_prompt_version": HELDOUT_GENERATION_PROMPT_VERSION,
                 "judge_enable_thinking": False,
                 "judge_thinking_budget": 256,
                 "judge_max_tokens": 1024,

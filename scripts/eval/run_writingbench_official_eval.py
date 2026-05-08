@@ -26,6 +26,7 @@ from auto_skill.eval_summary import (  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import (  # noqa: E402
+    HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
     build_heldout_generation_prompt,
     user_examples_from_pack,
@@ -147,6 +148,7 @@ def runtime_metadata(
         "judge_max_tokens": judge_max_tokens,
     }
     if reuse_candidates_from is None:
+        metadata["heldout_generation_prompt_version"] = HELDOUT_GENERATION_PROMPT_VERSION
         metadata["solver_model"] = config.model
         metadata["solver_temperature"] = temperature
         metadata["solver_max_tokens"] = max_tokens

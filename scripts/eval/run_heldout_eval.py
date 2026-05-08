@@ -25,6 +25,7 @@ from auto_skill.eval_summary import (  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import (  # noqa: E402
+    HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
     build_heldout_generation_prompt,
     build_judge_prompt,
@@ -189,6 +190,63 @@ def load_resume_success_rows(out: Path, expected_cells: list[ScoreCell]) -> list
     return rows
 
 
+def runtime_metadata(
+    *,
+    config: ChatCompletionConfig,
+    judge_config: ChatCompletionConfig | None,
+    temperature: float | None,
+    max_tokens: int,
+    judge_max_tokens: int,
+    max_material_chars: int,
+) -> dict[str, Any]:
+    effective_judge_config = judge_config or config
+    return {
+        "heldout_generation_prompt_version": HELDOUT_GENERATION_PROMPT_VERSION,
+        "solver_model": config.model,
+        "solver_temperature": temperature,
+        "solver_max_tokens": max_tokens,
+        "max_material_chars": max_material_chars,
+        "solver_enable_thinking": config.enable_thinking,
+        "solver_thinking_budget": config.thinking_budget,
+        "judge_enable_thinking": effective_judge_config.enable_thinking,
+        "judge_thinking_budget": effective_judge_config.thinking_budget,
+        "judge_max_tokens": judge_max_tokens,
+    }
+
+
+def row_matches_runtime(
+    row: dict[str, Any],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> bool:
+    if row.get("judge_model") != expected_judge_model:
+        return False
+    for key, value in metadata.items():
+        if key not in row or row[key] != value:
+            return False
+    return True
+
+
+def load_compatible_resume_success_rows(
+    out: Path,
+    expected_cells: list[ScoreCell],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = load_resume_success_rows(out, expected_cells)
+    return [
+        row
+        for row in rows
+        if row_matches_runtime(
+            row,
+            expected_judge_model=expected_judge_model,
+            metadata=metadata,
+        )
+    ]
+
+
 def append_checkpoint_row(out: Path, rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
     rows.append(row)
     write_jsonl(out, rows)
@@ -297,8 +355,9 @@ def eval_failure_row(
     evaluator_kind: str,
     solver_model: str | None = None,
     judge_model: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    row = {
         "schema_version": "heldout-eval/v1",
         "pack_id": str(pack["pack_id"]),
         "task_id": str(task["task_id"]),
@@ -314,6 +373,9 @@ def eval_failure_row(
         "solver_model": solver_model,
         "judge_model": judge_model,
     }
+    if metadata:
+        row.update(metadata)
+    return row
 
 
 def eval_model_error_row(
@@ -325,6 +387,7 @@ def eval_model_error_row(
     error: Exception,
     solver_model: str | None = None,
     judge_model: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     row = eval_failure_row(
         pack=pack,
@@ -334,6 +397,7 @@ def eval_model_error_row(
         evaluator_kind=evaluator_kind,
         solver_model=solver_model,
         judge_model=judge_model,
+        metadata=metadata,
     )
     row["error"] = f"{type(error).__name__}: {error}"
     return row
@@ -347,6 +411,7 @@ def evaluate_heldout_job(
     max_tokens: int,
     judge_max_tokens: int,
     max_material_chars: int,
+    metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
     parse_max_attempts: int = 1,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
@@ -393,6 +458,7 @@ def evaluate_heldout_job(
                     "solver_model": layout_plan.model or solver_model_id,
                     "judge_model": judge_model_id,
                 }
+                row.update(metadata)
                 return cell, row, f"layout_plan_incomplete ({layout_plan.finish_reason})"
             layout_plan_text = (
                 "\n\nCurrent-task layout plan:\n"
@@ -432,6 +498,7 @@ def evaluate_heldout_job(
                 "solver_model": generation.model or solver_model_id,
                 "judge_model": judge_model_id,
             }
+            row.update(metadata)
             return cell, row, f"generation_incomplete ({generation.finish_reason})"
         judge_prompt = build_judge_prompt(
             task=task,
@@ -468,6 +535,7 @@ def evaluate_heldout_job(
             "solver_model": generation.model or solver_model_id,
             "judge_model": judge.model or judge_model_id,
         }
+        row.update(metadata)
         return cell, row, str(overall_score)
     except Exception as exc:  # noqa: BLE001 - provider failures should not kill whole eval.
         row = eval_model_error_row(
@@ -478,6 +546,7 @@ def evaluate_heldout_job(
             error=exc,
             solver_model=solver_model_id,
             judge_model=judge_model_id,
+            metadata=metadata,
         )
         return cell, row, row["error"]
 
@@ -490,6 +559,7 @@ def run_eval_jobs(
     max_tokens: int,
     judge_max_tokens: int,
     max_material_chars: int,
+    metadata: dict[str, Any],
     num_threads: int,
     out: Path,
     rows: list[dict[str, Any]],
@@ -505,6 +575,7 @@ def run_eval_jobs(
             max_tokens=max_tokens,
             judge_max_tokens=judge_max_tokens,
             max_material_chars=max_material_chars,
+            metadata=metadata,
             judge_config=judge_config,
             parse_max_attempts=parse_max_attempts,
         )
@@ -721,7 +792,24 @@ def main() -> int:
         modes,
         limit_heldout=args.limit_heldout,
     )
-    rows = load_resume_success_rows(args.out, expected_cells) if args.resume else []
+    metadata = runtime_metadata(
+        config=config,
+        judge_config=judge_config,
+        temperature=temperature,
+        max_tokens=args.max_tokens,
+        judge_max_tokens=args.judge_max_tokens,
+        max_material_chars=args.max_material_chars,
+    )
+    rows = (
+        load_compatible_resume_success_rows(
+            args.out,
+            expected_cells,
+            expected_judge_model=judge_model,
+            metadata=metadata,
+        )
+        if args.resume
+        else []
+    )
     completed_cells = successful_score_cells(rows)
     if args.resume and rows:
         print(f"Loaded {len(rows)} successful checkpoint rows from {args.out}", flush=True)
@@ -757,6 +845,7 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
@@ -772,6 +861,7 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
@@ -808,6 +898,7 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
@@ -831,6 +922,7 @@ def main() -> int:
         max_tokens=args.max_tokens,
         judge_max_tokens=args.judge_max_tokens,
         max_material_chars=args.max_material_chars,
+        metadata=metadata,
         num_threads=num_threads,
         out=args.out,
         rows=rows,

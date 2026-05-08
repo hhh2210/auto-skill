@@ -4,15 +4,18 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from auto_skill.llm import ChatCompletionConfig
 from auto_skill.mvp import PromptRunResult
 from scripts.eval.run_heldout_eval import (
     append_checkpoint_row,
     has_non_success_rows,
     is_valid_overall_score,
     judge_with_parse_retry,
+    load_compatible_resume_success_rows,
     load_resume_success_rows,
     load_skill_rows,
     mode_skill,
+    runtime_metadata,
     score_row_status,
     successful_score_cells,
     summarize_rows,
@@ -249,6 +252,58 @@ class HeldoutEvalTests(unittest.TestCase):
             resumed = load_resume_success_rows(out, [("pack", "task", "prompt_only")])
 
             self.assertEqual(len(resumed), 1)
+            self.assertEqual(successful_score_cells(resumed), {("pack", "task", "prompt_only")})
+
+    def test_compatible_resume_requires_prompt_runtime_metadata(self) -> None:
+        metadata = runtime_metadata(
+            config=ChatCompletionConfig(
+                base_url="https://example.test/v1",
+                api_key="key",
+                model="solver",
+                enable_thinking=False,
+            ),
+            judge_config=None,
+            temperature=0.2,
+            max_tokens=4096,
+            judge_max_tokens=1024,
+            max_material_chars=4000,
+        )
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "rows.jsonl"
+            rows = []
+            append_checkpoint_row(
+                out,
+                rows,
+                {
+                    "pack_id": "pack",
+                    "task_id": "task",
+                    "mode": "prompt_only",
+                    "status": "success",
+                    "overall_score": 8,
+                    "judge_model": "solver",
+                    **metadata,
+                },
+            )
+            append_checkpoint_row(
+                out,
+                rows,
+                {
+                    "pack_id": "pack",
+                    "task_id": "old",
+                    "mode": "prompt_only",
+                    "status": "success",
+                    "overall_score": 8,
+                    "judge_model": "solver",
+                },
+            )
+
+            resumed = load_compatible_resume_success_rows(
+                out,
+                [("pack", "task", "prompt_only"), ("pack", "old", "prompt_only")],
+                expected_judge_model="solver",
+                metadata=metadata,
+            )
+
             self.assertEqual(successful_score_cells(resumed), {("pack", "task", "prompt_only")})
 
 

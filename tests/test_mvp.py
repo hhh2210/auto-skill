@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from auto_skill.mvp import (
+    build_heldout_generation_prompt,
     build_judge_prompt,
     build_validation_aware_skill_merge_prompt,
     evaluation_criteria,
@@ -95,6 +96,23 @@ class MVPTests(unittest.TestCase):
 
         self.assertIn("n-1 user-visible examples", prompt)
         self.assertNotIn("Base SKILL.md", prompt)
+
+    def test_heldout_generation_prompt_prioritizes_final_deliverable(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={
+                "task_id": "task-1",
+                "task_input": "Write the complete consulting memo.",
+                "materials": [],
+            },
+            mode="examples_plus_feature_skill",
+            examples=[],
+            skill_md="Use sections from examples.",
+        )
+
+        self.assertIn("Produce the completed artifact requested", prompt)
+        self.assertIn("Do not answer with a plan, outline, checklist", prompt)
+        self.assertIn("higher priority than", prompt)
+        self.assertIn("not import example-specific facts", prompt)
 
 
 if __name__ == "__main__":
