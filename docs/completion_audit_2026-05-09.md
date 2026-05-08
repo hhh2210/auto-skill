@@ -16,6 +16,7 @@ benchmark or paper-level claim.
 | Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
 | Expanded sample heldout eval | `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl` and `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl` both have 24/24 success on four non-MVP WritingBench packs. See `notes/expanded_writingbench_sample_eval_2026-05-09.md`. | Done as expanded smoke, but results are judge-sensitive |
 | Judge calibration packet | `scripts/metrics/export_judge_disagreements.py` exports the Qwen-vs-MIMO sign-flip cells to `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl` and `.md` for manual/third-judge review. Current packets include same-output checks, output hashes/stats, task/private rubric context, and skill artifact context. | Done for current expanded sample |
+| Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -33,6 +34,7 @@ uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
 ```
 
 Fail-closed by design:
@@ -182,7 +184,9 @@ prove the auto-skill method.
    promising augmentation mechanism rather than a proven standalone replacement
    for examples. A newer four-pack expanded WritingBench sample shows strong
    Qwen-vs-MIMO judge sign flips, so evaluator calibration is now a first-order
-   blocker before increasing sample size.
+   blocker before increasing sample size. The first provisional taxonomy is in
+   `notes/judge_disagreement_taxonomy_2026-05-09.md` and machine-validated
+   against packet hashes.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A small PresentBench material-aware MIMO audit is also 2/2 success
    when `--judge-max-tokens 8192` is used, but larger PresentBench MIMO usage
