@@ -68,9 +68,23 @@ by a large margin and the result is too small to support a method claim.
 
 The remaining failure is not simply "the model wrote an outline." The Qwen judge
 still penalizes practical operational value, expert integration, and source
-context pollution. This supports the current risk-register decision: do not
-expand N for performance claims yet; next work should target candidate quality
-and example/material contamination.
+context pollution. However, a deterministic train-only n-gram diagnostic gives
+mixed evidence:
+
+Artifact:
+`runs/expanded/example_contamination.deliverable_guard_probe.education.jsonl`
+
+| Mode | Suspicious train-only 3-grams | Excess vs prompt_only |
+| --- | ---: | ---: |
+| `prompt_only` | 46 | 0 |
+| `examples_plus_feature_skill` | 29 | -17 |
+| `ours_no_validation` | 54 | +8 |
+
+This weakens a simple "examples_plus is worse because it copies examples"
+explanation. The contamination signal is noisier than the judge taxonomy and is
+best treated as a candidate-phrase retrieval aid, not a proof metric. The
+stronger current conclusion is that skill-only remains risky and
+examples-plus-feature may be salvageable but needs calibrated evaluation.
 
 This probe artifact is local diagnostic evidence, not a canonical benchmark
 artifact.
