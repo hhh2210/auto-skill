@@ -40,12 +40,13 @@ for handoff, but not research-confident for a paper claim.
 Do not expand WritingBench N as paper evidence yet. Larger N will only make the
 judge-dependence problem more expensive unless the evaluator is calibrated.
 
-The next defensible loop is:
+The first pass of this loop is recorded in
+`notes/judge_disagreement_taxonomy_2026-05-09.md`. The next defensible loop is:
 
-1. Use the enriched disagreement packet to label each sign flip:
+1. Validate or revise the provisional sign-flip labels:
    `judge_error`, `candidate_error`, `baseline_error`, `small_delta_noise`, or
    `ambiguous`.
-2. Convert labels into a failure taxonomy:
+2. Convert validated labels into a failure taxonomy:
    - missing task completion despite strong structure;
    - source-context pollution from examples/materials;
    - overlong outline/planning output instead of final deliverable;
@@ -71,4 +72,3 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status rea
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 ```
-
