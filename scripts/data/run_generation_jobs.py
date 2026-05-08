@@ -83,6 +83,40 @@ def read_existing_successes(path: Path) -> dict[str, set[str]]:
     return completed
 
 
+def read_existing_latest_statuses(path: Path) -> dict[tuple[str, str], str]:
+    """Return the latest status for each ``(job_id, prompt_sha256)`` pair."""
+
+    if not path.exists():
+        return {}
+    latest: dict[tuple[str, str], str] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        print(f"error: failed to read existing output file {path}: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    non_empty_indexes = [index for index, line in enumerate(lines) if line.strip()]
+    last_non_empty = non_empty_indexes[-1] if non_empty_indexes else -1
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            if index == last_non_empty:
+                continue
+            print(
+                f"error: malformed JSONL line in {path}: line {index + 1}: {exc}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2) from exc
+        job_id = row.get("job_id")
+        prompt_sha = row.get("prompt_sha256")
+        status = row.get("status")
+        if job_id and prompt_sha and status:
+            latest[(str(job_id), str(prompt_sha))] = str(status)
+    return latest
+
+
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -144,6 +178,8 @@ def select_jobs(
     jobs: list[dict[str, Any]],
     *,
     pack_id: str | None,
+    source: str | None,
+    retry_keys: set[tuple[str, str]] | None,
     limit: int | None,
     completed: dict[str, set[str]],
     resume: bool,
@@ -152,8 +188,12 @@ def select_jobs(
     for job in jobs:
         if pack_id is not None and job.get("pack_id") != pack_id:
             continue
+        if source is not None and job.get("source") != source:
+            continue
         job_id = str(job.get("job_id"))
         prompt_sha = str(job.get("prompt_sha256"))
+        if retry_keys is not None and (job_id, prompt_sha) not in retry_keys:
+            continue
         if resume and prompt_sha in completed.get(job_id, set()):
             continue
         selected.append(job)
@@ -332,6 +372,11 @@ def main() -> int:
         ),
     )
     parser.add_argument("--pack-id")
+    parser.add_argument(
+        "--source",
+        choices=("WritingBench", "PresentBench"),
+        help="Only run generation jobs from one benchmark source.",
+    )
     parser.add_argument("--limit", type=int)
     parser.add_argument(
         "--temperature",
@@ -366,6 +411,15 @@ def main() -> int:
     )
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
+        "--retry-existing-failures-only",
+        action="store_true",
+        help=(
+            "Only select jobs whose latest row in --out is non-success. This is "
+            "useful for retrying API errors or length rejections without expanding "
+            "the sample window."
+        ),
+    )
+    parser.add_argument(
         "--allow-partial",
         action="store_true",
         help="Exit 0 even when selected generation jobs fail. Default is fail-closed.",
@@ -381,9 +435,17 @@ def main() -> int:
     jobs = read_jsonl_or_exit(args.jobs)
     validate_jobs_or_exit(jobs)
     completed = read_existing_successes(args.out)
+    retry_keys = None
+    if args.retry_existing_failures_only:
+        latest_statuses = read_existing_latest_statuses(args.out)
+        retry_keys = {
+            key for key, status in latest_statuses.items() if status != "success"
+        }
     selected = select_jobs(
         jobs,
         pack_id=args.pack_id,
+        source=args.source,
+        retry_keys=retry_keys,
         limit=args.limit,
         completed=completed,
         resume=args.resume,
