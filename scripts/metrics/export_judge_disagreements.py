@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,69 @@ def full_generation_text(row: dict[str, Any]) -> str | None:
         return None
     text = generation.get("text")
     return text if isinstance(text, str) else None
+
+
+def text_stats(text: str | None) -> dict[str, Any] | None:
+    if text is None:
+        return None
+    return {
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "chars": len(text),
+        "words": len(text.split()),
+        "cjk_chars": sum(1 for char in text if "\u4e00" <= char <= "\u9fff"),
+    }
+
+
+def skill_index(skill_rows: list[dict[str, Any]] | None) -> dict[tuple[str, str], dict[str, Any]]:
+    if not skill_rows:
+        return {}
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in skill_rows:
+        if row.get("status") != "success":
+            continue
+        pack_id = row.get("pack_id")
+        mode = row.get("mode")
+        if isinstance(pack_id, str) and isinstance(mode, str):
+            index[(pack_id, mode)] = row
+    return index
+
+
+def skill_mode_for_eval_mode(mode: str) -> str | None:
+    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
+        return "one_shot_skill_from_examples"
+    if mode in {
+        "ours_no_validation",
+        "examples_plus_feature_skill",
+        "slide_constrained_examples_plus_feature_skill",
+        "layout_plan_examples_plus_feature_skill",
+    }:
+        return "auto_skill_feature_driven_no_validation"
+    if mode == "auto_skill":
+        return "auto_skill_ours_full"
+    return None
+
+
+def packet_skill_context(
+    skills: dict[tuple[str, str], dict[str, Any]],
+    *,
+    pack_id: str,
+    mode: str,
+    max_chars: int,
+) -> dict[str, Any] | None:
+    skill_mode = skill_mode_for_eval_mode(mode)
+    if skill_mode is None:
+        return None
+    row = skills.get((pack_id, skill_mode))
+    if row is None:
+        return {"expected_skill_mode": skill_mode, "status": "missing"}
+    skill_md = row.get("skill_md")
+    return {
+        "expected_skill_mode": skill_mode,
+        "status": "found",
+        "solver_model": row.get("solver_model"),
+        "skill_md_stats": text_stats(skill_md if isinstance(skill_md, str) else None),
+        "skill_md_preview": truncate_text(skill_md, max_chars=max_chars),
+    }
 
 
 def compact_scores(row: dict[str, Any]) -> dict[str, Any]:
@@ -157,12 +221,14 @@ def build_disagreement_packets(
     max_output_chars: int = 2000,
     packs: list[dict[str, Any]] | None = None,
     private_rows: list[dict[str, Any]] | None = None,
+    skill_rows: list[dict[str, Any]] | None = None,
     require_same_outputs: bool = True,
 ) -> list[dict[str, Any]]:
     left = success_index(left_rows)
     right = success_index(right_rows)
     task_context = pack_task_context(packs, max_chars=max_output_chars)
     eval_context = private_eval_context(private_rows)
+    skills = skill_index(skill_rows)
     observed_modes = {
         mode for _, _, mode in set(left) & set(right) if mode != baseline_mode
     }
@@ -237,10 +303,20 @@ def build_disagreement_packets(
                 "same_baseline_output": same_baseline,
                 "candidate_output": candidate_left_text,
                 "baseline_output": baseline_left_text,
+                "candidate_output_stats": text_stats(candidate_left_full),
+                "baseline_output_stats": text_stats(baseline_left_full),
                 "right_candidate_output": None if same_candidate else candidate_right_text,
                 "right_baseline_output": None if same_baseline else baseline_right_text,
+                "right_candidate_output_stats": text_stats(candidate_right_full),
+                "right_baseline_output_stats": text_stats(baseline_right_full),
                 "task_context": task_context.get((pack_id, task_id)),
                 "private_eval_context": eval_context.get((pack_id, task_id)),
+                "skill_context": packet_skill_context(
+                    skills,
+                    pack_id=pack_id,
+                    mode=mode,
+                    max_chars=max_output_chars,
+                ),
             }
         )
     return packets
@@ -283,6 +359,13 @@ def main() -> int:
         type=Path,
         help="Optional private eval JSONL for rubric/checklist context.",
     )
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        default=[],
+        help="Optional skill row JSONL. Repeat to merge skill artifacts.",
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--summary-out", type=Path)
     parser.add_argument("--max-output-chars", type=int, default=2000)
@@ -304,6 +387,11 @@ def main() -> int:
         max_output_chars=args.max_output_chars,
         packs=load_jsonl(args.packs) if args.packs else None,
         private_rows=load_jsonl(args.private_eval) if args.private_eval else None,
+        skill_rows=[
+            row
+            for path in args.skills
+            for row in load_jsonl(path)
+        ],
         require_same_outputs=not args.allow_output_mismatch,
     )
     write_jsonl(args.out, packets)

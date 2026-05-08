@@ -77,6 +77,25 @@ The strongest sign flips are:
 These cells should be inspected manually before using either judge as the
 primary decision signal.
 
+## Third-Party Calibration Review
+
+A background calibration review inspected the 10 sign-flip packets. This is not
+a human label, but it is useful failure attribution evidence:
+
+- For Academic Paper Outline and Education Consulting, the Qwen negative
+  deltas were judged more credible. The candidates were often outlines/plans or
+  source-context-polluted responses rather than completed user deliverables.
+- MIMO appeared to over-reward surface structure, rubric keywords, headings,
+  and source-term reuse in those cells.
+- Product Description and Travel Guide were less decisive; several deltas were
+  small enough that the sign flip should be treated as calibration noise.
+- The next research step should be evaluator calibration and failure taxonomy,
+  not larger-N WritingBench performance claims.
+
+The regenerated packet includes full candidate/baseline output hashes and
+length stats, private rubric context, task context, and the skill artifact
+preview/hash used by each skill-related mode.
+
 The calibration packet was generated with:
 
 ```bash
@@ -88,6 +107,7 @@ uv run python scripts/metrics/export_judge_disagreements.py \
   --modes few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,examples_plus_one_shot_skill,examples_plus_feature_skill \
   --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
   --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --skills runs/expanded/skill_mvp.qwen.sample4_wb.jsonl \
   --out runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
   --summary-out runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.md \
   --max-output-chars 3000

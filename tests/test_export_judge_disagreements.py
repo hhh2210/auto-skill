@@ -47,6 +47,9 @@ class ExportJudgeDisagreementsTests(unittest.TestCase):
         self.assertEqual(packet["right"]["delta"], 2)
         self.assertEqual(packet["candidate_output"], "skill output")
         self.assertEqual(packet["baseline_output"], "baseline")
+        self.assertEqual(packet["candidate_output_stats"]["chars"], len("skill output"))
+        self.assertEqual(len(packet["candidate_output_stats"]["sha256"]), 64)
+        self.assertEqual(packet["right_candidate_output_stats"], packet["candidate_output_stats"])
 
     def test_respects_mode_filter(self) -> None:
         packets = build_disagreement_packets(
@@ -134,6 +137,63 @@ class ExportJudgeDisagreementsTests(unittest.TestCase):
         self.assertEqual(
             packet["private_eval_context"]["supervision"]["items"][0]["name"],
             "Quality",
+        )
+
+    def test_can_export_skill_context(self) -> None:
+        packets = build_disagreement_packets(
+            left_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("one_shot_skill_from_examples", 4, text="candidate"),
+            ],
+            right_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("one_shot_skill_from_examples", 7, text="candidate"),
+            ],
+            left_label="qwen",
+            right_label="mimo",
+            baseline_mode="prompt_only",
+            skill_rows=[
+                {
+                    "pack_id": "pack-1",
+                    "mode": "one_shot_skill_from_examples",
+                    "status": "success",
+                    "solver_model": "qwen3.5-plus",
+                    "skill_md": "Use a concise structure.\nAlways cite constraints.",
+                }
+            ],
+        )
+
+        skill_context = packets[0]["skill_context"]
+        self.assertEqual(skill_context["status"], "found")
+        self.assertEqual(
+            skill_context["expected_skill_mode"],
+            "one_shot_skill_from_examples",
+        )
+        self.assertEqual(skill_context["solver_model"], "qwen3.5-plus")
+        self.assertEqual(len(skill_context["skill_md_stats"]["sha256"]), 64)
+        self.assertIn("Always cite constraints", skill_context["skill_md_preview"])
+
+    def test_reports_missing_skill_context_for_skill_mode(self) -> None:
+        packets = build_disagreement_packets(
+            left_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("ours_no_validation", 4, text="candidate"),
+            ],
+            right_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("ours_no_validation", 7, text="candidate"),
+            ],
+            left_label="qwen",
+            right_label="mimo",
+            baseline_mode="prompt_only",
+        )
+
+        self.assertEqual(
+            packets[0]["skill_context"],
+            {
+                "expected_skill_mode": "auto_skill_feature_driven_no_validation",
+                "status": "missing",
+            },
         )
 
 
