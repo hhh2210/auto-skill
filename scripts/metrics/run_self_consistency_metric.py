@@ -145,6 +145,7 @@ def evaluate_row(
     temperature: float | None,
     max_tokens: int,
     judge_max_tokens: int,
+    parse_max_attempts: int,
     judge_model_id: str | None = None,
 ) -> dict[str, Any]:
     skill_md = skill_row.get("skill_md")
@@ -152,23 +153,28 @@ def evaluate_row(
         return failure_row(skill_row=skill_row, status="missing_skill_md")
 
     signature_prompt = build_abstract_signatures_prompt(skill_md=skill_md, n=n)
-    signature_generation = call_model(
-        client,
-        prompt=signature_prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
+    signature_generation, signatures, signature_parse_attempts = (
+        generate_signatures_with_parse_retry(
+            client=client,
+            prompt=signature_prompt,
+            n=n,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            parse_max_attempts=parse_max_attempts,
+        )
     )
     if signature_generation.finish_reason != "stop":
         return {
             **failure_row(skill_row=skill_row, status="signature_generation_incomplete"),
             "signature_generation": signature_generation.to_json(),
+            "signature_parse_attempts": signature_parse_attempts,
         }
 
-    signatures = parse_abstract_signatures(signature_generation.text, limit=n)
     if not signatures:
         return {
             **failure_row(skill_row=skill_row, status="signature_parse_error"),
             "signature_generation": signature_generation.to_json(),
+            "signature_parse_attempts": signature_parse_attempts,
         }
 
     leakage = literal_leakage_report(pack=pack, generated_signatures=signatures)
@@ -177,18 +183,12 @@ def evaluate_row(
         abstract_signatures=signatures,
         literal_leakage=leakage,
     )
-    judge = call_model(
-        client,
+    judge, judge_report, status, judge_parse_attempts = judge_with_parse_retry(
+        client=client,
         prompt=judge_prompt,
-        temperature=0.0,
         max_tokens=judge_max_tokens,
+        parse_max_attempts=parse_max_attempts,
     )
-    judge_report = parse_self_consistency_report(judge.text)
-    status = "success"
-    if judge.finish_reason != "stop":
-        status = "judge_incomplete"
-    elif "parse_error" in judge_report:
-        status = "judge_parse_error"
 
     return {
         "schema_version": "skill-self-consistency/v1",
@@ -198,14 +198,113 @@ def evaluate_row(
         "status": status,
         "abstract_signatures": signatures,
         "signature_generation": signature_generation.to_json(),
+        "signature_parse_attempts": signature_parse_attempts,
         "literal_leakage": leakage,
         "judge": judge.to_json(),
+        "judge_parse_attempts": judge_parse_attempts,
         "judge_report": judge_report,
         "uses_private_eval": False,
         "uses_official_scores": False,
         "solver_model": skill_row.get("solver_model"),
         "judge_model": judge.model or judge_model_id,
     }
+
+
+def generate_signatures_with_parse_retry(
+    *,
+    client: ChatCompletionClient,
+    prompt: str,
+    n: int,
+    temperature: float | None,
+    max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[PromptRunResult, list[dict[str, Any]], list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    parse_attempts: list[dict[str, Any]] = []
+    last_generation: PromptRunResult | None = None
+    last_signatures: list[dict[str, Any]] = []
+
+    for attempt in range(1, attempts + 1):
+        generation = call_model(
+            client,
+            prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        signatures = (
+            parse_abstract_signatures(generation.text, limit=n)
+            if generation.finish_reason == "stop"
+            else []
+        )
+        status = "success" if signatures else "signature_parse_error"
+        if generation.finish_reason != "stop":
+            status = "signature_generation_incomplete"
+        parse_attempts.append(
+            {
+                "attempt": attempt,
+                "status": status,
+                "finish_reason": generation.finish_reason,
+                "model": generation.model,
+                "request_id": generation.request_id,
+                "usage": generation.usage,
+                "signature_count": len(signatures),
+            }
+        )
+        last_generation = generation
+        last_signatures = signatures
+        if status != "signature_parse_error":
+            break
+
+    assert last_generation is not None
+    return last_generation, last_signatures, parse_attempts
+
+
+def judge_with_parse_retry(
+    *,
+    client: ChatCompletionClient,
+    prompt: str,
+    max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[PromptRunResult, dict[str, Any], str, list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    parse_attempts: list[dict[str, Any]] = []
+    last_judge: PromptRunResult | None = None
+    last_report: dict[str, Any] = {"parse_error": "judge_not_called"}
+    last_status = "judge_parse_error"
+
+    for attempt in range(1, attempts + 1):
+        judge = call_model(
+            client,
+            prompt=prompt,
+            temperature=0.0,
+            max_tokens=max_tokens,
+        )
+        report = parse_self_consistency_report(judge.text)
+        status = "success"
+        if judge.finish_reason != "stop":
+            status = "judge_incomplete"
+        elif "parse_error" in report:
+            status = "judge_parse_error"
+        parse_attempts.append(
+            {
+                "attempt": attempt,
+                "status": status,
+                "finish_reason": judge.finish_reason,
+                "model": judge.model,
+                "request_id": judge.request_id,
+                "usage": judge.usage,
+                "parse_error": report.get("parse_error"),
+                "overall_self_consistency": report.get("overall_self_consistency"),
+            }
+        )
+        last_judge = judge
+        last_report = report
+        last_status = status
+        if status != "judge_parse_error":
+            break
+
+    assert last_judge is not None
+    return last_judge, last_report, last_status, parse_attempts
 
 
 def main() -> int:
@@ -244,6 +343,16 @@ def main() -> int:
     parser.add_argument("--judge-max-tokens", type=int, default=2048)
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=1,
+        help=(
+            "Retry signature/judge calls when the provider returns complete but "
+            "unparseable JSON. Provider/network retries remain controlled by "
+            "--max-retries."
+        ),
+    )
     parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--thinking-budget", type=int)
@@ -252,6 +361,9 @@ def main() -> int:
 
     if args.signatures_per_skill <= 0:
         print("error: --signatures-per-skill must be positive", file=sys.stderr)
+        return 2
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
         return 2
 
     packs = pack_index(load_jsonl(args.packs))
@@ -320,6 +432,7 @@ def main() -> int:
                 temperature=args.temperature,
                 max_tokens=args.max_tokens,
                 judge_max_tokens=args.judge_max_tokens,
+                parse_max_attempts=args.parse_max_attempts,
                 judge_model_id=config.model,
             )
         except Exception as exc:  # noqa: BLE001 - keep long metric runs resumable by artifact.

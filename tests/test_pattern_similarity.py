@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from auto_skill.pattern_similarity import (
     SKILL_AWARE_EVALUATOR_KIND,
@@ -8,6 +9,22 @@ from auto_skill.pattern_similarity import (
     pattern_similarity_status,
     summarize_pattern_similarity_rows,
 )
+from scripts.metrics.run_pattern_similarity_eval import judge_with_parse_retry
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
+        self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
+
+    def complete(self, *_args, **_kwargs):
+        return SimpleNamespace(
+            text=self.texts.pop(0),
+            model="judge",
+            finish_reason=self.finish_reasons.pop(0),
+            usage={"total_tokens": 1},
+            request_id="req",
+        )
 
 
 class PatternSimilarityTests(unittest.TestCase):
@@ -86,6 +103,52 @@ class PatternSimilarityTests(unittest.TestCase):
 
         self.assertEqual(summary["evaluator_kind"], SKILL_AWARE_EVALUATOR_KIND)
         self.assertEqual(summary["modes"]["auto_skill"]["mean_pattern_similarity_score"], 7)
+
+    def test_judge_with_parse_retry_recovers_from_bad_json(self) -> None:
+        judge, report, status, attempts = judge_with_parse_retry(
+            client=SequencedCompletionClient(
+                [
+                    "not json",
+                    """{
+                      "pattern_similarity_score": 8,
+                      "structural_similarity_score": 7,
+                      "style_similarity_score": 9,
+                      "constraint_transfer_score": 8,
+                      "unsupported_pattern_risk": "low",
+                      "supported_patterns": [],
+                      "missed_patterns": [],
+                      "unsupported_patterns": []
+                    }""",
+                ]
+            ),
+            prompt="judge",
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.finish_reason, "stop")
+        self.assertEqual(report["pattern_similarity_score"], 8.0)
+        self.assertEqual(status, "success")
+        self.assertEqual(
+            [attempt["status"] for attempt in attempts],
+            ["judge_parse_error", "success"],
+        )
+
+    def test_judge_with_parse_retry_does_not_retry_incomplete_judge(self) -> None:
+        judge, report, status, attempts = judge_with_parse_retry(
+            client=SequencedCompletionClient(
+                ["partial", '{"pattern_similarity_score": 8}'],
+                finish_reasons=["length", "stop"],
+            ),
+            prompt="judge",
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.finish_reason, "length")
+        self.assertIn("parse_error", report)
+        self.assertEqual(status, "judge_incomplete")
+        self.assertEqual([attempt["status"] for attempt in attempts], ["judge_incomplete"])
 
 
 if __name__ == "__main__":
