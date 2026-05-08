@@ -14,6 +14,7 @@ benchmark or paper-level claim.
 | Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok`, no errors/warnings for both checked-in MVP artifacts and expanded artifacts. | Done for data-flow/leakage audit |
 | Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 32/32 success for examples-plus-skill, slide-constrained, and layout-plan surrogate ablations. | Done as MVP/surrogate eval |
 | Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
+| Expanded sample heldout eval | `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl` and `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl` both have 24/24 success on four non-MVP WritingBench packs. See `notes/expanded_writingbench_sample_eval_2026-05-09.md`. | Done as expanded smoke, but results are judge-sensitive |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -178,7 +179,9 @@ prove the auto-skill method.
    only surrogate-positive on PresentBench. The new examples-plus-skill ablation
    is positive on WritingBench, so treat feature-driven extraction as a
    promising augmentation mechanism rather than a proven standalone replacement
-   for examples.
+   for examples. A newer four-pack expanded WritingBench sample shows strong
+   Qwen-vs-MIMO judge sign flips, so evaluator calibration is now a first-order
+   blocker before increasing sample size.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A small PresentBench material-aware MIMO audit is also 2/2 success
    when `--judge-max-tokens 8192` is used, but larger PresentBench MIMO usage
@@ -190,14 +193,13 @@ prove the auto-skill method.
 ## Next Concrete Steps
 
 1. Run upstream PresentBench official judge once `GENAI_*` is configured.
-2. Extend the examples-plus-skill ablation to more WritingBench packs and debug
-   why it transfers poorly to PresentBench surrogate tasks. The first
-   independent MIMO judge-swap agrees on the 4-pack WritingBench smoke slice,
-   but the PresentBench surrogate result is negative, so this is not a
-   cross-domain method claim yet. For PresentBench, test constrained slide
-   composition that removes raw examples from the final prompt and passes only
-   abstract example signatures plus current-task hard constraints.
-3. For WritingBench, inspect the negative-transfer cases before expanding the
-   method claim.
-4. For expanded 50-pack data, run a small sampled heldout eval before using it
-   to guide method conclusions.
+2. Calibrate evaluators before expanding WritingBench N. The expanded four-pack
+   sample has Qwen/MIMO sign flips on the same candidate outputs, so inspect the
+   sign-flip cells manually or with a third independent judge before treating
+   either judge as the primary decision signal.
+3. For PresentBench, test constrained slide composition that removes raw
+   examples from the final prompt and passes only abstract example signatures
+   plus current-task hard constraints. Do not claim cross-domain transfer from
+   the current examples-plus-skill ablation.
+4. After evaluator calibration, decide whether to expand the WritingBench
+   examples-plus-skill ablation or redesign the skill induction mechanism.

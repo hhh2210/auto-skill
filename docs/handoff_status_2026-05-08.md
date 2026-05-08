@@ -83,6 +83,12 @@ Recent WritingBench smoke results:
   tested next. It was still negative: 8/8 success, mean 6.75, delta -0.875 vs
   prompt-only. This suggests the remaining issue is raw examples in the final
   prompt, not merely missing planning.
+- Expanded WritingBench sample (4 non-MVP packs, heldout=1) is now available in
+  `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl` and
+  `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl`.
+  Qwen judges skill/examples-plus modes as negative, while MIMO judges the same
+  candidate outputs as positive. Treat this as an evaluator-calibration blocker,
+  not as evidence to expand sample size blindly.
 
 Current MIMO train-example audit:
 
