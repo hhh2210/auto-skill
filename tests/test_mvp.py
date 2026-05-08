@@ -6,6 +6,7 @@ from auto_skill.mvp import (
     build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
+    build_task_first_feature_signature_prompt,
     build_validation_aware_skill_merge_prompt,
     evaluation_criteria,
     extract_overall_score,
@@ -158,6 +159,39 @@ class MVPTests(unittest.TestCase):
 
         self.assertIn("User examples:", prompt)
         self.assertIn("Reusable skill:", prompt)
+
+    def test_task_first_feature_signature_prompt_places_task_before_signatures(self) -> None:
+        prompt = build_task_first_feature_signature_prompt(
+            task={
+                "task_id": "task-1",
+                "task_input": "Write the current memo about Alpha.",
+                "materials": [],
+            },
+            feature_signatures="Do not copy Beta.",
+        )
+
+        self.assertIn("Mode: task_first_feature_signatures", prompt)
+        self.assertIn("higher priority than all", prompt)
+        self.assertLess(
+            prompt.index("Heldout task input:"),
+            prompt.index("Reusable feature signatures:"),
+        )
+        self.assertIn("Do not import task-specific facts", prompt)
+
+    def test_task_first_feature_signature_mode_uses_custom_prompt(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={"task_id": "task-1", "task_input": "Write a memo.", "materials": []},
+            mode="task_first_feature_signatures",
+            examples=[],
+            skill_md="# Abstract Feature Signatures",
+        )
+
+        self.assertIn("Mode: task_first_feature_signatures", prompt)
+        self.assertNotIn("User examples:", prompt)
+        self.assertLess(
+            prompt.index("Heldout task input:"),
+            prompt.index("Reusable feature signatures:"),
+        )
 
 
 if __name__ == "__main__":

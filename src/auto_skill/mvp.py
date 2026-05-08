@@ -218,6 +218,12 @@ def build_heldout_generation_prompt(
 ) -> str:
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
+    if mode == "task_first_feature_signatures":
+        return build_task_first_feature_signature_prompt(
+            task=task,
+            feature_signatures=skill_md,
+            max_material_chars=max_material_chars,
+        )
     examples_text = ""
     if mode in {
         "few_shot_examples_only",
@@ -292,6 +298,48 @@ Heldout task input:
 
 Material excerpts:
 {materials}
+"""
+
+
+def build_task_first_feature_signature_prompt(
+    *,
+    task: dict[str, Any],
+    feature_signatures: str | None,
+    max_material_chars: int = 4000,
+) -> str:
+    """Build a task-grounded prompt that uses signatures only after the task."""
+
+    task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
+    materials = material_context(task.get("materials", []), max_chars=max_material_chars)
+    signatures = feature_signatures or "(missing feature signatures)"
+    return f"""Complete the heldout task below.
+
+Mode: task_first_feature_signatures
+Use the heldout task input and material excerpts as the source of truth.
+Return only the final answer.
+
+Current-task deliverable priority:
+- Produce the completed artifact requested by the heldout task input.
+- Do not answer with a plan, outline, checklist, analysis, rubric mapping, or
+  explanation of how to solve the task unless the heldout task explicitly asks
+  for that artifact type.
+- Treat the current task and current materials as higher priority than all
+  reusable feature signatures.
+- Use feature signatures only as secondary guidance for transferable structure,
+  tone, and self-checks.
+- Do not import task-specific facts, domains, entities, section topics, or
+  numeric details from training examples unless they appear in the current task.
+
+Task ID: {task_id}
+
+Heldout task input:
+{task["task_input"]}
+
+Material excerpts:
+{materials}
+
+Reusable feature signatures:
+{signatures}
 """
 
 

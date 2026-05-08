@@ -108,6 +108,10 @@ class WritingBenchEvalTests(unittest.TestCase):
             "Keep actions concrete",
             mode_skill("examples_plus_feature_signatures", skills, "pack-1") or "",
         )
+        self.assertIn(
+            "Keep actions concrete",
+            mode_skill("task_first_feature_signatures", skills, "pack-1") or "",
+        )
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -117,6 +121,7 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertTrue(mode_needs_skill("one_shot_skill_from_examples", None))
         self.assertTrue(mode_needs_skill("examples_plus_feature_skill", None))
         self.assertTrue(mode_needs_skill("examples_plus_feature_signatures", None))
+        self.assertTrue(mode_needs_skill("task_first_feature_signatures", None))
 
     def test_reused_candidate_requires_success_generation_text(self) -> None:
         self.assertFalse(is_reusable_candidate_row({"status": "success", "generation": {}}))

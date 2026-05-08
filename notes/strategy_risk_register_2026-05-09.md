@@ -40,7 +40,7 @@ for handoff, but not research-confident for a paper claim.
 | MIMO subset is not full MIMO cleaning | The audited subset is 15 packs / 45 train examples, while the canonical expanded split is 50 packs / 150 train examples | Overclaiming could make handoff look like a full dual-model dataset | Label it as an audited subset unless a full MIMO pass is frozen and audited |
 | PresentBench examples-plus-skill is negative under surrogate | PresentBench surrogate examples-plus modes underperform prompt-only in current smoke | WritingBench augmentation result may not transfer cross-domain | Test slide-specific constrained composition without raw examples in final prompt |
 | Generic deliverable guardrail is insufficient | `notes/deliverable_guard_probe_2026-05-09.md` shows Education Consulting `examples_plus_feature_skill` improves to near prompt-only but `ours_no_validation` still scores 5.4 vs prompt-only 7.6 after adding final-deliverable priority; deterministic n-gram contamination evidence is mixed | The failure is deeper than "the model wrote an outline" | Target skill-only compression loss and task-specific constraint extraction before blaming example copying |
-| Skill compression is cheap but lossy | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes use about 21-29% of few-shot generation input tokens, but WritingBench negative transfer remains 37.5-75% depending on mode/judge. `notes/feature_signature_ablation_2026-05-09.md` shows a compact-signature smoke still below prompt-only/few-shot. | A cost-only win is not enough for the main method claim, and shortening context alone is insufficient | Redesign how transferable constraints stay grounded in the current task before expanding N |
+| Skill compression is cheap but lossy | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes use about 21-29% of few-shot generation input tokens, but WritingBench negative transfer remains 37.5-75% depending on mode/judge. `notes/feature_signature_ablation_2026-05-09.md` shows compact-signature and task-first signature smokes still below prompt-only/few-shot. | A cost-only win is not enough for the main method claim; shortening context and simple task-first ordering are insufficient | Preserve operational/detail anchors such as expected depth, evidence density, and task-specific empirical material handling before expanding N |
 
 ## Current Strategy Decision
 
@@ -65,7 +65,8 @@ loop is:
 4. Only then rerun or expand the auto-skill ablation.
 5. Prefer a task-grounded constraint loop over another skill-only LOO loop;
    current evidence says standalone compression is cheap but unstable, and the
-   first compact-signature smoke did not recover task-completion quality.
+   first compact-signature/task-first smokes did not recover task-completion
+   quality.
 
 ## Handoff Commands
 

@@ -51,6 +51,7 @@ SKILL_REQUIRED_MODES = {
     "examples_plus_feature_skill",
     "feature_signatures_only",
     "examples_plus_feature_signatures",
+    "task_first_feature_signatures",
     "slide_constrained_examples_plus_feature_skill",
     "layout_plan_examples_plus_feature_skill",
 }
@@ -151,10 +152,15 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         "examples_plus_feature_skill",
         "feature_signatures_only",
         "examples_plus_feature_signatures",
+        "task_first_feature_signatures",
         "slide_constrained_examples_plus_feature_skill",
         "layout_plan_examples_plus_feature_skill",
     }:
-        if mode in {"feature_signatures_only", "examples_plus_feature_signatures"}:
+        if mode in {
+            "feature_signatures_only",
+            "examples_plus_feature_signatures",
+            "task_first_feature_signatures",
+        }:
             return skills.get(
                 (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
             )
