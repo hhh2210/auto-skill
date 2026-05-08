@@ -378,8 +378,7 @@ uv run python scripts/eval/check_presentbench_official_eval_ready.py \
   --code-root data/PresentBench_code \
   --mode-result-root prompt_only=../PresentBench/results/prompt_only \
   --mode-result-root auto_skill=../PresentBench/results/auto_skill \
-  --judge-model gemini-3-flash-preview \
-  --limit-heldout 1
+  --judge-model gemini-3-flash-preview
 ```
 
 For CI smoke checks where slide artifacts or generated PresentBench examples are
@@ -424,7 +423,7 @@ uv run python scripts/eval/summarize_presentbench_official_scores.py \
 Gate the combined experiment state before reporting results:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --limit-heldout 1
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 ```
 
 By default this uses `--profile mvp`, which expects the current MVP artifact
@@ -437,7 +436,7 @@ phases:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile smoke --limit-heldout 1
-uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 ```
 
 All profiles still fail on schema-invalid rows. `smoke` permits partial
@@ -478,13 +477,16 @@ uv run python scripts/metrics/run_self_consistency_metric.py \
 
 uv run python scripts/metrics/summarize_mvp_metrics.py \
   --skills runs/skill_mvp.qwen.mvp.jsonl \
+  --skills runs/skill_mvp.qwen.ours_full.writingbench.jsonl \
+  --skills runs/skill_mvp.qwen.ours_full.presentbench.jsonl \
   --packs artifacts/packs/example_packs.v1.jsonl \
-  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation \
-  --limit-heldout 1 \
-  --eval runs/writingbench_official_eval.qwen.mvp.jsonl \
+  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill \
+  --eval runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
+  --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl \
   --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl \
-  --out runs/mvp_metrics.summary.json
+  --out runs/mvp_metrics.heldout2.current.summary.json
 ```
 
 ## Collaboration
