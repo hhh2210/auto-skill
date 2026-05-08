@@ -1,0 +1,74 @@
+# Strategy Risk Register 2026-05-09
+
+This note records the current strategy confidence audit after the expanded
+WritingBench sample and Qwen/MIMO judge-swap. The project is engineering-ready
+for handoff, but not research-confident for a paper claim.
+
+## Current Stable Evidence
+
+- Data cleaning follows `notes/benchmark_flow.md` for both checked-in MVP data
+  and the expanded 30-WB / 20-PB local workspace:
+  - `audit_benchmark_flow.py`: `status=ok`, no errors/warnings.
+  - Expanded workspace: 50 packs, 150 frozen train examples, 100 heldout tasks.
+  - `report_expanded_cleaning_status.py --expect-status ready`: ready.
+- MVP readiness is green as an engineering handoff:
+  - `report_experiment_readiness.py --profile mvp --expect-status ready`.
+- Full readiness is intentionally not green:
+  - `report_experiment_readiness.py --profile full --expect-status not_ready`.
+  - Blocker: 8 PresentBench heldout tasks x 2 official modes have
+    `missing_score_artifact`.
+- Expanded WritingBench sample shows judge sensitivity on the same candidate
+  outputs:
+  - 4 non-MVP packs x 1 heldout x 6 modes = 24 cells per judge.
+  - Qwen and MIMO both completed 24/24 cells.
+  - 10 Qwen-vs-MIMO sign flips after joining on identical candidate/baseline
+    output hashes.
+
+## Main Loopholes
+
+| Loophole | Evidence | Risk | Fix before claim |
+| --- | --- | --- | --- |
+| Evaluator calibration is unstable | 10 sign flips in `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl` on identical outputs | Any mean score claim can be an artifact of judge preference | Human/third-judge adjudicate sign flips; build a failure taxonomy before expanding N |
+| Skill-only is not consistently better than examples | MVP WritingBench Qwen and MIMO five-mode runs both show auto-skill below prompt/few-shot/one-shot on average | Current headline "examples -> reusable skill -> better heldout performance" is unsupported | Redesign induction or narrow the claim to examples-plus-skill augmentation only if it survives calibration |
+| PresentBench official score is missing | Full readiness fails only on missing official score artifacts | Surrogate slide scores can overstate or misstate real visual/PPT performance | Run upstream PresentBench official judge for `prompt_only` and `auto_skill` |
+| Same-model smoke evidence remains in canonical readiness | MVP readiness warns model monoculture and old rows missing top-level model identity | Reviewers can reject Qwen-only solver/judge evidence | Use split solver/judge model artifacts for any reported result; avoid old rows without model identity |
+| MIMO may over-reward structure and rubric keywords | Background packet review found Qwen more credible for Academic/Education sign flips, while MIMO rewarded heading/rubric-term reuse | MIMO judge-swap can make weak outputs look improved | Treat MIMO as one calibration axis, not ground truth |
+| PresentBench examples-plus-skill is negative under surrogate | PresentBench surrogate examples-plus modes underperform prompt-only in current smoke | WritingBench augmentation result may not transfer cross-domain | Test slide-specific constrained composition without raw examples in final prompt |
+
+## Current Strategy Decision
+
+Do not expand WritingBench N as paper evidence yet. Larger N will only make the
+judge-dependence problem more expensive unless the evaluator is calibrated.
+
+The next defensible loop is:
+
+1. Use the enriched disagreement packet to label each sign flip:
+   `judge_error`, `candidate_error`, `baseline_error`, `small_delta_noise`, or
+   `ambiguous`.
+2. Convert labels into a failure taxonomy:
+   - missing task completion despite strong structure;
+   - source-context pollution from examples/materials;
+   - overlong outline/planning output instead of final deliverable;
+   - rubric-keyword over-reward;
+   - small numerical delta noise.
+3. Decide which judge or rubric protocol is trusted for each task family.
+4. Only then rerun or expand the auto-skill ablation.
+
+## Handoff Commands
+
+```bash
+uv run python -m unittest discover -s tests
+uv run ruff check .
+diff -q AGENTS.md CLAUDE.md
+uv run python scripts/data/audit_benchmark_flow.py
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
+```
+
