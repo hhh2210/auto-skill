@@ -49,7 +49,7 @@ Fail-closed by design:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
-uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run --allow-missing-env --commands-out runs/presentbench_official_judge_commands.json
+uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run --allow-missing-env --expect-commands 16 --commands-out runs/presentbench_official_judge_commands.json
 ```
 
 The full-profile blockers are exactly the 8 PresentBench tasks x 2 official
@@ -60,6 +60,7 @@ upstream PresentBench checkout only supports `gemini` / `gemini_inline`. With
 `--dry-run --allow-missing-env`, the wrapper renders exactly 16 selected
 `judge.py` commands for the current 4 PresentBench packs x 2 heldout x 2 modes
 and can write them to a JSON command manifest with `--commands-out`.
+`--expect-commands 16` fails closed if the selected cell count drifts.
 
 Canonical current readiness reports are:
 
@@ -446,8 +447,9 @@ prove the auto-skill method.
 ## Next Concrete Steps
 
 1. Add `GENAI_API_KEY` to local `.env`, rerun the selected official-judge
-   dry-run with `--commands-out`, then run upstream PresentBench official judge
-   to produce `*_score.yaml` files for the 16 selected cells.
+   dry-run with `--expect-commands 16 --commands-out`, then run upstream
+   PresentBench official judge to produce `*_score.yaml` files for the 16
+   selected cells.
 2. Calibrate evaluators before expanding WritingBench N. The expanded four-pack
    sample has Qwen/MIMO sign flips on the same candidate outputs, so inspect the
    sign-flip cells manually or with a third independent judge before treating

@@ -292,6 +292,11 @@ def main() -> int:
         help="Write rendered judge commands to a JSON manifest for handoff/debugging.",
     )
     parser.add_argument(
+        "--expect-commands",
+        type=int,
+        help="Fail if the rendered command count differs from this value.",
+    )
+    parser.add_argument(
         "--allow-missing-env",
         action="store_true",
         help="Permit dry-run command rendering without GENAI_API_KEY.",
@@ -357,6 +362,10 @@ def main() -> int:
         print(" ".join(command))
     if not commands and not errors:
         print("No unscored selected PresentBench official judge cells.")
+    if args.expect_commands is not None and len(commands) != args.expect_commands:
+        errors.append(
+            f"expected {args.expect_commands} selected judge commands, got {len(commands)}"
+        )
     if args.commands_out:
         write_command_manifest(args.commands_out, commands, errors)
 

@@ -307,6 +307,43 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             self.assertEqual(len(manifest["commands"]), 2)
             self.assertIn("--agent_name", manifest["commands"][0]["argv"])
 
+    def test_cli_expect_commands_fails_on_count_mismatch(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            code_root = root / "code"
+            data_root = root / "data"
+            prompt_root = root / "prompt"
+            code_root.mkdir()
+            data_root.mkdir()
+            prompt_root.mkdir()
+            (code_root / "judge_all.py").write_text("# judge\n", encoding="utf-8")
+            (code_root / "judge.py").write_text("# judge\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/eval/run_presentbench_official_judge.py",
+                    "--code-root",
+                    str(code_root),
+                    "--data-root",
+                    str(data_root),
+                    "--mode-result-root",
+                    f"prompt_only={prompt_root}",
+                    "--dry-run",
+                    "--allow-missing-env",
+                    "--all-presentbench",
+                    "--expect-commands",
+                    "2",
+                ],
+                check=False,
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("expected 2 selected judge commands, got 1", completed.stderr)
+
     def test_allow_missing_env_is_dry_run_only(self) -> None:
         completed = subprocess.run(
             [
