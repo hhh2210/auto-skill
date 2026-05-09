@@ -54,6 +54,7 @@ stable.
 | `ops/validate_run_artifacts.py` | Validate generated-output, skill, and eval artifacts. | CI/core |
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic; supports signature/judge parse retries. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge; supports judge parse retries. | debug-only metric |
+| `metrics/run_grounding_eval.py` | Eval-only grounding/hallucination probe for heldout outputs against current task/material evidence; supports judge parse retries. | diagnostic metric |
 | `metrics/export_judge_disagreements.py` | Export judge delta sign-disagreement packets with output stats and optional skill context for evaluator calibration review. | diagnostic |
 | `metrics/validate_disagreement_taxonomy.py` | Validate per-packet calibration labels against judge-disagreement packet hashes. | diagnostic |
 | `metrics/report_example_contamination.py` | Deterministic train-example phrase overlap diagnostic for candidate outputs. | diagnostic |

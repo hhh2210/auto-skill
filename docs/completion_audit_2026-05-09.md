@@ -19,7 +19,7 @@ benchmark or paper-level claim.
 | Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
-| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. | Done as mechanism smoke; promising but not a benchmark win |
+| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. A grounding probe found mean grounding score 4.5 and hallucination risk 6.75. | Done as mechanism smoke; current version is too hallucination-prone |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -193,6 +193,28 @@ not beat few-shot examples under either judge. The method direction is still
 useful because it points to concrete task-instantiation information lost by
 skill compression, but it is not yet a paper-level performance claim.
 
+### WritingBench, Operational Anchors Grounding Probe
+
+Artifacts:
+
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json`
+
+Coverage: 4/4 success. The judge sees only heldout task input/materials as
+factual evidence; user examples and induced skills are not treated as evidence
+for heldout factual claims.
+
+| Mode | Mean grounding score | Mean hallucination risk | Mean unsupported claim count |
+| --- | ---: | ---: | ---: |
+| task_first_operational_anchors | 4.5 | 6.75 | 8.0 |
+
+Interpretation: the score improvements from operational anchors are not clean.
+The probe flags unsupported specifics such as fabricated case-study details,
+travel costs/routes, product compatibility claims, and academic citations. This
+turns grounding/authenticity into a method blocker rather than a small caveat.
+Because this is an LLM-judge diagnostic, exact scores may drift across reruns;
+the stable signal is the repeated unsupported-detail findings.
+
 ### PresentBench Surrogate
 
 Artifacts:
@@ -277,8 +299,8 @@ prove the auto-skill method.
    variant, so shorter context and simple task-first ordering are not the
    missing mechanism. The later `task_first_operational_anchors` check is
    healthier than prior compression variants on the calibrated four-pack sample
-   but still does not beat few-shot examples, and may be partially rewarded for
-   ungrounded detail.
+   but still does not beat few-shot examples. The grounding probe confirms that
+   it is partially rewarded for ungrounded detail.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -300,8 +322,7 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
-5. Add an explicit hallucination/grounding check for
-   `task_first_operational_anchors` before expanding N. The four-pack Qwen and
-   MIMO judge-swap check is complete, but the remaining risk is that the mode
-   wins by producing plausible unsupported specifics rather than by learning
-   transferable example structure.
+5. Redesign operational anchors with a stricter evidence policy before
+   expanding N. The grounding probe confirms the current mode often produces
+   plausible unsupported specifics, so the next version needs to distinguish
+   "detail slots to fill" from "facts allowed by current evidence".

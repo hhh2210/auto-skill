@@ -289,6 +289,59 @@ Interpretation:
   replacement for examples and still needs grounding checks for fabricated
   specifics.
 
+## Grounding Probe
+
+Because operational anchors explicitly encourage detail depth and task-specific
+instantiation, they can raise WritingBench scores by producing plausible but
+unsupported specifics. A follow-up grounding probe judges candidate outputs
+against only the heldout task input and heldout materials. User examples and
+induced skills are explicitly not factual evidence for heldout claims.
+
+Command:
+
+```bash
+uv run python scripts/metrics/run_grounding_eval.py \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --eval runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.jsonl \
+  --judge-config-prefix MIMO \
+  --modes task_first_operational_anchors \
+  --out runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl \
+  --summary-out runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json \
+  --num-threads 4 \
+  --max-tokens 4096 \
+  --parse-max-attempts 3 \
+  --max-evidence-chars 80000 \
+  --max-candidate-chars 80000
+```
+
+Coverage: 4/4 success.
+
+| Mode | Mean grounding score | Mean hallucination risk | Mean unsupported claim count |
+|---|---:|---:|---:|
+| `task_first_operational_anchors` | 4.5 | 6.75 | 8.0 |
+
+Representative unsupported-claim findings:
+
+| Pack | Grounding score | Risk | Example unsupported detail |
+|---|---:|---:|---|
+| Academic Engineering Paper Outline EN | 4 | 8 | TPM/TLS/RBAC details, six-month industrial-park test duration, and specific vulnerability findings are not in the heldout evidence. |
+| Product Description EN | 6 | 5 | One-button operation, three-minute extraction, and broad capsule compatibility are not specified by the current evidence. |
+| Travel Guide ZH | 4 | 8 | Distance, toll/fuel costs, parking prices, restaurant names, and detailed attraction sequence are not provided by the heldout task. |
+| Education Consulting EN | 4 | 6 | The named student case study, parent-record workflow, agency interview questions, and other practical details are not in the heldout materials. |
+
+Interpretation:
+
+- This probe confirms the main risk: operational anchors can improve apparent
+  task completeness by inventing concrete task facts. Because this is an
+  LLM-judge diagnostic, exact scores can drift across reruns; the stable signal
+  is the high hallucination risk and repeated unsupported-detail findings.
+- The mechanism should not be expanded as-is. The next prompt/module design
+  needs an evidence policy that separates "detail slots to fill" from "details
+  allowed to fabricate".
+- The grounding metric is diagnostic only. It is not an official benchmark
+  score and should be used to reject or revise candidate methods before running
+  larger N.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -302,4 +355,5 @@ content, not just shortening `SKILL.md`. In particular, a useful skill artifact
 may need to preserve operational anchors such as expected detail depth,
 evidence density, and how to instantiate task-specific empirical material. The
 `task_first_operational_anchors` four-pack check is a concrete partial recovery
-signal, but future eval must penalize ungrounded detail fabrication.
+signal, but the grounding probe shows the current version still fabricates too
+many unsupported specifics.
