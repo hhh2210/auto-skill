@@ -1,0 +1,536 @@
+# Completion Audit 2026-05-09
+
+This audit maps the active research goal to concrete local evidence. The goal is
+not complete. The repo is ready as an engineering prototype, cleaned-data
+workspace, and MVP/surrogate eval handoff, but it is not ready for a full
+benchmark or paper-level claim.
+
+## Objective Breakdown
+
+| Requirement | Current evidence | Status |
+| --- | --- | --- |
+| Construct and clean WritingBench / PresentBench example data | Checked-in MVP packs: `artifacts/packs/example_packs.v1.jsonl`, 8 packs, 24 generated train examples. Medium expanded pass: `runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl`, 50 packs, 150 frozen train examples, 100 heldout tasks. Max-available Qwen pass: `runs/expanded/example_packs.max_available.qwen.v1.jsonl`, 142 packs, 426 frozen train examples, 284 heldout tasks. | Done for MVP and local expanded workspace |
+| Use Qwen3.5-Plus and MIMO APIs | Qwen generated the MVP/expanded canonical examples and solver outputs. MIMO was used for WritingBench train-example audit, WritingBench judge-swap, PresentBench audit, and a frozen local subset: `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` has 15 packs and 45 frozen train examples with benchmark-flow `status=ok`. | Done for Qwen canonical data and MIMO audited subset; not a full 50-pack MIMO clean |
+| Verify benchmark cleaning follows `notes/benchmark_flow.md` | `uv run python scripts/data/audit_benchmark_flow.py ...` returns `status=ok` for checked-in MVP, 30WB/20PB expanded artifacts, MIMO subset, and max-available Qwen artifacts. The expanded artifacts include job/generated-output files and return no warnings. The checked-in MVP audit returns provenance warnings because `artifacts/jobs/` is intentionally not committed. The audit checks artifact-level flow/provenance, strict input-boundary fields, private-row binding, train/heldout separation, generated-output identity, and generation-prompt reconstruction from visible source task/materials when job rows are supplied. | Done for artifact-level flow/provenance audit; semantic leakage remains a sampled/heuristic risk |
+| Auto-skill MVP evaluated on WritingBench and PresentBench | WritingBench Qwen judge: 40/40 success across 4 packs x 2 heldout x 5 modes. PresentBench surrogate: 40/40 success across 4 packs x 2 heldout x 5 modes, plus 32/32 success for examples-plus-skill, slide-constrained, and layout-plan surrogate ablations. | Done as MVP/surrogate eval |
+| Mechanism ablation for examples plus skill | WritingBench Qwen judge: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`, 16/16 success. WritingBench MIMO judge-swap: `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`, 16/16 success after increasing `--judge-max-tokens` to 8192. | Done for first 4-pack smoke ablation |
+| Expanded sample heldout eval | `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl` and `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl` both have 24/24 success on four non-MVP WritingBench packs. See `notes/expanded_writingbench_sample_eval_2026-05-09.md`. | Done as expanded smoke, but results are judge-sensitive |
+| Judge calibration packet | `scripts/metrics/export_judge_disagreements.py` exports the Qwen-vs-MIMO sign-flip cells to `runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl` and `.md` for manual/third-judge review. Current packets include same-output checks, output hashes/stats, task/private rubric context, and skill artifact context. | Done for current expanded sample |
+| Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
+| Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
+| Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
+| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. A grounding probe found mean grounding score 4.5 and hallucination risk 6.75. | Done as mechanism smoke; current version is too hallucination-prone |
+| PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. A live dry-run of `run_presentbench_official_judge.py` failed before API calls because `.env` has no `GENAI_API_KEY`; upstream `judge.py` currently accepts only `gemini` / `gemini_inline`, not OpenAI-compatible Qwen/Bailian. The wrapper now renders 16 selected `judge.py` commands for the current MVP cells instead of accidentally running `judge_all.py` over all 238 upstream cases. | Blocked: configure `GENAI_API_KEY` and run selected upstream `judge.py` cells to produce score YAMLs |
+| Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in the heldout-eval `model_inventory.scored` block, with zero missing model-identity fields. Self-consistency rows are kept separate in `diagnostic_model_inventory`. Current MVP readiness still warns that the canonical readiness artifacts are Qwen-only. `summarize_presentbench_official_scores.py` supports explicit `--solver-model` and `--judge-model` metadata, so full readiness can keep all-row model identity complete even while the 16 PresentBench official score artifacts are missing; `model_inventory.scored` still reports Qwen-only scored evidence until those official rows are real successes. | Partial: contract fixed, official score rows still missing |
+| Use skeptical/background review | Background-agent review was performed in the Codex thread and summarized in `notes/background_review_2026-05-09.md`. The review identified PresentBench official scoring, heldout coverage, MIMO subset scope, and method evidence as blockers. | Done for this iteration, but repeat after official scoring / ablations |
+| Be factually confident in strategy | Current evidence shows auto-skill does not beat prompt-only/few-shot/one-shot reliably. | Not achieved |
+
+## Current Gates
+
+Remote CI:
+
+- Latest code-bearing commit covered by this audit: `84c7563`
+  (`fix: record presentbench judge dry-run warnings`). Documentation-only
+  commits may appear after it on `main`. The code commit is visible on GitHub at
+  `https://github.com/hhh2210/auto-skill/commit/84c7563147ed6206de7af7220b07357d4855e472`.
+- Local validation for `84c7563` is green:
+  `uv run python -m unittest discover -s tests` reports 301 tests OK,
+  `uv run ruff check .` reports all checks passed, `diff -q AGENTS.md CLAUDE.md`
+  is clean, and `git diff --check` is clean.
+- The latest GitHub Actions status for this code-bearing state was not reliably verified in
+  this environment: `gh run list` is blocked by the current approval policy and
+  the unauthenticated GitHub Actions page intermittently fails to load current
+  runs. Do not treat older CI runs as proof for the latest commit.
+- Last directly observed green CI before this local-only verification was the
+  fixture-readiness CI series ending at `f0e1dc7`
+  (`test: label fixture readiness ci gate`).
+- CI intentionally checks the MVP readiness contract with committed fixture
+  artifacts, not ignored real `runs/*` artifacts. The real local MVP and
+  expanded artifact readiness gates are the explicit commands below.
+- Earlier CI failures came from two clean-checkout assumptions: PresentBench
+  judge-runner tests depended on ignored `data/PresentBench_code`, and an MVP
+  readiness CI command depended on ignored `runs/*`. Both are now fixture-based
+  contract checks so GitHub clean checkouts match local behavior.
+
+Green:
+
+```bash
+uv run python -m unittest discover -s tests
+uv run ruff check .
+diff -q AGENTS.md CLAUDE.md
+uv run python scripts/data/audit_benchmark_flow.py
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.mimo.sample.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.mimo.sample.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample.latest_success.jsonl
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
+uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl --expect-packs 142 --expect-train-examples 426 --expect-heldout-tasks 284 --expect-generation-jobs 426 --skip-mimo-subset --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 2 --out runs/presentbench_official_ready.jsonl
+uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
+```
+
+Fail-closed readiness and fail-open official-judge command rendering:
+
+```bash
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
+uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --solver-model qwen3.5-plus --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 2 --allow-partial --out /tmp/pb_scores_with_models.jsonl --summary-out /tmp/pb_scores_with_models.summary.json
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready --present-official-scores /tmp/pb_scores_with_models.jsonl
+uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run --allow-missing-env --expect-commands 16 --commands-out runs/presentbench_official_judge_commands.json
+```
+
+The full-profile readiness gate fails closed on the 8 PresentBench tasks x 2
+official modes whose upstream score YAMLs are missing. Current `.env` contains
+Bailian and MIMO variables, but no `GENAI_API_KEY`; the upstream PresentBench
+checkout only supports `gemini` / `gemini_inline`. The official-judge wrapper
+fails closed without `--allow-missing-env`; with `--dry-run --allow-missing-env`,
+it intentionally renders exactly 16 selected `judge.py` commands for the current
+4 PresentBench packs x 2 heldout x 2 modes and writes them to a JSON command
+manifest with `--commands-out`. `--expect-commands 16` fails closed if the
+selected cell count drifts. As of `84c7563`, the command manifest also records
+dry-run warnings such as the missing `GENAI_API_KEY` requirement, so handoff
+readers can see the blocker without parsing stderr.
+
+As of commit `aa85fe5`, the official-score summarizer also records explicit
+`solver_model` / `judge_model` metadata when invoked with `--solver-model` and
+`--judge-model`. The full-profile gate still fails on missing score artifacts,
+but no longer emits missing-model-identity warnings for those placeholder rows.
+As of commit `d357f60`, the full-profile gate also emits an explicit warning
+when `GENAI_API_KEY` is absent from the process environment and local `.env`,
+because upstream PresentBench `judge.py` cannot be run without it.
+
+The full-profile report includes both all-row and scored-row model inventories.
+Do not read all-row `model_inventory.monoculture=false` as a paper-facing
+de-monoculture claim by itself: the full profile includes
+`gemini-3-flash-preview` identity on missing PresentBench official placeholder
+rows. The machine-readable `model_inventory.scored` block now excludes
+non-success / placeholder eval rows and emits `scored_model_monoculture` when
+the actually scored eval rows plus skill rows are still Qwen-only.
+
+As of commit `c45ac1b`, model inventory also infers legacy self-consistency
+solver identity from `signature_generation.model`. In metrics summaries,
+`model_inventory` is heldout-eval only and `diagnostic_model_inventory` includes
+self-consistency or other diagnostic rows. The current
+`runs/mvp_metrics.heldout2.current.summary.json` reports complete model identity
+for both inventories and includes the completed Qwen + MIMO judge-swap evidence;
+full experiment readiness remains Qwen-only in `model_inventory.scored` because
+the Gemini PresentBench official rows are still missing-score placeholders
+rather than successes.
+
+Canonical current readiness reports are:
+
+- `runs/readiness.mvp.current.json`
+- `runs/readiness.full.current.json`
+
+Do not use older ad hoc files such as `runs/experiment_readiness.current.json`
+as the source of truth; some were produced before the profile/path contract was
+updated.
+
+For max-available cleaning, use
+`runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl`
+in readiness and benchmark-flow checks. The raw append-only
+`runs/expanded/generated_desired_outputs.max_available.qwen.jsonl` intentionally
+keeps four historical failed attempts for traceability; latest status per
+`(job_id, prompt_sha256)` is 426/426 `success`.
+
+## Score Evidence
+
+### WritingBench, Qwen Judge
+
+Artifact: `runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl`
+
+Coverage: 40/40 success.
+
+| Mode | Mean score | Delta vs prompt_only | Wins / losses / ties |
+| --- | ---: | ---: | --- |
+| prompt_only | 7.10 | n/a | n/a |
+| few_shot_examples_only | 6.60 | -0.50 | 3 / 5 / 0 |
+| one_shot_skill_from_examples | 6.825 | -0.275 | 5 / 3 / 0 |
+| ours_no_validation | 6.275 | -0.825 | 1 / 6 / 1 |
+| auto_skill | 6.50 | -0.60 | 3 / 4 / 1 |
+
+Interpretation: current auto-skill does not support the headline claim on
+WritingBench. Negative transfer is common.
+
+### WritingBench, MIMO Judge-Swap
+
+Artifact: `runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl`
+
+Coverage: 40/40 success. The earlier MIMO `content_filter` refusal on
+`writingbench_Finance_Business_Tender_Document_zh::heldout::0`,
+`few_shot_examples_only` was retried successfully after classifying provider
+refusals separately from parse errors.
+
+| Mode | Mean score | Delta vs prompt_only | Wins / losses / ties |
+| --- | ---: | ---: | --- |
+| prompt_only | 6.925 | n/a | n/a |
+| few_shot_examples_only | 6.75 | -0.175 | 3 / 3 / 2 |
+| one_shot_skill_from_examples | 6.425 | -0.50 | 2 / 4 / 2 |
+| ours_no_validation | 6.15 | -0.775 | 1 / 6 / 1 |
+| auto_skill | 6.30 | -0.625 | 3 / 5 / 0 |
+
+Interpretation: switching the judge to MIMO does not rescue the auto-skill
+claim. It also shows MIMO judge runs need retry support for provider refusals
+and transient API errors.
+
+### WritingBench, Examples Plus Skill Ablation
+
+Artifact: `runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl`
+and `runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl`
+
+Coverage: 16/16 success for each judge across 4 packs x 2 heldout x 2
+ablation modes. The paired deltas below are computed by joining the ablation
+artifact with the corresponding five-mode baseline artifact on `(pack_id,
+task_id)`. The canonical `runs/mvp_metrics.heldout2.current.summary.json`
+records these joins under `cross_eval_score_summaries`.
+
+| Judge | Mode | Mean score | Delta vs prompt_only | Wins / losses / ties |
+| --- | --- | ---: | ---: | --- |
+| Qwen | examples_plus_one_shot_skill | 7.525 | +0.425 | 6 / 2 / 0 |
+| Qwen | examples_plus_feature_skill | 7.775 | +0.675 | 7 / 1 / 0 |
+| MIMO | examples_plus_one_shot_skill | 7.45 | +0.525 | 6 / 2 / 0 |
+| MIMO | examples_plus_feature_skill | 7.35 | +0.425 | 5 / 2 / 1 |
+
+Interpretation: on this smoke slice, skills are more useful as an augmentation
+to user examples than as a replacement for examples. This weakens the current
+“skill-only reusable package beats examples” claim, but gives a concrete next
+mechanism direction: use induced skills to organize or constrain examples rather
+than compressing examples away.
+
+### WritingBench, Compact Feature Signatures Smoke
+
+Artifact:
+`runs/expanded/writingbench_official_eval.qwen.feature_signatures_smoke.jsonl`
+
+Coverage: 2/2 success for one expanded WritingBench pack x one heldout x two
+new modes. This is a mechanism smoke, not a benchmark result.
+
+Pack: `writingbench_Academic_Engineering_Paper_Outline_en`
+
+Task: `writingbench_Academic_Engineering_Paper_Outline_en::heldout::0`
+
+| Mode | Qwen WritingBench score |
+| --- | ---: |
+| prompt_only | 4.0 |
+| few_shot_examples_only | 4.4 |
+| one_shot_skill_from_examples | 2.4 |
+| ours_no_validation | 2.8 |
+| examples_plus_one_shot_skill | 2.8 |
+| examples_plus_feature_skill | 2.8 |
+| feature_signatures_only | 2.6 |
+| examples_plus_feature_signatures | 3.0 |
+| task_first_feature_signatures | 3.0 |
+| task_first_operational_anchors | 6.0 |
+
+Interpretation: compact signatures derived from `cross_example_report` do not
+recover the task-completion information lost by skill compression on this cell.
+They are slightly better than the corresponding full-feature skill modes on this
+single task, but still well below few-shot examples. The task-first variant
+places heldout task/materials before signatures and removes raw examples, but
+still has outline/template-like weaknesses and under-delivers technical depth
+and task-specific evidence. In contrast, sanitized
+`task_first_operational_anchors` recovers a much longer output (38,551 chars)
+and improves technical coverage, evidence density, and structural completeness
+on this one Qwen-judged cell.
+However, the output may also be rewarded for hallucinated empirical detail and
+generic references, so this is a candidate mechanism rather than a clean win.
+
+### WritingBench, Operational Anchors Four-Pack Check
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen success and 4/4 MIMO judge-swap success on the existing
+calibrated expanded WritingBench sample.
+
+| Judge | Mode | Mean score |
+| --- | --- | ---: |
+| Qwen | prompt_only | 6.05 |
+| Qwen | few_shot_examples_only | 6.20 |
+| Qwen | one_shot_skill_from_examples | 5.15 |
+| Qwen | ours_no_validation | 4.70 |
+| Qwen | examples_plus_feature_skill | 5.25 |
+| Qwen | task_first_operational_anchors | 6.05 |
+| MIMO | prompt_only | 6.20 |
+| MIMO | few_shot_examples_only | 7.25 |
+| MIMO | one_shot_skill_from_examples | 7.05 |
+| MIMO | ours_no_validation | 6.50 |
+| MIMO | examples_plus_feature_skill | 7.20 |
+| MIMO | task_first_operational_anchors | 7.05 |
+
+Interpretation: operational anchors recover from the worst compression failures
+and are competitive with prompt-only / one-shot on this small slice, but they do
+not beat few-shot examples under either judge. The method direction is still
+useful because it points to concrete task-instantiation information lost by
+skill compression, but it is not yet a paper-level performance claim.
+
+### WritingBench, Operational Anchors Grounding Probe
+
+Artifacts:
+
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json`
+
+Coverage: 4/4 success. The judge sees only heldout task input/materials as
+factual evidence; user examples and induced skills are not treated as evidence
+for heldout factual claims.
+
+| Mode | Mean grounding score | Mean hallucination risk | Mean unsupported claim count |
+| --- | ---: | ---: | ---: |
+| task_first_operational_anchors | 4.5 | 6.75 | 8.0 |
+
+Interpretation: the score improvements from operational anchors are not clean.
+The probe flags unsupported specifics such as fabricated case-study details,
+travel costs/routes, product compatibility claims, and academic citations. This
+turns grounding/authenticity into a method blocker rather than a small caveat.
+Because this is an LLM-judge diagnostic, exact scores may drift across reruns;
+the stable signal is the repeated unsupported-detail findings.
+
+### WritingBench, Evidence-Policy Operational Anchors
+
+After the grounding probe, `task_first_operational_anchors` was patched with an
+explicit evidence policy: anchors are detail-type requests, and concrete facts
+must come from the current task/materials or be left generic.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success.
+
+| Metric | Old anchors | Evidence-policy anchors |
+| --- | ---: | ---: |
+| Qwen WritingBench mean | 6.05 | 6.25 |
+| MIMO judge-swap mean | 7.05 | 6.85 |
+| MIMO grounding mean | 4.5 | 5.75 |
+| MIMO hallucination risk mean | 6.75 | 6.0 |
+| MIMO unsupported claim count mean | 8.0 | 4.0 |
+
+Interpretation: the evidence policy is a real but incomplete fix. It roughly
+halves unsupported claims while preserving task scores, but Academic and Travel
+Guide outputs remain high-risk. The next method version should extract
+allowable current-task facts before generation rather than relying only on
+prompt-level prohibitions.
+
+### WritingBench, Evidence-Inventory Operational Anchors
+
+The next variant, `task_first_evidence_anchored_operational_anchors`, adds a
+deterministic current-evidence inventory to the prompt and treats the extracted
+facts as a whitelist for concrete claims.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success. The first Qwen run had one
+`generation_incomplete` Academic cell at `--max-tokens 8192`; rerunning with
+`--max-tokens 16384` completed the cell.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors |
+| --- | ---: | ---: |
+| Qwen WritingBench mean | 6.25 | 5.25 |
+| MIMO judge-swap mean | 6.85 | 6.70 |
+| MIMO grounding mean | 5.75 | 6.75 |
+| MIMO hallucination risk mean | 6.0 | 4.25 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 |
+
+Interpretation: the inventory improves grounding and reduces hallucination risk,
+but it hurts task completion too much. Treat it as a negative/diagnostic
+ablation: a hard whitelist is safer, but the method needs a softer distinction
+between current-evidence facts and clearly generic/common-knowledge scaffolding.
+
+### WritingBench, Two-Level Operational Anchors
+
+`task_first_two_level_operational_anchors` relaxes the hard whitelist into a
+two-level policy: specific facts must come from current evidence, while generic
+scaffolding is allowed if it remains generic.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors | Two-level anchors |
+| --- | ---: | ---: | ---: |
+| Qwen WritingBench mean | 6.25 | 5.25 | 5.55 |
+| MIMO judge-swap mean | 6.85 | 6.70 | 6.50 |
+| MIMO grounding mean | 5.75 | 6.75 | 5.5 |
+| MIMO hallucination risk mean | 6.0 | 4.25 | 5.25 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 | 5.5 |
+
+Interpretation: two-level wording is a negative ablation. It does not recover
+the task-score loss from hard inventory and also weakens grounding. More prompt
+wording is likely the wrong lever; the next useful direction is a separate
+evidence/scaffolding planning stage.
+
+### WritingBench, Staged Planner Operational Anchors
+
+`task_first_planned_operational_anchors` adds a separate planner call before
+final generation. The planner returns JSON fields for `grounded_facts`,
+`generic_scaffolding`, `missing_specifics`, and `generation_constraints`.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors | Two-level anchors | Staged planner |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen WritingBench mean | 6.25 | 5.25 | 5.55 | 5.30 |
+| MIMO judge-swap mean | 6.85 | 6.70 | 6.50 | 6.45 |
+| MIMO grounding mean | 5.75 | 6.75 | 5.5 | 5.5 |
+| MIMO hallucination risk mean | 6.0 | 4.25 | 5.25 | 7.0 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 | 5.5 | 6.0 |
+
+Interpretation: the first staged planner is also negative. It produces
+constraint-heavy plans that make the final output more cautious and generic,
+but do not improve grounding. A useful staged design needs content-bearing
+skeletons with grounded fact citations and explicit fallback text, not just
+constraints.
+
+### PresentBench Surrogate
+
+Artifacts:
+
+- `runs/presentbench_surrogate_eval.qwen.mvp.jsonl`
+- `runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl`
+- `runs/presentbench_surrogate_eval.qwen.examples_plus_skill.heldout2.jsonl`
+- `runs/presentbench_surrogate_eval.qwen.slide_constrained_examples_plus_feature.heldout2.jsonl`
+- `runs/presentbench_surrogate_eval.qwen.layout_plan_examples_plus_feature.heldout2.jsonl`
+
+Coverage: 72/72 success across the combined files. This is a text/rubric
+surrogate, not the official visual/PPT evaluator.
+
+| Mode | Mean score | Delta vs prompt_only |
+| --- | ---: | ---: |
+| prompt_only | 7.625 | n/a |
+| few_shot_examples_only | 8.25 | +0.625 |
+| one_shot_skill_from_examples | 8.85 | +1.225 |
+| ours_no_validation | 8.625 | +1.00 |
+| auto_skill | 8.375 | +0.75 |
+| examples_plus_one_shot_skill | 6.625 | -1.00 |
+| examples_plus_feature_skill | 7.00 | -0.625 |
+| slide_constrained_examples_plus_feature_skill | 6.625 | -1.00 |
+| layout_plan_examples_plus_feature_skill | 6.75 | -0.875 |
+
+Interpretation: PresentBench surrogate looks more favorable than WritingBench,
+but it cannot replace official PresentBench scoring. The examples-plus-skill
+mechanism that is positive on WritingBench is negative on this PresentBench
+surrogate slice, so it is not yet a cross-domain method claim. The failure
+diagnostic in `notes/presentbench_examples_plus_failure_diagnostic.md` points to
+cross-task slide layout interference from raw examples plus skill. A light
+prompt-only slide-constraint guardrail did not fix the issue; an explicit
+layout-plan stage also remained negative when raw examples stayed in the final
+prompt.
+
+## Data-Cleaning Evidence
+
+Expanded local pass:
+
+- 30 WritingBench packs.
+- 20 PresentBench packs.
+- 150/150 latest generated desired outputs are success.
+- 100 heldout tasks.
+- Expanded status gate is `ready`; strict local handoff with
+  `--require-mimo-subset` is also `ready`.
+- Required audits:
+  - MIMO WritingBench sample: 6/6 success.
+  - Qwen PresentBench material-aware sample: 2/2 success.
+- Optional MIMO PresentBench audit: 2/2 success after rerun with
+  `--judge-max-tokens 8192`; mean score 8.4.
+- MIMO frozen subset: 15 packs, 45 frozen train examples, 30 heldout tasks,
+  45 generation jobs, 12 WritingBench packs, 3 PresentBench packs, and
+  benchmark-flow `status=ok`.
+
+Interpretation: expanded cleaning is usable for handoff and follow-up
+experiments, but it is not a released dataset snapshot and does not by itself
+prove the auto-skill method.
+
+## Remaining Blockers
+
+1. PresentBench official scoring is missing. Need `GENAI_API_KEY`; `GENAI_BASE_URL`
+   is optional upstream Gemini configuration, not a substitute for the key. Then
+   run the selected official `judge.py` cells for `prompt_only` and `auto_skill`.
+2. Current skill-only auto-skill design is not winning on WritingBench and is
+   only surrogate-positive on PresentBench. The new examples-plus-skill ablation
+   is positive on WritingBench, so treat feature-driven extraction as a
+   promising augmentation mechanism rather than a proven standalone replacement
+   for examples. A newer four-pack expanded WritingBench sample shows strong
+   Qwen-vs-MIMO judge sign flips, so evaluator calibration is now a first-order
+   blocker before increasing sample size. The first provisional taxonomy is in
+   `notes/judge_disagreement_taxonomy_2026-05-09.md` and machine-validated
+   against packet hashes. A targeted final-deliverable prompt guardrail improved
+   `examples_plus_feature_skill` on the worst Education Consulting probe but
+   did not fix skill-only negative transfer. A deterministic train-only n-gram
+   diagnostic did not show higher contamination for `examples_plus_feature_skill`
+   than for prompt-only on that probe, so the next method loop should address
+   skill-only compression loss and task-specific constraint extraction before
+   blaming raw example copying. The current compression diagnostic is in
+   `notes/skill_compression_diagnostic_2026-05-09.md`. A compact
+   feature-signature smoke in `notes/feature_signature_ablation_2026-05-09.md`
+   also stayed below prompt-only/few-shot even after a task-first prompt-order
+   variant, so shorter context and simple task-first ordering are not the
+   missing mechanism. The later `task_first_operational_anchors` check is
+   healthier than prior compression variants on the calibrated four-pack sample
+   but the original version did not beat few-shot examples. The grounding probe
+   confirms that it is partially rewarded for ungrounded detail. A minimal
+   evidence-policy patch slightly beats few-shot under Qwen but remains below
+   few-shot under MIMO, reduces unsupported claims, and still does not solve
+   grounding. A stricter evidence-inventory variant improves grounding further
+   but loses too much task score. A two-level wording variant also
+   underperforms, so further prompt-only wording is not the next lever. The
+   first staged planner also underperforms because its plan is constraint-heavy
+   rather than content-bearing.
+3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
+   slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
+   only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
+   the canonical cleaner until a full MIMO pass is frozen and audited.
+4. Readiness now infers legacy model identity from nested `model_calls`,
+   `generation`, `signature_generation`, `judge`, and `judge_calls` fields.
+   `summarize_presentbench_official_scores.py` can also write explicit
+   `solver_model` / `judge_model` metadata for unscored PresentBench official
+   placeholder rows, so current full readiness has complete all-row model
+   identity. The `model_inventory.scored` sub-block still warns that the
+   actually scored evidence is Qwen-only until real Gemini official scores
+   exist. The remaining full-readiness blockers are missing official score
+   artifacts, plus the local warning that `GENAI_API_KEY` is not configured for
+   running upstream `judge.py`.
+
+## Next Concrete Steps
+
+1. Add `GENAI_API_KEY` to local `.env`, rerun the selected official-judge
+   dry-run with `--expect-commands 16 --commands-out`, then run upstream
+   PresentBench official judge to produce `*_score.yaml` files for the 16
+   selected cells.
+2. Calibrate evaluators before expanding WritingBench N. The expanded four-pack
+   sample has Qwen/MIMO sign flips on the same candidate outputs, so inspect the
+   sign-flip cells manually or with a third independent judge before treating
+   either judge as the primary decision signal.
+3. For PresentBench, test constrained slide composition that removes raw
+   examples from the final prompt and passes only abstract example signatures
+   plus current-task hard constraints. Do not claim cross-domain transfer from
+   the current examples-plus-skill ablation.
+4. After evaluator calibration, decide whether to expand the WritingBench
+   examples-plus-skill ablation or redesign the skill induction mechanism.
+5. Redesign operational anchors as a content-bearing planner before expanding
+   N. The prompt-level evidence policy helps, the hard evidence-inventory
+   whitelist improves grounding but suppresses task completion, the two-level
+   wording variant underperforms, and the first staged planner is too
+   constraint-heavy. The next version should plan grounded fact citations,
+   generic fill targets, and fallback text before generation.

@@ -21,6 +21,11 @@ Current freeze status:
 
 - WritingBench: 4/4 selected packs have 3 generated train examples each.
 - PresentBench: 4/4 selected packs have 3 generated train examples each.
+- MIMO targeted generation samples have been frozen into an audited local subset
+  pack: `runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl` covers
+  15 packs / 45 train examples and has benchmark-flow `status=ok`. It is
+  audit/targeted-regeneration evidence, not the canonical expanded dataset,
+  because full 50-pack MIMO cleaning is not frozen.
 
 Expanded local-cleaning status:
 
@@ -31,7 +36,8 @@ Expanded local-cleaning status:
 - Expanded benchmark-flow audit: `status=ok`, no errors or warnings.
 - Expanded aggregate gate:
   `uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready`
-  is green, with a warning only for MIMO PresentBench long-request instability.
+  is green with no warnings after rerunning the optional MIMO PresentBench audit
+  at `--judge-max-tokens 8192`.
 - Manifest with hashes, commands, and audit output:
   `docs/expanded_cleaning_manifest_2026-05-08.md`.
 
@@ -51,10 +57,43 @@ Current runnable surfaces:
 
 Recent WritingBench smoke results:
 
-- Qwen judge, 4 packs x 5 modes: complete.
-- MIMO judge-swap on the same Qwen candidates, 4 packs x 5 modes: complete.
+- Qwen judge, 4 packs x 2 heldout x 5 modes: 40/40 success.
+- MIMO judge-swap on the same Qwen candidates, 4 packs x 2 heldout x 5 modes:
+  40/40 success. One earlier MIMO `content_filter` refusal and one transient
+  `APIConnectionError` were recovered by targeted/full-scope resume retries.
+  Treat this as complete judge-swap smoke evidence, not as full benchmark
+  evidence.
 - Current `auto_skill_ours_full` does not beat `few_shot_examples_only` or
   `one_shot_skill_from_examples` on this smoke slice.
+- A first examples-plus-skill ablation is positive on the same WritingBench
+  smoke slice: `examples_plus_one_shot_skill` averages 7.525 (+0.425 vs
+  prompt_only, 6/2/0), and `examples_plus_feature_skill` averages 7.775 (+0.675,
+  7/1/0). This suggests the induced skill is currently more useful as an
+  augmentation to examples than as a standalone replacement for examples.
+- The MIMO judge-swap for the same examples-plus-skill candidates is also
+  complete: 16/16 success after raising `--judge-max-tokens` to 8192.
+  `examples_plus_one_shot_skill` is +0.525 (6/2/0), and
+  `examples_plus_feature_skill` is +0.425 (5/2/1) vs MIMO `prompt_only`.
+- PresentBench surrogate does not show the same pattern: examples-plus-skill is
+  16/16 success but negative vs prompt-only (`examples_plus_one_shot_skill`
+  -1.0, `examples_plus_feature_skill` -0.625). Treat examples-plus as a
+  WritingBench-specific positive signal until this cross-domain failure is
+  understood. See `notes/presentbench_examples_plus_failure_diagnostic.md`.
+- A light slide-specific prompt guardrail
+  (`slide_constrained_examples_plus_feature_skill`) also failed on PresentBench
+  surrogate: 8/8 success, mean 6.625, delta -1.0 vs prompt-only. The next
+  PresentBench attempt needs an explicit layout-planning stage, not just a
+  stronger instruction sentence.
+- An explicit layout-plan stage (`layout_plan_examples_plus_feature_skill`) was
+  tested next. It was still negative: 8/8 success, mean 6.75, delta -0.875 vs
+  prompt-only. This suggests the remaining issue is raw examples in the final
+  prompt, not merely missing planning.
+- Expanded WritingBench sample (4 non-MVP packs, heldout=1) is now available in
+  `runs/expanded/writingbench_official_eval.qwen.sample4_wb.heldout1.jsonl` and
+  `runs/expanded/writingbench_official_eval.mimo_judge.sample4_wb.heldout1.jsonl`.
+  Qwen judges skill/examples-plus modes as negative, while MIMO judges the same
+  candidate outputs as positive. Treat this as an evaluator-calibration blocker,
+  not as evidence to expand sample size blindly.
 
 Current MIMO train-example audit:
 
@@ -66,9 +105,9 @@ Current MIMO train-example audit:
   `judge_incomplete` false failures and should not be reused for MIMO audits.
 - Expanded PresentBench audit sample: Qwen judge 2/2 success with mean score
   7.5 using a material-aware generic rubric/checklist surrogate. MIMO on the
-  same path remains connection-unstable for long material-aware prompts
-  (latest sample: 1 success, 1 APIConnectionError). This is a quality
-  diagnostic, not the official PresentBench visual/PPT evaluator.
+  same path is now 2/2 success with mean score 8.4 when `--judge-max-tokens`
+  is raised to 8192. This is a quality diagnostic, not the official
+  PresentBench visual/PPT evaluator.
 
 ## Current Readiness
 
@@ -80,35 +119,74 @@ uv run ruff check .
 diff -q AGENTS.md CLAUDE.md
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 ```
+
+Remote CI on `main` is also green in post-fix example runs:
+`https://github.com/hhh2210/auto-skill/actions/runs/25591714603` completed with
+`success` for `bb511e8`, and
+`https://github.com/hhh2210/auto-skill/actions/runs/25591797681` completed with
+`success` for `c306671`. Earlier post-push failures were clean-checkout
+test-fixture issues around ignored PresentBench official code, not runtime
+failures in the benchmark pipeline. The fixture fix landed in `58b79fb`
+(`test: make presentbench judge runner fixtures self-contained`).
 
 MVP readiness now uses the current MVP artifact contract and paths:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --expect-status ready
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 ```
 
-Current MVP smoke readiness is green:
+Current MVP readiness is green across both checked-in heldout tasks:
 
-- WritingBench official-prompt eval: 16/16 success.
-- PresentBench surrogate eval: 16/16 success.
+- WritingBench official-prompt eval: 4 packs x 2 heldout x 4 required MVP
+  modes = 32/32 required success. The same artifact also includes `auto_skill`
+  rows, giving 40/40 total success.
+- PresentBench surrogate eval: 4 packs x 2 heldout x 4 required MVP modes =
+  32/32 required success. The separate `auto_skill` surrogate artifact adds
+  8/8 success.
 - Required MVP skill modes: covered for all 8 smoke packs.
 - Readiness warning remains: all solver/judge rows are Qwen3.5-Plus
   monoculture, so this is smoke evidence only.
+- The full-profile model inventory includes a `scored` sub-block. Trust
+  `model_inventory.scored` for paper-facing model-diversity claims because the
+  all-row inventory can include missing PresentBench official placeholder rows
+  with `gemini-3-flash-preview` judge identity. Until real official score rows
+  exist, the gate emits `scored_model_monoculture` for the current Qwen-only
+  scored evidence.
+- The metrics summary does include the completed Qwen + MIMO judge-swap rows.
+  After `c45ac1b`, legacy self-consistency rows expose solver identity through
+  `signature_generation.model`, so
+  `runs/mvp_metrics.heldout2.current.summary.json` has complete model identity.
+  Keep this distinction clear: metrics `model_inventory` is heldout-eval only,
+  `diagnostic_model_inventory` includes self-consistency diagnostics, and full
+  readiness still blocks on missing official PresentBench scores.
 
 Full experiment readiness is intentionally not green yet:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 ```
 
 Known blockers:
 
-- `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts,
-  so the known blockers are experiment completeness/evaluator issues rather than
-  benchmark-flow leakage.
-- PresentBench official score rows are missing.
-- Full-profile skills and heldout eval rows do not cover all 8 smoke packs yet.
+- `audit_benchmark_flow.py` currently passes on the checked-in cleaned artifacts
+  and on the expanded artifacts when `--jobs` / `--generated-outputs` are
+  provided. The default checked-in MVP command reports provenance warnings
+  because `artifacts/jobs/` is intentionally not committed; expanded artifacts
+  have the full job/generated-output provenance chain. The known blockers are
+  experiment completeness/evaluator issues rather than benchmark-flow leakage.
+- PresentBench official slide artifacts now exist for prompt_only and auto_skill,
+  and `check_presentbench_official_eval_ready.py` reports
+  `ready_for_official_judge: 16` across 4 packs x 2 heldout x 2 official modes.
+  The local `runs/presentbench_official_scores.jsonl` file still contains
+  `missing_score_artifact` rows because upstream `*_score.yaml` files have not
+  been produced by the selected upstream `judge.py` cells.
+- Full-profile skill and surrogate rows now cover all 8 smoke packs locally.
+  `report_experiment_readiness.py --profile full` merges split MVP,
+  WritingBench `ours_full`, PresentBench `ours_full`, and PresentBench
+  surrogate `auto_skill` artifacts by default, so remaining blockers should be
+  real official-evaluator gaps rather than single-file artifact drift.
 - Smoke data is too small for a paper claim.
 - Expanded 30WB/20PB data is still local/ignored and has only sampled
   train-example quality audits; do not present it as a released dataset
@@ -116,11 +194,12 @@ Known blockers:
 
 ## Recommended Next Steps
 
-1. Run a mechanism ablation on the existing 4 WritingBench packs before expanding
-   benchmark size. Include `prompt_only`, `few_shot_examples_only`,
-   `one_shot_skill_from_examples`, `feature_skill_no_validation`,
-   `feature_skill_old_LOO`, `feature_skill_majority_LOO`,
-   `examples_plus_one_shot_skill`, and `examples_plus_feature_skill`.
+1. Extend the examples-plus-skill ablation beyond the existing 4 WritingBench
+   packs and debug why the same mechanism is negative on PresentBench surrogate.
+   Qwen and MIMO both support the WritingBench direction on this smoke slice,
+   but this is not yet a cross-domain method claim. The next PresentBench
+   variant should remove raw examples from the final prompt and pass only
+   abstract example signatures plus current-task hard constraints.
 2. Attribute whether current losses come from skill compression, feature
    extraction, LOO merge, or skill interference with raw examples.
 3. Treat `Feature-Driven Auto-Skill` and LOO validation as ablation components,

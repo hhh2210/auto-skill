@@ -80,6 +80,24 @@ BAILIAN_MODEL=qwen3.5-plus
 # Optional: BAILIAN_STREAM=true
 ```
 
+For MIMO judge-swap or targeted MIMO example cleaning, add the corresponding
+OpenAI-compatible MIMO variables:
+
+```dotenv
+MIMO_BASE_URL=replace-with-mimo-compatible-endpoint
+MIMO_API_KEY=replace-with-mimo-key
+MIMO_MODEL=replace-with-mimo-model
+```
+
+For the upstream PresentBench official judge, add a Gemini key. This is separate
+from Bailian/MIMO because the official PresentBench `judge.py` currently accepts
+only `gemini` / `gemini_inline` API types:
+
+```dotenv
+GENAI_API_KEY=replace-with-gemini-key
+# Optional: GENAI_BASE_URL=replace-with-gemini-compatible-endpoint
+```
+
 The minimal test path uses only the Python standard library:
 
 ```bash
@@ -133,16 +151,44 @@ audit with acceptable failure rate.
 Current expanded-run evidence is summarized in
 `notes/expanded_cleaning_strategy_2026-05-08.md`; artifact hashes and handoff
 commands are in `docs/expanded_cleaning_manifest_2026-05-08.md`. The short
-version: Qwen3.5-Plus completed the local 30WB/20PB clean with 150/150 latest
-generation success and a passing benchmark-flow audit. MIMO is better used as an
-independent audit or targeted regeneration model until its long PresentBench
-request failures are resolved.
+version: Qwen3.5-Plus completed both the local 30WB/20PB clean and the
+max-available clean. The max-available snapshot has 142 packs, 426 frozen train
+examples, 284 heldout tasks, 426/426 latest generation success, and a passing
+benchmark-flow audit. MIMO has a local audited subset pack with 15 packs / 45 frozen train examples
+(`runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`,
+`benchmark-flow status=ok`), but it is not a full MIMO-cleaned alternative.
 
 To re-check the local expanded-cleaning handoff state:
 
 ```bash
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/data/export_latest_successful_generations.py \
+  --generations runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --out runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-successes 426
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-packs 142 \
+  --expect-train-examples 426 \
+  --expect-heldout-tasks 284 \
+  --expect-generation-jobs 426 \
+  --skip-mimo-subset \
+  --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
 ```
+
+The taxonomy validator is a calibration handoff gate for the expanded
+Qwen-vs-MIMO WritingBench sample. It verifies that every sign-flip packet has
+exactly one provisional label and that the labels are tied to the candidate and
+baseline output hashes.
 
 The split builder excludes known source-data mismatches, currently
 `education/CSAPP-Lectures_2015Fall/Lecture15`, whose instructions ask for
@@ -246,6 +292,14 @@ uv run python scripts/skills/run_skill_mvp.py \
   --max-tokens 8192
 ```
 
+Provider retries and parse retries are intentionally separate. `--max-retries`
+covers SDK transport/rate-limit/server failures. `--parse-max-attempts` covers
+complete model responses that intermittently return malformed JSON or invalid
+judge scores. The default parse retry budget is 3 for `run_skill_mvp.py`,
+`run_writingbench_official_eval.py`, `run_heldout_eval.py`,
+`audit_train_examples.py`, `run_grounding_eval.py`,
+`run_pattern_similarity_eval.py`, and `run_self_consistency_metric.py`.
+
 Use `--dry-run` before spending API calls:
 
 ```bash
@@ -265,6 +319,25 @@ Audit the frozen benchmark-flow boundary before using packs for induction:
 
 ```bash
 uv run python scripts/data/audit_benchmark_flow.py
+```
+
+For expanded cleaned-example artifacts, include the generation job/output
+provenance chain:
+
+```bash
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
 ```
 
 ## Baselines
@@ -320,8 +393,14 @@ uv run python scripts/eval/run_writingbench_official_eval.py \
 `run_self_consistency_metric.py` accept the same `--judge-config-prefix`. Each
 written eval row carries top-level `solver_model` and `judge_model`;
 `scripts/metrics/summarize_mvp_metrics.py` aggregates these into a `model_inventory`
-block, and `scripts/ops/report_experiment_readiness.py` emits a
-`model_monoculture` warning when every row collapses to a single model.
+block. `scripts/ops/report_experiment_readiness.py` emits `model_monoculture`
+when every visible row collapses to a single model, and also exposes
+`model_inventory.scored` for paper-facing claims. The `scored` block excludes
+non-success eval rows such as `missing_score_artifact`, so placeholder
+PresentBench official rows cannot falsely break a Qwen-only scored run; in that
+case the gate emits `scored_model_monoculture`. Metrics summaries keep
+`model_inventory` focused on heldout eval rows and put self-consistency or other
+diagnostic rows in `diagnostic_model_inventory`.
 
 For WritingBench, use the source benchmark's evaluator prompt and per-criterion
 scoring shape:
@@ -357,11 +436,21 @@ official PresentBench visual/PPT score. Check readiness before claiming an
 official PresentBench run:
 
 ```bash
+uv run python scripts/eval/export_presentbench_official_artifacts.py \
+  --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --overwrite
+```
+
+```bash
 uv run python scripts/eval/check_presentbench_official_eval_ready.py \
   --packs artifacts/packs/example_packs.v1.jsonl \
   --code-root data/PresentBench_code \
-  --judge-model gemini-3-flash-preview \
-  --pack-id presentbench_education_CSAPP-Lectures_2015Fall
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --judge-model gemini-3-flash-preview
 ```
 
 For CI smoke checks where slide artifacts or generated PresentBench examples are
@@ -375,16 +464,29 @@ Readiness statuses are intentionally separated:
 - `scored`: an upstream `*_score.yaml` is already present.
 
 Once readiness is `ready_for_official_judge` or `ready_for_zero_score`, run the
-upstream evaluator from the official code checkout:
+repo-local wrapper. It loads `.env`, renders exact upstream `judge.py` commands
+for the selected heldout cells in `--packs`, and fails before any API call when
+the required Gemini key is missing. Use `--all-presentbench` only when the result
+roots contain artifacts for the full upstream PresentBench checkout; otherwise it
+would run `judge_all.py` over all 238 benchmark cases.
 
 ```bash
-uv run python data/PresentBench_code/judge_all.py \
-  --agent_name auto-skill \
-  --data_root data/PresentBench_repo \
-  --result_root ../PresentBench/results/auto_skill \
-  --api_type gemini \
-  --model gemini-3-flash-preview
+uv run python scripts/eval/run_presentbench_official_judge.py \
+  --code-root data/PresentBench_code \
+  --data-root data/PresentBench_repo \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --api-type gemini \
+  --model gemini-3-flash-preview \
+  --limit-heldout 2
 ```
+
+Use `--dry-run --allow-missing-env` to verify commands without `GENAI_API_KEY`.
+Add `--commands-out runs/presentbench_official_judge_commands.json` to write a
+handoff manifest containing argv lists, shell-safe commands, and dry-run
+warnings such as a missing `GENAI_API_KEY`. Add `--expect-commands 16` for the
+current MVP official-score gap so the wrapper fails if the selected cell count
+drifts. Do not use `--allow-missing-env` for a real run.
 
 After upstream score YAMLs exist, summarize official PresentBench scores and paired
 deltas with explicit mode roots:
@@ -392,6 +494,7 @@ deltas with explicit mode roots:
 ```bash
 uv run python scripts/eval/summarize_presentbench_official_scores.py \
   --packs artifacts/packs/example_packs.v1.jsonl \
+  --solver-model qwen3.5-plus \
   --judge-model gemini-3-flash-preview \
   --score-root prompt_only=../PresentBench/results/prompt_only \
   --score-root auto_skill=../PresentBench/results/auto_skill
@@ -400,7 +503,11 @@ uv run python scripts/eval/summarize_presentbench_official_scores.py \
 Gate the combined experiment state before reporting results:
 
 ```bash
-uv run python scripts/ops/report_experiment_readiness.py --limit-heldout 1
+uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
+uv run python scripts/metrics/validate_disagreement_taxonomy.py \
+  --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
+  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --expect-status ok
 ```
 
 By default this uses `--profile mvp`, which expects the current MVP artifact
@@ -413,12 +520,17 @@ phases:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile smoke --limit-heldout 1
-uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 ```
 
 All profiles still fail on schema-invalid rows. `smoke` permits partial
 old/small coverage, `mvp` requires current MVP coverage, and `full` requires
 `auto_skill_ours_full`, `auto_skill`, and official PresentBench score rows.
+`--skills`, `--writing-eval`, `--present-surrogate-eval`, and
+`--present-official-scores` may be repeated when a phase is split across
+multiple JSONL artifacts; the `full` profile default already merges the MVP
+skill rows, WritingBench/PresentBench `ours_full` skill rows, and the
+PresentBench surrogate `auto_skill` rows.
 
 ## MVP Metrics
 
@@ -438,7 +550,9 @@ official scores, or benchmark judge traces. Treat output-example similarity as
 debug-only, never as a main effect metric. The summary separates
 `official_benchmark_scores` from `surrogate_debug_scores` and `debug_scores`;
 do not report PresentBench surrogate scores as official visual/PPT benchmark
-results.
+results. When baseline and ablation modes live in separate eval JSONL files,
+use `cross_eval_score_summaries` in the output for paired deltas joined across
+files with the same evaluator and judge model.
 
 ```bash
 uv run python scripts/metrics/run_self_consistency_metric.py \
@@ -449,13 +563,21 @@ uv run python scripts/metrics/run_self_consistency_metric.py \
 
 uv run python scripts/metrics/summarize_mvp_metrics.py \
   --skills runs/skill_mvp.qwen.mvp.jsonl \
+  --skills runs/skill_mvp.qwen.ours_full.writingbench.jsonl \
+  --skills runs/skill_mvp.qwen.ours_full.presentbench.jsonl \
   --packs artifacts/packs/example_packs.v1.jsonl \
-  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation \
-  --limit-heldout 1 \
-  --eval runs/writingbench_official_eval.qwen.mvp.jsonl \
+  --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill,examples_plus_one_shot_skill,examples_plus_feature_skill,slide_constrained_examples_plus_feature_skill,layout_plan_examples_plus_feature_skill \
+  --eval runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl \
+  --eval runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl \
   --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.examples_plus_skill.heldout2.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.slide_constrained_examples_plus_feature.heldout2.jsonl \
+  --eval runs/presentbench_surrogate_eval.qwen.layout_plan_examples_plus_feature.heldout2.jsonl \
+  --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl \
+  --eval runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl \
   --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl \
-  --out runs/mvp_metrics.summary.json
+  --out runs/mvp_metrics.heldout2.current.summary.json
 ```
 
 ## Collaboration
