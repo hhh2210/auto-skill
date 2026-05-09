@@ -222,26 +222,92 @@ def subprocess_env_with_code_root(code_root: Path) -> dict[str, str]:
     return env
 
 
-def run_commands(commands: list[list[str]], *, env: dict[str, str], max_workers: int) -> int:
+def command_log_path(log_dir: Path, index: int) -> Path:
+    return log_dir / f"presentbench_judge_{index:03d}.log"
+
+
+def run_one_command(
+    index: int,
+    command: list[str],
+    *,
+    env: dict[str, str],
+    log_dir: Path | None,
+    stream_output: bool,
+) -> tuple[int, Path | None]:
+    if stream_output:
+        completed = subprocess.run(command, check=False, env=env)
+        return completed.returncode, None
+    if log_dir is None:
+        completed = subprocess.run(
+            command,
+            check=False,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return completed.returncode, None
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = command_log_path(log_dir, index)
+    with log_path.open("w", encoding="utf-8") as handle:
+        handle.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n\n")
+        handle.flush()
+        completed = subprocess.run(
+            command,
+            check=False,
+            env=env,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+        )
+    return completed.returncode, log_path
+
+
+def run_commands(
+    commands: list[list[str]],
+    *,
+    env: dict[str, str],
+    max_workers: int,
+    log_dir: Path | None,
+    stream_output: bool = False,
+) -> int:
     if max_workers < 1:
         raise ValueError("--max-workers must be >= 1")
     if max_workers == 1 or len(commands) <= 1:
-        for command in commands:
-            completed = subprocess.run(command, check=False, env=env)
-            if completed.returncode != 0:
-                return completed.returncode
+        for index, command in enumerate(commands, start=1):
+            returncode, log_path = run_one_command(
+                index,
+                command,
+                env=env,
+                log_dir=log_dir,
+                stream_output=stream_output,
+            )
+            if returncode != 0:
+                if log_path is not None:
+                    print(f"error: command {index} failed; see {log_path}", file=sys.stderr)
+                return returncode
         return 0
 
     first_failure: int | None = None
+    first_failure_log: Path | None = None
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_command = {
-            executor.submit(subprocess.run, command, check=False, env=env): command
-            for command in commands
+            executor.submit(
+                run_one_command,
+                index,
+                command,
+                env=env,
+                log_dir=log_dir,
+                stream_output=stream_output,
+            ): index
+            for index, command in enumerate(commands, start=1)
         }
         for future in as_completed(future_to_command):
-            completed = future.result()
-            if completed.returncode != 0 and first_failure is None:
-                first_failure = completed.returncode
+            returncode, log_path = future.result()
+            if returncode != 0 and first_failure is None:
+                first_failure = returncode
+                first_failure_log = log_path
+    if first_failure is not None and first_failure_log is not None:
+        print(f"error: a command failed; see {first_failure_log}", file=sys.stderr)
     return first_failure or 0
 
 
@@ -324,6 +390,28 @@ def main() -> int:
     parser.add_argument("--min-timestamp")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
+        "--print-commands",
+        action="store_true",
+        help=(
+            "Print rendered judge commands to stdout. Commands are always "
+            "written to --commands-out."
+        ),
+    )
+    parser.add_argument(
+        "--stream-subprocess-output",
+        action="store_true",
+        help=(
+            "Stream upstream judge.py logs to the terminal. By default they are "
+            "captured under --subprocess-log-dir."
+        ),
+    )
+    parser.add_argument(
+        "--subprocess-log-dir",
+        type=Path,
+        default=Path("runs/presentbench_official_judge_logs"),
+        help="Directory for captured upstream judge.py stdout/stderr logs.",
+    )
+    parser.add_argument(
         "--commands-out",
         type=Path,
         help="Write rendered judge commands to a JSON manifest for handoff/debugging.",
@@ -399,8 +487,15 @@ def main() -> int:
         )
         errors.extend(selection_errors)
 
-    for command in commands:
-        print(" ".join(command))
+    if args.print_commands:
+        for command in commands:
+            print(" ".join(command))
+    elif commands:
+        print(f"Selected {len(commands)} PresentBench official judge command(s).")
+        if args.commands_out:
+            print(f"Command manifest: {args.commands_out}")
+        if not args.dry_run and not args.stream_subprocess_output:
+            print(f"Subprocess logs: {args.subprocess_log_dir}")
     if not commands and not errors:
         print("No unscored selected PresentBench official judge cells.")
     if args.expect_commands is not None and len(commands) != args.expect_commands:
@@ -418,7 +513,13 @@ def main() -> int:
         return 0
 
     env = subprocess_env_with_code_root(args.code_root)
-    return run_commands(commands, env=env, max_workers=args.max_workers)
+    return run_commands(
+        commands,
+        env=env,
+        max_workers=args.max_workers,
+        log_dir=args.subprocess_log_dir,
+        stream_output=args.stream_subprocess_output,
+    )
 
 
 if __name__ == "__main__":

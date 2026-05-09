@@ -12,6 +12,7 @@ from unittest.mock import patch
 from scripts.eval.run_presentbench_official_judge import (
     build_judge_all_command,
     build_judge_command,
+    command_log_path,
     command_manifest,
     parse_mode_result_roots,
     preflight_warnings,
@@ -299,6 +300,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             *,
             check: bool,
             env: dict[str, str],
+            **kwargs: object,
         ) -> subprocess.CompletedProcess:
             calls.append(command)
             return subprocess.CompletedProcess(command, 7 if command[-1] == "bad" else 0)
@@ -308,6 +310,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 [["/python", "ok1"], ["/python", "bad"], ["/python", "ok2"]],
                 env={"PYTHONPATH": "/code"},
                 max_workers=2,
+                log_dir=None,
             )
 
         self.assertEqual(returncode, 7)
@@ -318,7 +321,28 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
 
     def test_run_commands_rejects_invalid_worker_count(self) -> None:
         with self.assertRaisesRegex(ValueError, "max-workers"):
-            run_commands([["/python", "judge.py"]], env={}, max_workers=0)
+            run_commands([["/python", "judge.py"]], env={}, max_workers=0, log_dir=None)
+
+    def test_run_commands_captures_output_to_per_command_log(self) -> None:
+        with TemporaryDirectory() as tmp:
+            log_dir = Path(tmp) / "logs"
+            returncode = run_commands(
+                [
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys; print('stdout text'); print('stderr text', file=sys.stderr)",
+                    ]
+                ],
+                env=os.environ.copy(),
+                max_workers=1,
+                log_dir=log_dir,
+            )
+
+            self.assertEqual(returncode, 0)
+            log_text = command_log_path(log_dir, 1).read_text(encoding="utf-8")
+            self.assertIn("stdout text", log_text)
+            self.assertIn("stderr text", log_text)
 
     def test_command_manifest_records_argv_and_shell_command(self) -> None:
         manifest = command_manifest(
@@ -381,8 +405,8 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("--agent_name prompt_only", completed.stdout)
-            self.assertIn("--agent_name auto_skill", completed.stdout)
+            self.assertIn("Selected 2 PresentBench official judge command", completed.stdout)
+            self.assertNotIn("--agent_name prompt_only", completed.stdout)
             manifest = json.loads(commands_out.read_text(encoding="utf-8"))
             self.assertEqual(len(manifest["commands"]), 2)
             self.assertIn("--agent_name", manifest["commands"][0]["argv"])
