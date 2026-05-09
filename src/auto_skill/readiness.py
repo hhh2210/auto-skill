@@ -278,7 +278,12 @@ def model_inventory(
     """Inventory of solver/judge models seen across skill and eval artifacts."""
 
     skill_solver_paths = (("solver_model",), ("model_calls", "model"))
-    eval_solver_paths = (("solver_model",), ("generation", "model"), ("run", "model"))
+    eval_solver_paths = (
+        ("solver_model",),
+        ("generation", "model"),
+        ("run", "model"),
+        ("signature_generation", "model"),
+    )
     eval_judge_paths = (("judge_model",), ("judge", "model"), ("judge_calls", "model"))
     skill_solvers = collect_models(skill_rows, paths=skill_solver_paths)
     eval_solvers = collect_models(eval_rows, paths=eval_solver_paths)

@@ -406,6 +406,10 @@ class ModelInventoryTests(unittest.TestCase):
                     "generation": {"model": "qwen-3.5-plus"},
                     "judge_calls": [{"criterion": "c1", "model": "mimo-v2.5-pro"}],
                 },
+                {
+                    "signature_generation": {"model": "qwen-3.5-plus"},
+                    "judge": {"model": "qwen-3.5-plus"},
+                },
             ],
         )
 
