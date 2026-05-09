@@ -283,11 +283,26 @@ def model_inventory(
     skill_solvers = collect_models(skill_rows, paths=skill_solver_paths)
     eval_solvers = collect_models(eval_rows, paths=eval_solver_paths)
     eval_judges = collect_models(eval_rows, paths=eval_judge_paths)
+    successful_eval_rows = [row for row in eval_rows if row.get("status") == "success"]
+    scored_eval_solvers = collect_models(successful_eval_rows, paths=eval_solver_paths)
+    scored_eval_judges = collect_models(successful_eval_rows, paths=eval_judge_paths)
     union = skill_solvers | eval_solvers | eval_judges
+    scored_union = skill_solvers | scored_eval_solvers | scored_eval_judges
     missing = {
         "skill_solver_model": missing_model_count(skill_rows, paths=skill_solver_paths),
         "eval_solver_model": missing_model_count(eval_rows, paths=eval_solver_paths),
         "eval_judge_model": missing_model_count(eval_rows, paths=eval_judge_paths),
+    }
+    scored_missing = {
+        "skill_solver_model": missing_model_count(skill_rows, paths=skill_solver_paths),
+        "eval_solver_model": missing_model_count(
+            successful_eval_rows,
+            paths=eval_solver_paths,
+        ),
+        "eval_judge_model": missing_model_count(
+            successful_eval_rows,
+            paths=eval_judge_paths,
+        ),
     }
     return {
         "skill_solver_models": sorted(skill_solvers),
@@ -298,6 +313,19 @@ def model_inventory(
         "model_identity_complete": not any(missing.values()),
         "monoculture": len(union) == 1 if union else False,
         "monoculture_model": next(iter(union)) if len(union) == 1 else None,
+        "scored": {
+            "skill_solver_models": sorted(skill_solvers),
+            "eval_solver_models": sorted(scored_eval_solvers),
+            "eval_judge_models": sorted(scored_eval_judges),
+            "all_models": sorted(scored_union),
+            "successful_eval_rows": len(successful_eval_rows),
+            "missing_model_identity": scored_missing,
+            "model_identity_complete": not any(scored_missing.values()),
+            "monoculture": len(scored_union) == 1 if scored_union else False,
+            "monoculture_model": (
+                next(iter(scored_union)) if len(scored_union) == 1 else None
+            ),
+        },
     }
 
 
@@ -387,6 +415,28 @@ def readiness_report(
                 "model identity "
                 f"{inventory['missing_model_identity']}; results are smoke-only "
                 "(see README cross-model recipe)."
+            )
+
+    scored_inventory = inventory["scored"]
+    if (
+        scored_inventory["successful_eval_rows"]
+        and scored_inventory["monoculture"]
+        and scored_inventory["monoculture_model"]
+        and not inventory["monoculture"]
+    ):
+        if scored_inventory["model_identity_complete"]:
+            warnings.append(
+                "scored_model_monoculture: scored eval rows plus skill rows share model "
+                f"{scored_inventory['monoculture_model']}; other model identities appear "
+                "only on non-success or placeholder rows."
+            )
+        else:
+            warnings.append(
+                "scored_model_monoculture: visible scored solver/judge model fields "
+                f"share model {scored_inventory['monoculture_model']}, but some scored "
+                "rows are missing model identity "
+                f"{scored_inventory['missing_model_identity']}; other model identities "
+                "appear only on non-success or placeholder rows."
             )
 
     if not packs:

@@ -148,10 +148,12 @@ Current MVP readiness is green across both checked-in heldout tasks:
 - Required MVP skill modes: covered for all 8 smoke packs.
 - Readiness warning remains: all solver/judge rows are Qwen3.5-Plus
   monoculture, so this is smoke evidence only.
-- The full-profile model inventory may show `monoculture=false` because missing
-  PresentBench official placeholder rows carry `gemini-3-flash-preview` judge
-  identity. Do not treat that field alone as de-monoculture evidence until real
-  official score rows exist.
+- The full-profile model inventory includes a `scored` sub-block. Trust
+  `model_inventory.scored` for paper-facing model-diversity claims because the
+  all-row inventory can include missing PresentBench official placeholder rows
+  with `gemini-3-flash-preview` judge identity. Until real official score rows
+  exist, the gate emits `scored_model_monoculture` for the current Qwen-only
+  scored evidence.
 
 Full experiment readiness is intentionally not green yet:
 

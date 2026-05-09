@@ -86,12 +86,13 @@ As of commit `d357f60`, the full-profile gate also emits an explicit warning
 when `GENAI_API_KEY` is absent from the process environment and local `.env`,
 because upstream PresentBench `judge.py` cannot be run without it.
 
-Do not read `model_inventory.monoculture=false` in the full-profile report as a
-paper-facing de-monoculture claim by itself. The full profile includes
+The full-profile report includes both all-row and scored-row model inventories.
+Do not read all-row `model_inventory.monoculture=false` as a paper-facing
+de-monoculture claim by itself: the full profile includes
 `gemini-3-flash-preview` identity on missing PresentBench official placeholder
-rows; those rows do not yet contain real official scores. The scored MVP
-readiness gate is still Qwen-only unless it is explicitly paired with the MIMO
-judge-swap artifacts listed later in this audit.
+rows. The machine-readable `model_inventory.scored` block now excludes
+non-success / placeholder eval rows and emits `scored_model_monoculture` when
+the actually scored eval rows plus skill rows are still Qwen-only.
 
 Canonical current readiness reports are:
 

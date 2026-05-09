@@ -343,11 +343,37 @@ class ModelInventoryTests(unittest.TestCase):
         self.assertIn("claude-haiku-4-5", inventory["all_models"])
         self.assertIn("qwen-3.5-plus", inventory["all_models"])
 
+    def test_scored_inventory_ignores_missing_score_placeholders(self) -> None:
+        inventory = model_inventory(
+            skill_rows=[{"solver_model": "qwen-3.5-plus"}],
+            eval_rows=[
+                {
+                    "status": "success",
+                    "solver_model": "qwen-3.5-plus",
+                    "judge_model": "qwen-3.5-plus",
+                },
+                {
+                    "status": "missing_score_artifact",
+                    "solver_model": "qwen-3.5-plus",
+                    "judge_model": "gemini-3-flash-preview",
+                },
+            ],
+        )
+
+        self.assertFalse(inventory["monoculture"])
+        self.assertIn("gemini-3-flash-preview", inventory["all_models"])
+        self.assertTrue(inventory["scored"]["monoculture"])
+        self.assertEqual(inventory["scored"]["monoculture_model"], "qwen-3.5-plus")
+        self.assertNotIn("gemini-3-flash-preview", inventory["scored"]["all_models"])
+        self.assertEqual(inventory["scored"]["successful_eval_rows"], 1)
+
     def test_empty_inventory_does_not_flag_monoculture(self) -> None:
         inventory = model_inventory(skill_rows=[], eval_rows=[])
         self.assertFalse(inventory["monoculture"])
         self.assertIsNone(inventory["monoculture_model"])
         self.assertTrue(inventory["model_identity_complete"])
+        self.assertFalse(inventory["scored"]["monoculture"])
+        self.assertIsNone(inventory["scored"]["monoculture_model"])
 
     def test_inventory_counts_missing_model_identity(self) -> None:
         inventory = model_inventory(
@@ -417,6 +443,77 @@ class ModelInventoryTests(unittest.TestCase):
             report["warnings"],
         )
         self.assertTrue(report["model_inventory"]["monoculture"])
+
+    def test_readiness_warns_when_only_placeholder_rows_break_monoculture(self) -> None:
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=[
+                {**row, "solver_model": "qwen-3.5-plus"} for row in skill_rows("pack-1")
+            ],
+            writing_eval_rows=[
+                {**row, "solver_model": "qwen-3.5-plus", "judge_model": "qwen-3.5-plus"}
+                for row in eval_rows("pack-1")
+            ],
+            present_surrogate_rows=[],
+            present_official_rows=[
+                {
+                    "schema_version": "heldout-eval/v1",
+                    "pack_id": "pack-1",
+                    "task_id": "pack-1::heldout::0",
+                    "mode": "prompt_only",
+                    "evaluator_kind": "presentbench_official_score_yaml",
+                    "status": "missing_score_artifact",
+                    "solver_model": "qwen-3.5-plus",
+                    "judge_model": "gemini-3-flash-preview",
+                }
+            ],
+            limit_heldout=1,
+            require_presentbench_official=False,
+        )
+
+        self.assertFalse(report["model_inventory"]["monoculture"])
+        self.assertTrue(report["model_inventory"]["scored"]["monoculture"])
+        self.assertTrue(
+            any("scored_model_monoculture" in warn for warn in report["warnings"]),
+            report["warnings"],
+        )
+
+    def test_scored_monoculture_warning_qualifies_missing_scored_model_identity(self) -> None:
+        report = readiness_report(
+            packs=[pack("pack-1")],
+            skill_rows=[
+                {**row, "solver_model": "qwen-3.5-plus"} for row in skill_rows("pack-1")
+            ],
+            writing_eval_rows=[
+                {
+                    **row,
+                    "solver_model": "qwen-3.5-plus",
+                }
+                for row in eval_rows("pack-1")
+            ],
+            present_surrogate_rows=[],
+            present_official_rows=[
+                {
+                    "schema_version": "heldout-eval/v1",
+                    "pack_id": "pack-1",
+                    "task_id": "pack-1::heldout::0",
+                    "mode": "prompt_only",
+                    "evaluator_kind": "presentbench_official_score_yaml",
+                    "status": "missing_score_artifact",
+                    "solver_model": "qwen-3.5-plus",
+                    "judge_model": "gemini-3-flash-preview",
+                }
+            ],
+            limit_heldout=1,
+            require_presentbench_official=False,
+        )
+
+        warning = next(
+            warn for warn in report["warnings"] if "scored_model_monoculture" in warn
+        )
+        self.assertIn("visible scored solver/judge model fields", warning)
+        self.assertIn("missing model identity", warning)
+        self.assertFalse(report["model_inventory"]["scored"]["model_identity_complete"])
 
     def test_readiness_qualifies_monoculture_warning_when_model_identity_missing(self) -> None:
         report = readiness_report(
