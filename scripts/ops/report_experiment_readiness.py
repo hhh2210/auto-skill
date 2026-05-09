@@ -152,9 +152,12 @@ def main() -> int:
     present_surrogate_eval_paths = (
         args.present_surrogate_eval or profile_paths["present_surrogate_eval"]
     )
-    present_official_paths = args.present_official_scores or [
-        Path("runs/presentbench_official_scores.jsonl")
-    ]
+    if args.present_official_scores:
+        present_official_paths = args.present_official_scores
+    elif profile.require_presentbench_official:
+        present_official_paths = [Path("runs/presentbench_official_scores.jsonl")]
+    else:
+        present_official_paths = []
     require_presentbench_official = (
         profile.require_presentbench_official and not args.allow_missing_presentbench_official
     )

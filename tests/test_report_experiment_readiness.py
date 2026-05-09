@@ -235,6 +235,49 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
             self.assertEqual(report["profile"]["name"], "mvp")
             self.assertEqual(report["status"], "ready")
 
+    def test_mvp_profile_does_not_probe_missing_official_scores_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            write_jsonl(tmp / "artifacts/packs/example_packs.v1.jsonl", [present_pack_row()])
+            write_jsonl(tmp / "runs/skill_mvp.qwen.mvp.jsonl", present_mvp_skill_rows())
+            write_jsonl(
+                tmp
+                / "runs"
+                / "writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl",
+                [],
+            )
+            write_jsonl(
+                tmp / "runs/presentbench_surrogate_eval.qwen.mvp.jsonl",
+                present_eval_rows(),
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--profile",
+                    "mvp",
+                    "--limit-heldout",
+                    "1",
+                    "--expect-status",
+                    "ready",
+                    "--out",
+                    "runs/readiness.json",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads((tmp / "runs/readiness.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["evaluations"]["presentbench_official"]["rows"], 0)
+            self.assertFalse(
+                any("PresentBench official score" in item for item in report["warnings"]),
+                report["warnings"],
+            )
+
     def test_full_profile_uses_full_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

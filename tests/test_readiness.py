@@ -237,7 +237,9 @@ class ReadinessTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "ready")
         self.assertFalse(report["blockers"])
-        self.assertTrue(report["warnings"])
+        self.assertFalse(
+            any("PresentBench official score" in item for item in report["warnings"])
+        )
 
     def test_readiness_blocks_missing_writing_eval_target(self) -> None:
         report = readiness_report(

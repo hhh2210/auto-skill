@@ -454,22 +454,23 @@ def readiness_report(
                 f"{key}: incomplete PresentBench surrogate eval coverage"
             )
 
-    present_official_issues = blockers if require_presentbench_official else warnings
-    present_official_keys = {
-        (value["pack_id"], value["task_id"]) for value in present_official_cov.values()
-    }
-    if expected_present and not present_official_rows:
-        present_official_issues.append("PresentBench official score rows are absent")
-    if require_complete_coverage:
-        for target in sorted(expected_present - present_official_keys):
-            present_official_issues.append(
-                f"{target[0]}::{target[1]}: missing PresentBench official score rows"
-            )
-    for key, coverage in sorted(present_official_cov.items()):
-        if not coverage["ready"]:
-            present_official_issues.append(
-                f"{key}: incomplete PresentBench official score coverage"
-            )
+    if require_presentbench_official or present_official_rows:
+        present_official_issues = blockers if require_presentbench_official else warnings
+        present_official_keys = {
+            (value["pack_id"], value["task_id"]) for value in present_official_cov.values()
+        }
+        if expected_present and not present_official_rows:
+            present_official_issues.append("PresentBench official score rows are absent")
+        if require_complete_coverage:
+            for target in sorted(expected_present - present_official_keys):
+                present_official_issues.append(
+                    f"{target[0]}::{target[1]}: missing PresentBench official score rows"
+                )
+        for key, coverage in sorted(present_official_cov.items()):
+            if not coverage["ready"]:
+                present_official_issues.append(
+                    f"{key}: incomplete PresentBench official score coverage"
+                )
 
     return {
         "profile": {
