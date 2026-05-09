@@ -122,11 +122,12 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status rea
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 ```
 
-Remote CI on `main` is also green as of commit `58b79fb`
-(`test: make presentbench judge runner fixtures self-contained`):
-`https://github.com/hhh2210/auto-skill/actions/runs/25591683765`. Earlier
-post-push failures were clean-checkout test-fixture issues around ignored
-PresentBench official code, not runtime failures in the benchmark pipeline.
+Remote CI on `main` is also green in the latest documented run:
+`https://github.com/hhh2210/auto-skill/actions/runs/25591714603` completed with
+`success` for `bb511e8`. Earlier post-push failures were clean-checkout
+test-fixture issues around ignored PresentBench official code, not runtime
+failures in the benchmark pipeline. The fixture fix landed in `58b79fb`
+(`test: make presentbench judge runner fixtures self-contained`).
 
 MVP readiness now uses the current MVP artifact contract and paths:
 

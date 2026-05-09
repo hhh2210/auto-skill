@@ -29,14 +29,15 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Latest `main` commit: `58b79fb` (`test: make presentbench judge runner fixtures self-contained`).
-- GitHub Actions run:
-  `https://github.com/hhh2210/auto-skill/actions/runs/25591683765`
-  completed with `success`.
+- Latest documented GitHub Actions run:
+  `https://github.com/hhh2210/auto-skill/actions/runs/25591714603`
+  completed with `success` for `bb511e8`.
 - The preceding CI failures were caused by two PresentBench official judge-runner
   tests depending on the local ignored `data/PresentBench_code` checkout. The
-  tests now create a minimal official-code fixture that still exercises the
-  readiness contract, so clean GitHub checkouts match local behavior.
+  fixture fix landed in `58b79fb`
+  (`test: make presentbench judge runner fixtures self-contained`): those tests
+  now create a minimal official-code fixture that still exercises the readiness
+  contract, so clean GitHub checkouts match local behavior.
 
 Green:
 
