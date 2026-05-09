@@ -53,8 +53,6 @@ def main() -> int:
 
     rows = load_jsonl(args.generations)
     successful, latest_status_counts = latest_successful_generation_rows(rows)
-    write_jsonl(args.out, successful)
-
     latest_rows = sum(latest_status_counts.values())
     summary = {
         "source": str(args.generations),
@@ -65,12 +63,6 @@ def main() -> int:
         "non_exported_latest_rows": latest_rows - len(successful),
         "latest_status_counts": latest_status_counts,
     }
-    if args.summary_out is not None:
-        args.summary_out.parent.mkdir(parents=True, exist_ok=True)
-        args.summary_out.write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
     if args.expect_successes is not None and len(successful) != args.expect_successes:
@@ -88,6 +80,13 @@ def main() -> int:
             file=sys.stderr,
         )
         return 4
+    write_jsonl(args.out, successful)
+    if args.summary_out is not None:
+        args.summary_out.parent.mkdir(parents=True, exist_ok=True)
+        args.summary_out.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     return 0
 
 

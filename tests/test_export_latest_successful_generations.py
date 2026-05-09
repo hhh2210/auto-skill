@@ -89,6 +89,7 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
                 ],
             ):
                 self.assertEqual(export_latest_successful_generations.main(), 4)
+            self.assertFalse(out.exists())
 
     def test_cli_fails_when_latest_success_is_not_complete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,6 +121,75 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
                 ],
             ):
                 self.assertEqual(export_latest_successful_generations.main(), 4)
+            self.assertFalse(out.exists())
+
+    def test_cli_does_not_write_when_expected_success_count_mismatches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generations = root / "generations.jsonl"
+            out = root / "latest_success.jsonl"
+            generations.write_text(
+                json.dumps(
+                    {
+                        "status": "success",
+                        "job_id": "job-1",
+                        "prompt_sha256": "sha-1",
+                        "finish_reason": "stop",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                export_latest_successful_generations.sys,
+                "argv",
+                [
+                    "export_latest_successful_generations.py",
+                    "--generations",
+                    str(generations),
+                    "--out",
+                    str(out),
+                    "--expect-successes",
+                    "2",
+                ],
+            ):
+                self.assertEqual(export_latest_successful_generations.main(), 3)
+            self.assertFalse(out.exists())
+
+    def test_cli_writes_partial_when_explicitly_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generations = root / "generations.jsonl"
+            out = root / "latest_success.jsonl"
+            generations.write_text(
+                json.dumps(
+                    {
+                        "status": "rejected_incomplete_generation",
+                        "job_id": "job-1",
+                        "prompt_sha256": "sha-1",
+                        "finish_reason": "length",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                export_latest_successful_generations.sys,
+                "argv",
+                [
+                    "export_latest_successful_generations.py",
+                    "--generations",
+                    str(generations),
+                    "--out",
+                    str(out),
+                    "--allow-incomplete-latest",
+                ],
+            ):
+                self.assertEqual(export_latest_successful_generations.main(), 0)
+            self.assertTrue(out.exists())
+            self.assertEqual(out.read_text(encoding="utf-8"), "")
 
 
 if __name__ == "__main__":
