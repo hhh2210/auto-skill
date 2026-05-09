@@ -10,7 +10,9 @@ from unittest.mock import patch
 
 from scripts.eval.run_presentbench_official_judge import (
     build_judge_all_command,
+    build_judge_command,
     parse_mode_result_roots,
+    selected_judge_commands,
     subprocess_env_with_code_root,
     validate_preflight,
 )
@@ -66,6 +68,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             data_root.mkdir()
             result_root.mkdir()
             (code_root / "judge_all.py").write_text("# judge\n", encoding="utf-8")
+            (code_root / "judge.py").write_text("# judge\n", encoding="utf-8")
 
             with patch.dict(os.environ, {}, clear=True):
                 errors = validate_preflight(
@@ -86,6 +89,94 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 )
                 self.assertEqual(errors, [])
 
+    def test_build_judge_command_targets_one_selected_case(self) -> None:
+        command = build_judge_command(
+            python_executable="/python",
+            judge=Path("data/PresentBench_code/judge.py"),
+            readiness={
+                "status": "ready_for_official_judge",
+                "source_task_id": "education/course/case1",
+                "case_dir": "/data/education/course/case1",
+                "expected_result_dir": "/results/education/case1/generation_task/results",
+                "slide_artifact": "/results/education/case1/generation_task/results/slides.pdf",
+                "material_files": ["/data/education/course/case1/material.md"],
+            },
+            api_type="gemini",
+            model="gemini-3-flash-preview",
+            retry=5,
+            thinking_level=None,
+            min_timestamp=None,
+        )
+
+        self.assertEqual(command[0], "/python")
+        self.assertIn("data/PresentBench_code/judge.py", command)
+        self.assertIn("--slides", command)
+        self.assertIn("/results/education/case1/generation_task/results/slides.pdf", command)
+        self.assertIn("--judge_prompt", command)
+        self.assertIn(
+            "/data/education/course/case1/generation_task/judge_prompt.json",
+            command,
+        )
+        self.assertIn("--common_judge_prompt", command)
+        self.assertIn("/data/education/common_judge_prompt.json", command)
+        self.assertIn("--material", command)
+        self.assertIn("/data/education/course/case1/material.md", command)
+
+    def test_selected_judge_commands_only_renders_unscored_pack_cells(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_root = root / "data"
+            case_dir = data_root / "education" / "case1"
+            result_root = root / "results" / "prompt"
+            result_dir = result_root / "education" / "case1" / "generation_task" / "results"
+            case_dir.mkdir(parents=True)
+            result_dir.mkdir(parents=True)
+            (data_root / "education" / "common_judge_prompt.json").write_text(
+                "{}", encoding="utf-8"
+            )
+            (data_root / "education" / "judge_weights.yaml").write_text(
+                "total: 1\n", encoding="utf-8"
+            )
+            (case_dir / "generation_task").mkdir()
+            (case_dir / "generation_task" / "instructions.md").write_text(
+                "instructions", encoding="utf-8"
+            )
+            (case_dir / "generation_task" / "judge_prompt.json").write_text(
+                "{}", encoding="utf-8"
+            )
+            (case_dir / "material.md").write_text("material", encoding="utf-8")
+            (result_dir / "slides.pdf").write_text("%PDF-1.4\n", encoding="utf-8")
+            packs_path = root / "packs.jsonl"
+            packs_path.write_text(
+                (
+                    '{"pack_id":"pack-present","source":"PresentBench",'
+                    '"train_examples":[{"example_id":"e","task_input":"make slides",'
+                    '"desired_output":{"status":"generated","text":"slides"},'
+                    '"materials":[]}],'
+                    '"heldout_tasks":[{"task_id":"heldout-1",'
+                    '"source_task_id":"education/case1"}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            commands, errors = selected_judge_commands(
+                packs_path=packs_path,
+                code_root=Path(__file__).resolve().parents[1] / "data/PresentBench_code",
+                data_root=data_root,
+                mode_roots={"prompt_only": result_root},
+                python_executable="/python",
+                api_type="gemini",
+                model="gemini-3-flash-preview",
+                retry=5,
+                thinking_level=None,
+                min_timestamp=None,
+            )
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(commands), 1)
+        self.assertIn("--slides", commands[0])
+        self.assertIn(str(result_dir / "slides.pdf"), commands[0])
+
     def test_subprocess_env_prepends_presentbench_code_root_to_pythonpath(self) -> None:
         with TemporaryDirectory() as tmp:
             code_root = Path(tmp) / "PresentBench_code"
@@ -98,7 +189,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             f"{code_root.resolve()}{os.pathsep}/existing",
         )
 
-    def test_cli_dry_run_renders_default_modes_without_credentials(self) -> None:
+    def test_cli_dry_run_renders_all_presentbench_modes_without_credentials(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             code_root = root / "code"
@@ -110,6 +201,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             prompt_root.mkdir()
             skill_root.mkdir()
             (code_root / "judge_all.py").write_text("# judge\n", encoding="utf-8")
+            (code_root / "judge.py").write_text("# judge\n", encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -125,6 +217,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                     f"auto_skill={skill_root}",
                     "--dry-run",
                     "--allow-missing-env",
+                    "--all-presentbench",
                 ],
                 check=False,
                 cwd=Path(__file__).resolve().parents[1],

@@ -20,7 +20,7 @@ benchmark or paper-level claim.
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
 | Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. A grounding probe found mean grounding score 4.5 and hallucination risk 6.75. | Done as mechanism smoke; current version is too hallucination-prone |
-| PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. A live dry-run of `run_presentbench_official_judge.py` failed before API calls because `.env` has no `GENAI_API_KEY`; upstream `judge.py` currently accepts only `gemini` / `gemini_inline`, not OpenAI-compatible Qwen/Bailian. | Blocked: configure `GENAI_API_KEY` and run upstream `judge_all.py` to produce score YAMLs |
+| PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. A live dry-run of `run_presentbench_official_judge.py` failed before API calls because `.env` has no `GENAI_API_KEY`; upstream `judge.py` currently accepts only `gemini` / `gemini_inline`, not OpenAI-compatible Qwen/Bailian. The wrapper now renders 16 selected `judge.py` commands for the current MVP cells instead of accidentally running `judge_all.py` over all 238 upstream cases. | Blocked: configure `GENAI_API_KEY` and run selected upstream `judge.py` cells to produce score YAMLs |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
 | Be factually confident in strategy | Current evidence shows auto-skill does not beat prompt-only/few-shot/one-shot reliably. | Not achieved |
@@ -47,14 +47,16 @@ Fail-closed by design:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
-uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --max-workers 4 --dry-run
+uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run
 ```
 
 The full-profile blockers are exactly the 8 PresentBench tasks x 2 official
 modes whose upstream score YAMLs are missing. The official-judge dry-run fails
 closed with `GENAI_API_KEY is required by upstream PresentBench gemini judge`.
 Current `.env` contains Bailian and MIMO variables, but no `GENAI_API_KEY`; the
-upstream PresentBench checkout only supports `gemini` / `gemini_inline`.
+upstream PresentBench checkout only supports `gemini` / `gemini_inline`. With
+`--dry-run --allow-missing-env`, the wrapper renders exactly 16 selected
+`judge.py` commands for the current 4 PresentBench packs x 2 heldout x 2 modes.
 
 Canonical current readiness reports are:
 
@@ -439,8 +441,9 @@ prove the auto-skill method.
 
 ## Next Concrete Steps
 
-1. Add `GENAI_API_KEY` to local `.env`, rerun the official-judge dry-run, then
-   run upstream PresentBench official judge to produce `*_score.yaml` files.
+1. Add `GENAI_API_KEY` to local `.env`, rerun the selected official-judge
+   dry-run, then run upstream PresentBench official judge to produce
+   `*_score.yaml` files for the 16 selected cells.
 2. Calibrate evaluators before expanding WritingBench N. The expanded four-pack
    sample has Qwen/MIMO sign flips on the same candidate outputs, so inspect the
    sign-flip cells manually or with a third independent judge before treating

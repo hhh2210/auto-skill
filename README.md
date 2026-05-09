@@ -435,8 +435,11 @@ Readiness statuses are intentionally separated:
 - `scored`: an upstream `*_score.yaml` is already present.
 
 Once readiness is `ready_for_official_judge` or `ready_for_zero_score`, run the
-repo-local wrapper. It loads `.env`, renders the exact upstream `judge_all.py`
-commands, and fails before any API call when the required Gemini key is missing.
+repo-local wrapper. It loads `.env`, renders exact upstream `judge.py` commands
+for the selected heldout cells in `--packs`, and fails before any API call when
+the required Gemini key is missing. Use `--all-presentbench` only when the result
+roots contain artifacts for the full upstream PresentBench checkout; otherwise it
+would run `judge_all.py` over all 238 benchmark cases.
 
 ```bash
 uv run python scripts/eval/run_presentbench_official_judge.py \
@@ -446,7 +449,7 @@ uv run python scripts/eval/run_presentbench_official_judge.py \
   --mode-result-root auto_skill=../PresentBench/results/auto_skill \
   --api-type gemini \
   --model gemini-3-flash-preview \
-  --max-workers 4
+  --limit-heldout 2
 ```
 
 Use `--dry-run --allow-missing-env` to verify commands without `GENAI_API_KEY`.
