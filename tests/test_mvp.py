@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from auto_skill.mvp import (
+    build_current_evidence_inventory,
     build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
@@ -242,6 +243,46 @@ class MVPTests(unittest.TestCase):
         self.assertLess(
             prompt.index("Heldout task input:"),
             prompt.index("Reusable operational anchors:"),
+        )
+
+    def test_current_evidence_inventory_extracts_current_task_facts(self) -> None:
+        inventory = build_current_evidence_inventory(
+            {
+                "task_input": "Write about SUPOR SW-CFB301 using 950W and 30 cm specs.",
+                "materials": [
+                    {
+                        "path": "spec.md",
+                        "text": "The product supports Espresso and American Drip.",
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("950W", inventory)
+        self.assertIn("30", inventory)
+        self.assertIn("SUPOR", inventory)
+        self.assertIn("Espresso", inventory)
+
+    def test_evidence_anchored_operational_anchor_mode_includes_inventory(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={
+                "task_id": "task-1",
+                "task_input": "Write about SUPOR SW-CFB301 using 950W.",
+                "materials": [],
+            },
+            mode="task_first_evidence_anchored_operational_anchors",
+            examples=[],
+            skill_md="# Task-Grounded Operational Anchors",
+        )
+
+        self.assertIn("Mode: task_first_evidence_anchored_operational_anchors", prompt)
+        self.assertIn("Current evidence inventory for concrete facts", prompt)
+        self.assertIn("Use this inventory as a whitelist", prompt)
+        self.assertIn("Reusable operational anchors:", prompt)
+        self.assertIn("950W", prompt)
+        self.assertLess(
+            prompt.index("Heldout task input:"),
+            prompt.index("Current evidence inventory for concrete facts"),
         )
 
 

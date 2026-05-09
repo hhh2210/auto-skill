@@ -43,6 +43,7 @@ for handoff, but not research-confident for a paper claim.
 | Skill compression is cheap but lossy | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes use about 21-29% of few-shot generation input tokens, but WritingBench negative transfer remains 37.5-75% depending on mode/judge. `notes/feature_signature_ablation_2026-05-09.md` shows compact-signature and task-first signature smokes still below prompt-only/few-shot. Sanitized `task_first_operational_anchors` reaches 6.0 on one hard cell, and its four-pack means are Qwen 6.05 / MIMO 7.05. | A cost-only win is not enough for the main method claim; shortening context and simple task-first ordering are insufficient. Operational/detail anchors recover some lost signal but still do not beat few-shot examples on the four-pack slice. | Redesign anchors with a grounding policy before expanding N |
 | Operational anchors can fabricate specifics | `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json` reports 4/4 success, mean grounding score 4.5, mean hallucination risk 6.75, and mean unsupported claim count 8.0 for `task_first_operational_anchors`. | Apparent task-completion gains can come from plausible unsupported facts rather than transferable example structure | Add evidence-aware slots: required detail type, allowed source, and fallback behavior when current evidence is missing |
 | Prompt-level evidence policy helps but is insufficient | `runs/expanded/grounding_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.summary.json` reports mean grounding 5.75, hallucination risk 6.0, and unsupported claim count 4.0; Qwen task mean is 6.25 and MIMO task mean is 6.85. | Admonitions reduce unsupported details without collapsing task score, but high-risk cells remain | Add a structured evidence-extraction stage before generation |
+| Hard evidence whitelist overcorrects | `runs/expanded/grounding_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.summary.json` reports mean grounding 6.75 and hallucination risk 4.25, but Qwen task mean drops to 5.25 and MIMO task mean drops to 6.70. | Grounding can improve at the cost of output usefulness and benchmark task completion | Use a two-level policy: whitelist for specific claims, generic/common-knowledge allowance for non-factual scaffolding |
 
 ## Current Strategy Decision
 
@@ -71,7 +72,8 @@ loop is:
    evidence says standalone compression is cheap but unstable, while
    operational anchors partially recover output completeness. The prompt-level
    evidence policy cuts unsupported claims but still leaves high-risk cells, so
-   the next loop should extract current-task fact whitelists before generation.
+   the next loop should use a two-level evidence policy rather than a hard
+   current-task fact whitelist.
 
 ## Handoff Commands
 

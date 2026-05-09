@@ -394,6 +394,51 @@ Interpretation:
   evidence extraction: enumerate allowable current-task facts first, then let
   anchors request only those facts or generic fallback content.
 
+## Evidence-Inventory Variant
+
+A stricter follow-up mode, `task_first_evidence_anchored_operational_anchors`,
+adds a deterministic current-evidence inventory to the prompt. The inventory
+extracts concrete numbers, quoted phrases, capitalized entities/technical
+terms, and Chinese terms from only the heldout task input/materials, then tells
+the model to treat it as a whitelist for concrete facts.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: after one retry with larger generation budget for the Academic cell,
+4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4 MIMO
+grounding-probe success.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors |
+|---|---:|---:|
+| Qwen WritingBench mean | 6.25 | 5.25 |
+| MIMO judge-swap mean | 6.85 | 6.70 |
+| MIMO grounding mean | 5.75 | 6.75 |
+| MIMO hallucination risk mean | 6.0 | 4.25 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 |
+
+Per-pack evidence-inventory scores:
+
+| Pack | Qwen score | MIMO score | Grounding | Risk | Unsupported |
+|---|---:|---:|---:|---:|---:|
+| Academic Engineering Paper Outline EN | 5.6 | 7.4 | 7 | 6 | 6 |
+| Product Description EN | 4.8 | 5.0 | 6 | 2 | 3 |
+| Travel Guide ZH | 5.6 | 6.6 | 5 | 7 | 7 |
+| Education Consulting EN | 5.0 | 7.8 | 9 | 2 | 0 |
+
+Interpretation:
+
+- The evidence inventory moves in the intended safety direction: grounding
+  improves and hallucination risk drops.
+- It hurts task completion, especially under Qwen. A deterministic whitelist is
+  too restrictive and can suppress useful but common-sense completion details.
+- This suggests the next version needs a two-level evidence policy rather than
+  a hard whitelist: current-evidence facts for specific claims, plus explicitly
+  marked generic/common-knowledge scaffolding when task evidence is incomplete.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -409,4 +454,5 @@ evidence density, and how to instantiate task-specific empirical material. The
 `task_first_operational_anchors` four-pack check is a concrete partial recovery
 signal, but the grounding probe shows the current version still fabricates too
 many unsupported specifics. The evidence-policy fix reduces this risk but does
-not eliminate it.
+not eliminate it. The evidence-inventory variant reduces risk further but loses
+too much task-completion quality to be the next benchmark candidate as-is.

@@ -218,7 +218,11 @@ def build_heldout_generation_prompt(
 ) -> str:
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
-    if mode in {"task_first_feature_signatures", "task_first_operational_anchors"}:
+    if mode in {
+        "task_first_feature_signatures",
+        "task_first_operational_anchors",
+        "task_first_evidence_anchored_operational_anchors",
+    }:
         return build_task_first_feature_signature_prompt(
             task=task,
             feature_signatures=skill_md,
@@ -314,13 +318,16 @@ def build_task_first_feature_signature_prompt(
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
     signatures = feature_signatures or "(missing feature signatures)"
-    signature_label = (
-        "Reusable operational anchors"
-        if mode == "task_first_operational_anchors"
-        else "Reusable feature signatures"
-    )
+    anchor_modes = {
+        "task_first_operational_anchors",
+        "task_first_evidence_anchored_operational_anchors",
+    }
+    signature_label = "Reusable feature signatures"
+    if mode in anchor_modes:
+        signature_label = "Reusable operational anchors"
     evidence_policy = ""
-    if mode == "task_first_operational_anchors":
+    evidence_inventory = ""
+    if mode in anchor_modes:
         evidence_policy = """
 Evidence policy for operational anchors:
 - Treat anchors as requests for detail types, not permission to invent facts.
@@ -334,6 +341,11 @@ Evidence policy for operational anchors:
 - Do not create fictional examples, named cases, statistics, references, or
   vendor/product capabilities to satisfy an anchor slot.
 """
+    if mode == "task_first_evidence_anchored_operational_anchors":
+        evidence_inventory = (
+            "\nCurrent evidence inventory for concrete facts:\n"
+            f"{build_current_evidence_inventory(task)}\n"
+        )
     return f"""Complete the heldout task below.
 
 Mode: {mode}
@@ -360,10 +372,63 @@ Heldout task input:
 
 Material excerpts:
 {materials}
+{evidence_inventory}
 
 {signature_label}:
 {signatures}
 """
+
+
+def build_current_evidence_inventory(
+    task: dict[str, Any],
+    *,
+    max_items: int = 40,
+    max_text_chars: int = 20000,
+) -> str:
+    """Build a deterministic whitelist-style inventory from current task evidence."""
+
+    chunks = [str(task.get("task_input") or "")]
+    for material in task.get("materials") or []:
+        if not isinstance(material, dict):
+            continue
+        chunks.append(str(material.get("path") or ""))
+        chunks.append(str(material.get("text") or ""))
+    text = "\n".join(chunks)[:max_text_chars]
+    numbers = _dedupe_preserve_order(re.findall(r"\b\d+(?:[.,:/-]\d+)*(?:%|[A-Za-z]+)?\b", text))
+    quoted = _dedupe_preserve_order(
+        match.strip()
+        for match in re.findall(r"[\"'“”‘’《》](.*?)[\"'“”‘’《》]", text)
+        if match.strip()
+    )
+    capitalized = _dedupe_preserve_order(
+        match.strip()
+        for match in re.findall(
+            r"\b(?:[A-Z][A-Za-z0-9&+.-]*)(?:\s+[A-Z][A-Za-z0-9&+.-]*){0,5}\b",
+            text,
+        )
+        if len(match.strip()) > 1
+    )
+    cjk_terms = _dedupe_preserve_order(
+        match.strip()
+        for match in re.findall(r"[\u4e00-\u9fffA-Za-z0-9·-]{2,20}", text)
+        if any("\u4e00" <= char <= "\u9fff" for char in match)
+    )
+
+    sections = [
+        "Use this inventory as a whitelist for concrete facts. If a concrete fact is "
+        "not present here or in the current evidence above, keep it generic.",
+    ]
+    _append_bullets(
+        sections,
+        "Numbers and dated values found in current evidence",
+        numbers[:max_items],
+    )
+    _append_bullets(sections, "Quoted or explicitly named phrases", quoted[:max_items])
+    _append_bullets(sections, "Capitalized entities and technical terms", capitalized[:max_items])
+    _append_bullets(sections, "Chinese terms found in current evidence", cjk_terms[:max_items])
+    if len(sections) == 1:
+        sections.append("- No concrete facts were extracted deterministically.")
+    return "\n".join(sections).strip()
 
 
 def build_feature_signature_context(skill_row: dict[str, Any], *, max_items: int = 8) -> str | None:
