@@ -476,7 +476,13 @@ keeps the example-driven skill pipeline testable without requiring a
 multimodal slide-generation model. The official PresentBench materials are not
 text-only, though: most cases provide `material*.pdf`, and the checklists can
 ask whether specific figures, tables, charts, and slide-level visual layouts are
-present and consistent with the source. The bridge therefore under-serves
+present and consistent with the source. The official rubric is also explicitly
+five-dimensional, with each dimension worth 20%: Presentation Fundamentals,
+Visual Design and Layout, Content Completeness, Content Correctness, and
+Content Fidelity. A pure text-output path cannot satisfy this contract because
+it has no stable way to control or inspect slide layout, visual hierarchy,
+figure/table reconstruction, localized visual evidence, or source-grounded
+fidelity at the slide/page level. The bridge therefore under-serves
 PresentBench's visual and layout requirements: no real PPTX layout engine, no
 chart or figure reconstruction, no image extraction from source materials, and
 no multimodal planning. Treat those scores as text-to-PDF MVP evidence and
