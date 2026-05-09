@@ -468,6 +468,23 @@ For CI smoke checks where slide artifacts or generated PresentBench examples are
 intentionally absent, add `--allow-missing --allow-empty`; do not use those flags
 when claiming official readiness.
 
+There is an important low-resource trade-off in the current PresentBench path.
+`export_presentbench_official_artifacts.py` is a repo-local bridge, not a
+competitive slide-generation agent: it renders text generations into simple
+PDFs so the upstream evaluator can run over the same artifact contract. This
+keeps the example-driven skill pipeline testable without requiring a
+multimodal slide-generation model. The official PresentBench materials are not
+text-only, though: most cases provide `material*.pdf`, and the checklists can
+ask whether specific figures, tables, charts, and slide-level visual layouts are
+present and consistent with the source. The bridge therefore under-serves
+PresentBench's visual and layout requirements: no real PPTX layout engine, no
+chart or figure reconstruction, no image extraction from source materials, and
+no multimodal planning. Treat those scores as text-to-PDF MVP evidence and
+evaluator plumbing, not as a paper-facing claim that the current agent solves
+PresentBench. A stronger low-resource route should use a renderer-backed
+intermediate representation instead: examples/materials -> structured slide
+spec -> HTML or PPTX renderer -> PDF -> official judge.
+
 Readiness statuses are intentionally separated:
 
 - `ready_for_official_judge`: slides exist and upstream `judge_all.py` can score them.

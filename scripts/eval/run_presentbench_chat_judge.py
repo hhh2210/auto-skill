@@ -39,6 +39,23 @@ ENV_TIMEOUT = "GOOGLE_THIRD_API_TIMEOUT_SECONDS"
 ENV_MAX_RETRIES = "GOOGLE_THIRD_API_MAX_RETRIES"
 
 
+def normalize_failed_result(result: tuple) -> tuple:
+    """Convert exhausted chat-judge failures into conservative scorer-safe rows."""
+
+    if len(result) != 3:
+        return result
+    outer_key, inner_key, payload = result
+    if not isinstance(payload, dict) or payload.get("answer") is not None:
+        return result
+    normalized = dict(payload)
+    normalized["answer"] = "no"
+    original_log = str(normalized.get("log") or "judge returned no parseable answer")
+    normalized["log"] = f"{original_log}; normalized_to_no_for_scoring"
+    if normalized.get("explanation") is None:
+        normalized["explanation"] = original_log
+    return outer_key, inner_key, normalized
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -206,6 +223,19 @@ def install_factory_patch(default_model: str) -> None:
     judge.create_judge_api = patched_factory
 
 
+def install_failure_normalization_patch() -> None:
+    """Keep upstream scorer from crashing on exhausted chat-completion retries."""
+
+    import judge  # type: ignore[import-not-found]
+
+    original_process_single_item = judge.process_single_item
+
+    def patched_process_single_item(item_info, context):
+        return normalize_failed_result(original_process_single_item(item_info, context))
+
+    judge.process_single_item = patched_process_single_item
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -230,6 +260,7 @@ def main() -> int:
         return 2
 
     install_factory_patch(default_model=args.model)
+    install_failure_normalization_patch()
     import judge  # type: ignore[import-not-found]
 
     judge.main(args=args)

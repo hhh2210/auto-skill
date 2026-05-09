@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from scripts.eval.run_presentbench_chat_judge import normalize_failed_result
 from scripts.eval.run_presentbench_official_judge import (
     CHAT_JUDGE_SCRIPT,
     build_judge_all_command,
@@ -54,6 +55,30 @@ def write_minimal_presentbench_code_root(code_root: Path) -> None:
 
 
 class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
+    def test_chat_judge_normalizes_exhausted_failures_for_scoring(self) -> None:
+        result = normalize_failed_result(
+            (
+                "2",
+                "2.6",
+                {
+                    "answer": None,
+                    "explanation": None,
+                    "log": "Empty response on attempt 5/5 for item 2.6",
+                },
+            )
+        )
+
+        self.assertEqual(result[0], "2")
+        self.assertEqual(result[1], "2.6")
+        self.assertEqual(result[2]["answer"], "no")
+        self.assertIn("normalized_to_no_for_scoring", result[2]["log"])
+        self.assertIn("Empty response", result[2]["explanation"])
+
+    def test_chat_judge_normalization_preserves_successful_answers(self) -> None:
+        result = ("1", "1.1", {"answer": "yes", "explanation": "ok"})
+
+        self.assertEqual(normalize_failed_result(result), result)
+
     def test_parse_mode_result_roots_requires_mapping(self) -> None:
         with self.assertRaisesRegex(ValueError, "MODE=PATH"):
             parse_mode_result_roots(["/tmp/results"])
