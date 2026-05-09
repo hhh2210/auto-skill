@@ -154,6 +154,13 @@ Current MVP readiness is green across both checked-in heldout tasks:
   with `gemini-3-flash-preview` judge identity. Until real official score rows
   exist, the gate emits `scored_model_monoculture` for the current Qwen-only
   scored evidence.
+- The metrics summary does include the completed Qwen + MIMO judge-swap rows.
+  After `c45ac1b`, legacy self-consistency rows expose solver identity through
+  `signature_generation.model`, so
+  `runs/mvp_metrics.heldout2.current.summary.json` has complete all-row and
+  scored-row model identity. Keep this distinction clear: metrics summary shows
+  judge-swap evidence; full readiness still blocks on missing official
+  PresentBench scores.
 
 Full experiment readiness is intentionally not green yet:
 

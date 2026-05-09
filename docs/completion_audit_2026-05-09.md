@@ -21,7 +21,7 @@ benchmark or paper-level claim.
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
 | Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. A grounding probe found mean grounding score 4.5 and hallucination risk 6.75. | Done as mechanism smoke; current version is too hallucination-prone |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. A live dry-run of `run_presentbench_official_judge.py` failed before API calls because `.env` has no `GENAI_API_KEY`; upstream `judge.py` currently accepts only `gemini` / `gemini_inline`, not OpenAI-compatible Qwen/Bailian. The wrapper now renders 16 selected `judge.py` commands for the current MVP cells instead of accidentally running `judge_all.py` over all 238 upstream cases. | Blocked: configure `GENAI_API_KEY` and run selected upstream `judge.py` cells to produce score YAMLs |
-| Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. Current MVP readiness has complete model identity and warns only that canonical artifacts are Qwen-only. `summarize_presentbench_official_scores.py` now supports explicit `--solver-model` and `--judge-model` metadata, so full readiness can keep model identity complete even while the 16 PresentBench official score artifacts are missing. | Partial: contract fixed, official score rows still missing |
+| Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in the scored eval model inventory, with zero missing model-identity fields after legacy self-consistency rows are inferred from `signature_generation.model`. Current MVP readiness still warns that the canonical readiness artifacts are Qwen-only. `summarize_presentbench_official_scores.py` supports explicit `--solver-model` and `--judge-model` metadata, so full readiness can keep all-row model identity complete even while the 16 PresentBench official score artifacts are missing; `model_inventory.scored` still reports Qwen-only scored evidence until those official rows are real successes. | Partial: contract fixed, official score rows still missing |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and summarized in `notes/background_review_2026-05-09.md`. The review identified PresentBench official scoring, heldout coverage, MIMO subset scope, and method evidence as blockers. | Done for this iteration, but repeat after official scoring / ablations |
 | Be factually confident in strategy | Current evidence shows auto-skill does not beat prompt-only/few-shot/one-shot reliably. | Not achieved |
 
@@ -93,6 +93,14 @@ de-monoculture claim by itself: the full profile includes
 rows. The machine-readable `model_inventory.scored` block now excludes
 non-success / placeholder eval rows and emits `scored_model_monoculture` when
 the actually scored eval rows plus skill rows are still Qwen-only.
+
+As of commit `c45ac1b`, model inventory also infers legacy self-consistency
+solver identity from `signature_generation.model`, so
+`runs/mvp_metrics.heldout2.current.summary.json` reports complete model identity
+for both all rows and scored rows. That metrics summary includes the completed
+Qwen + MIMO judge-swap evidence; full experiment readiness remains Qwen-only in
+`model_inventory.scored` because the Gemini PresentBench official rows are still
+missing-score placeholders rather than successes.
 
 Canonical current readiness reports are:
 
@@ -472,12 +480,15 @@ prove the auto-skill method.
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
    the canonical cleaner until a full MIMO pass is frozen and audited.
 4. Readiness now infers legacy model identity from nested `model_calls`,
-   `generation`, and `judge_calls` fields. `summarize_presentbench_official_scores.py`
-   can also write explicit `solver_model` / `judge_model` metadata for unscored
-   PresentBench official placeholder rows, so current full readiness has
-   complete model identity. The remaining full-readiness blockers are missing
-   official score artifacts, plus the local warning that `GENAI_API_KEY` is not
-   configured for running upstream `judge.py`.
+   `generation`, `signature_generation`, `judge`, and `judge_calls` fields.
+   `summarize_presentbench_official_scores.py` can also write explicit
+   `solver_model` / `judge_model` metadata for unscored PresentBench official
+   placeholder rows, so current full readiness has complete all-row model
+   identity. The `model_inventory.scored` sub-block still warns that the
+   actually scored evidence is Qwen-only until real Gemini official scores
+   exist. The remaining full-readiness blockers are missing official score
+   artifacts, plus the local warning that `GENAI_API_KEY` is not configured for
+   running upstream `judge.py`.
 
 ## Next Concrete Steps
 
