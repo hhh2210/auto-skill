@@ -19,7 +19,7 @@ benchmark or paper-level claim.
 | Judge disagreement taxonomy | `notes/judge_disagreement_taxonomy_2026-05-09.jsonl` labels all 10 sign-flip packets. `scripts/metrics/validate_disagreement_taxonomy.py` verifies one label per packet and checks candidate/baseline hashes. | Done as provisional calibration evidence, not human gold |
 | Candidate-quality guardrail probe | `notes/deliverable_guard_probe_2026-05-09.md` records a targeted Education Consulting probe after adding final-deliverable priority to the heldout prompt. `examples_plus_feature_skill` is near prompt-only, but skill-only remains strongly negative; deterministic n-gram contamination evidence is mixed. | Done as mixed/diagnostic evidence |
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
-| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a one-cell WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the same cell. | Done as mechanism smoke; promising but one-cell |
+| Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. | Done as mechanism smoke; promising but not a benchmark win |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. | Blocked: upstream `judge_all.py` score YAMLs not produced |
 | Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. However readiness still warns that canonical readiness artifacts are Qwen-only and some old rows lack top-level model identity. | Partial |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and identified PresentBench official scoring, heldout coverage, model monoculture, and method evidence as blockers. The transcript is not archived as a repo artifact, so this row is process evidence rather than file-backed experiment evidence. | Done for this iteration, but repeat after official scoring / ablations |
@@ -162,6 +162,37 @@ on this one Qwen-judged cell.
 However, the output may also be rewarded for hallucinated empirical detail and
 generic references, so this is a candidate mechanism rather than a clean win.
 
+### WritingBench, Operational Anchors Four-Pack Check
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen success and 4/4 MIMO judge-swap success on the existing
+calibrated expanded WritingBench sample.
+
+| Judge | Mode | Mean score |
+| --- | --- | ---: |
+| Qwen | prompt_only | 6.05 |
+| Qwen | few_shot_examples_only | 6.20 |
+| Qwen | one_shot_skill_from_examples | 5.15 |
+| Qwen | ours_no_validation | 4.70 |
+| Qwen | examples_plus_feature_skill | 5.25 |
+| Qwen | task_first_operational_anchors | 6.05 |
+| MIMO | prompt_only | 6.20 |
+| MIMO | few_shot_examples_only | 7.25 |
+| MIMO | one_shot_skill_from_examples | 7.05 |
+| MIMO | ours_no_validation | 6.50 |
+| MIMO | examples_plus_feature_skill | 7.20 |
+| MIMO | task_first_operational_anchors | 7.05 |
+
+Interpretation: operational anchors recover from the worst compression failures
+and are competitive with prompt-only / one-shot on this small slice, but they do
+not beat few-shot examples under either judge. The method direction is still
+useful because it points to concrete task-instantiation information lost by
+skill compression, but it is not yet a paper-level performance claim.
+
 ### PresentBench Surrogate
 
 Artifacts:
@@ -244,9 +275,10 @@ prove the auto-skill method.
    feature-signature smoke in `notes/feature_signature_ablation_2026-05-09.md`
    also stayed below prompt-only/few-shot even after a task-first prompt-order
    variant, so shorter context and simple task-first ordering are not the
-   missing mechanism. The later `task_first_operational_anchors` smoke is
-   positive on one cell, but may be partially rewarded for ungrounded detail and
-   still needs calibrated multi-pack validation.
+   missing mechanism. The later `task_first_operational_anchors` check is
+   healthier than prior compression variants on the calibrated four-pack sample
+   but still does not beat few-shot examples, and may be partially rewarded for
+   ungrounded detail.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -268,7 +300,8 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
-5. Validate `task_first_operational_anchors` on the existing calibrated
-   four-pack WritingBench sample with Qwen and independent judge-swap before
-   expanding N. This is currently the most concrete positive mechanism signal,
-   but it is only one cell and needs an explicit hallucination/grounding check.
+5. Add an explicit hallucination/grounding check for
+   `task_first_operational_anchors` before expanding N. The four-pack Qwen and
+   MIMO judge-swap check is complete, but the remaining risk is that the mode
+   wins by producing plausible unsupported specifics rather than by learning
+   transferable example structure.

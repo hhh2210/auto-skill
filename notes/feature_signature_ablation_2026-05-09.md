@@ -197,6 +197,98 @@ This is a noisy but useful mechanism signal on this difficult cell:
   benchmark result until rerun on the calibrated multi-pack sample and checked
   with an independent judge.
 
+## Four-Pack Operational Anchors Check
+
+Command:
+
+```bash
+uv run python scripts/eval/run_writingbench_official_eval.py \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --skills runs/expanded/skill_mvp.qwen.sample4_wb.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --writingbench-root ../WritingBench \
+  --pack-id writingbench_Academic_Engineering_Paper_Outline_en \
+  --pack-id writingbench_Advertising_Marketing_Product_Description_en \
+  --pack-id writingbench_Advertising_Marketing_Travel_Guide_zh \
+  --pack-id writingbench_Education_Educational_Consulting_en \
+  --modes task_first_operational_anchors \
+  --limit-heldout 1 \
+  --out runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.jsonl \
+  --summary-out runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.summary.json \
+  --num-threads 4 \
+  --timeout-seconds 600 \
+  --max-retries 3 \
+  --parse-max-attempts 3 \
+  --max-tokens 8192 \
+  --judge-max-tokens 1024 \
+  --allow-partial
+```
+
+MIMO judge-swap used the same candidate outputs:
+
+```bash
+uv run python scripts/eval/run_writingbench_official_eval.py \
+  --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl \
+  --skills runs/expanded/skill_mvp.qwen.sample4_wb.jsonl \
+  --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
+  --writingbench-root ../WritingBench \
+  --reuse-candidates-from runs/expanded/writingbench_official_eval.qwen.operational_anchors.sample4_wb.heldout1.jsonl \
+  --judge-config-prefix MIMO \
+  --pack-id writingbench_Academic_Engineering_Paper_Outline_en \
+  --pack-id writingbench_Advertising_Marketing_Product_Description_en \
+  --pack-id writingbench_Advertising_Marketing_Travel_Guide_zh \
+  --pack-id writingbench_Education_Educational_Consulting_en \
+  --modes task_first_operational_anchors \
+  --limit-heldout 1 \
+  --out runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.jsonl \
+  --summary-out runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json \
+  --num-threads 4 \
+  --timeout-seconds 600 \
+  --max-retries 3 \
+  --parse-max-attempts 3 \
+  --judge-max-tokens 8192 \
+  --no-judge-enable-thinking \
+  --allow-partial
+```
+
+Coverage: 4/4 Qwen success and 4/4 MIMO judge-swap success.
+
+| Judge | Mode | Mean score | Notes |
+|---|---|---:|---|
+| Qwen | `prompt_only` | 6.05 | Existing calibrated four-pack baseline |
+| Qwen | `few_shot_examples_only` | 6.20 | Existing calibrated four-pack baseline |
+| Qwen | `one_shot_skill_from_examples` | 5.15 | Existing calibrated four-pack baseline |
+| Qwen | `ours_no_validation` | 4.70 | Existing calibrated four-pack baseline |
+| Qwen | `examples_plus_feature_skill` | 5.25 | Existing calibrated four-pack baseline |
+| Qwen | `task_first_operational_anchors` | 6.05 | New run |
+| MIMO | `prompt_only` | 6.20 | Existing calibrated judge-swap baseline |
+| MIMO | `few_shot_examples_only` | 7.25 | Existing calibrated judge-swap baseline |
+| MIMO | `one_shot_skill_from_examples` | 7.05 | Existing calibrated judge-swap baseline |
+| MIMO | `ours_no_validation` | 6.50 | Existing calibrated judge-swap baseline |
+| MIMO | `examples_plus_feature_skill` | 7.20 | Existing calibrated judge-swap baseline |
+| MIMO | `task_first_operational_anchors` | 7.05 | New judge-swap run |
+
+Per-pack operational-anchor scores:
+
+| Pack | Qwen | MIMO |
+|---|---:|---:|
+| `writingbench_Academic_Engineering_Paper_Outline_en` | 6.0 | 7.4 |
+| `writingbench_Advertising_Marketing_Product_Description_en` | 5.0 | 4.4 |
+| `writingbench_Advertising_Marketing_Travel_Guide_zh` | 7.2 | 8.0 |
+| `writingbench_Education_Educational_Consulting_en` | 6.0 | 8.4 |
+
+Interpretation:
+
+- Operational anchors are much healthier than the previous skill-only and
+  compact-signature variants on the hard Academic cell, but the four-pack mean
+  does not beat `few_shot_examples_only`.
+- MIMO gives a higher mean than Qwen, but still ranks few-shot and
+  `examples_plus_feature_skill` above operational anchors on this slice.
+- The result supports a narrower mechanism hypothesis: preserving
+  task-instantiation anchors can reduce compression loss, but it is not yet a
+  replacement for examples and still needs grounding checks for fabricated
+  specifics.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -209,6 +301,5 @@ semantics and distinguishing transferable structure from example-specific
 content, not just shortening `SKILL.md`. In particular, a useful skill artifact
 may need to preserve operational anchors such as expected detail depth,
 evidence density, and how to instantiate task-specific empirical material. The
-`task_first_operational_anchors` smoke is a concrete next candidate for
-calibrated evaluation, but future eval must penalize ungrounded detail
-fabrication.
+`task_first_operational_anchors` four-pack check is a concrete partial recovery
+signal, but future eval must penalize ungrounded detail fabrication.
