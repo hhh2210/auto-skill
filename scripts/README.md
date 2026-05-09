@@ -40,6 +40,8 @@ stable.
 | `eval/audit_train_examples.py` | Private quality audit for generated train-example outputs. | diagnostic/API |
 | `eval/run_heldout_eval.py` | Text-only surrogate eval, mainly PresentBench smoke/debug. | surrogate/debug |
 | `eval/check_presentbench_official_eval_ready.py` | Check official PresentBench artifact readiness. | core gate |
+| `eval/export_presentbench_official_artifacts.py` | Export PresentBench eval text rows as simple PDF slide artifacts for the upstream judge. | core once official scores exist |
+| `eval/run_presentbench_official_judge.py` | Run upstream PresentBench official judge with repo-local preflight checks. | core once official scores exist |
 | `eval/summarize_presentbench_official_scores.py` | Summarize upstream PresentBench score YAMLs. | core once official scores exist |
 
 ### Metrics And Gates
