@@ -365,6 +365,36 @@ class ModelInventoryTests(unittest.TestCase):
             },
         )
 
+    def test_inventory_infers_legacy_nested_model_identity(self) -> None:
+        inventory = model_inventory(
+            skill_rows=[
+                {
+                    "mode": "old_skill_with_model_calls",
+                    "model_calls": [{"stage": "compile", "model": "qwen-3.5-plus"}],
+                }
+            ],
+            eval_rows=[
+                {
+                    "generation": {"model": "qwen-3.5-plus"},
+                    "judge_calls": [{"criterion": "c1", "model": "mimo-v2.5-pro"}],
+                },
+            ],
+        )
+
+        self.assertFalse(inventory["monoculture"])
+        self.assertTrue(inventory["model_identity_complete"])
+        self.assertEqual(
+            inventory["missing_model_identity"],
+            {
+                "skill_solver_model": 0,
+                "eval_solver_model": 0,
+                "eval_judge_model": 0,
+            },
+        )
+        self.assertIn("qwen-3.5-plus", inventory["skill_solver_models"])
+        self.assertIn("qwen-3.5-plus", inventory["eval_solver_models"])
+        self.assertIn("mimo-v2.5-pro", inventory["eval_judge_models"])
+
     def test_readiness_emits_monoculture_warning(self) -> None:
         report = readiness_report(
             packs=[pack("pack-1")],
@@ -401,7 +431,7 @@ class ModelInventoryTests(unittest.TestCase):
         )
         warning = next(warn for warn in report["warnings"] if "model_monoculture" in warn)
         self.assertIn("visible solver/judge model fields", warning)
-        self.assertIn("missing top-level model identity", warning)
+        self.assertIn("missing model identity", warning)
         self.assertFalse(report["model_inventory"]["model_identity_complete"])
 
 

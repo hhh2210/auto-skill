@@ -227,25 +227,45 @@ def eval_coverage(
     return result
 
 
-def collect_models(rows: list[dict[str, Any]], *, keys: tuple[str, ...]) -> set[str]:
-    """Collect non-empty model identifiers from row top-level fields."""
+def _string_values_from_path(value: Any, path: tuple[str, ...]) -> list[str]:
+    if not path:
+        if isinstance(value, str) and value.strip():
+            return [value]
+        return []
+    if isinstance(value, list):
+        values = []
+        for item in value:
+            values.extend(_string_values_from_path(item, path))
+        return values
+    if not isinstance(value, dict):
+        return []
+    return _string_values_from_path(value.get(path[0]), path[1:])
+
+
+def row_model_values(row: dict[str, Any], paths: tuple[tuple[str, ...], ...]) -> set[str]:
+    """Collect model identifiers from a row using top-level and legacy nested paths."""
+
+    values: set[str] = set()
+    for path in paths:
+        values.update(_string_values_from_path(row, path))
+    return values
+
+
+def collect_models(rows: list[dict[str, Any]], *, paths: tuple[tuple[str, ...], ...]) -> set[str]:
+    """Collect non-empty model identifiers from row fields."""
 
     models: set[str] = set()
     for row in rows:
-        for key in keys:
-            value = row.get(key)
-            if isinstance(value, str) and value.strip():
-                models.add(value)
+        models.update(row_model_values(row, paths))
     return models
 
 
-def missing_model_count(rows: list[dict[str, Any]], *, key: str) -> int:
-    """Count rows that do not expose a non-empty top-level model identifier."""
+def missing_model_count(rows: list[dict[str, Any]], *, paths: tuple[tuple[str, ...], ...]) -> int:
+    """Count rows that do not expose a non-empty model identifier."""
 
     missing = 0
     for row in rows:
-        value = row.get(key)
-        if not isinstance(value, str) or not value.strip():
+        if not row_model_values(row, paths):
             missing += 1
     return missing
 
@@ -257,14 +277,17 @@ def model_inventory(
 ) -> dict[str, Any]:
     """Inventory of solver/judge models seen across skill and eval artifacts."""
 
-    skill_solvers = collect_models(skill_rows, keys=("solver_model",))
-    eval_solvers = collect_models(eval_rows, keys=("solver_model",))
-    eval_judges = collect_models(eval_rows, keys=("judge_model",))
+    skill_solver_paths = (("solver_model",), ("model_calls", "model"))
+    eval_solver_paths = (("solver_model",), ("generation", "model"), ("run", "model"))
+    eval_judge_paths = (("judge_model",), ("judge", "model"), ("judge_calls", "model"))
+    skill_solvers = collect_models(skill_rows, paths=skill_solver_paths)
+    eval_solvers = collect_models(eval_rows, paths=eval_solver_paths)
+    eval_judges = collect_models(eval_rows, paths=eval_judge_paths)
     union = skill_solvers | eval_solvers | eval_judges
     missing = {
-        "skill_solver_model": missing_model_count(skill_rows, key="solver_model"),
-        "eval_solver_model": missing_model_count(eval_rows, key="solver_model"),
-        "eval_judge_model": missing_model_count(eval_rows, key="judge_model"),
+        "skill_solver_model": missing_model_count(skill_rows, paths=skill_solver_paths),
+        "eval_solver_model": missing_model_count(eval_rows, paths=eval_solver_paths),
+        "eval_judge_model": missing_model_count(eval_rows, paths=eval_judge_paths),
     }
     return {
         "skill_solver_models": sorted(skill_solvers),
@@ -360,7 +383,7 @@ def readiness_report(
         else:
             warnings.append(
                 "model_monoculture: visible solver/judge model fields share model "
-                f"{inventory['monoculture_model']}, but some rows are missing top-level "
+                f"{inventory['monoculture_model']}, but some rows are missing "
                 "model identity "
                 f"{inventory['missing_model_identity']}; results are smoke-only "
                 "(see README cross-model recipe)."
