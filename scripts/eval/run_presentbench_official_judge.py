@@ -230,7 +230,18 @@ def subprocess_env_with_code_root(code_root: Path) -> dict[str, str]:
     return env
 
 
-def command_manifest(commands: list[list[str]], errors: list[str]) -> dict:
+def preflight_warnings(*, api_type: str, allow_missing_env: bool) -> list[str]:
+    warnings: list[str] = []
+    if api_type.startswith("gemini") and allow_missing_env and not os.getenv("GENAI_API_KEY"):
+        warnings.append("GENAI_API_KEY is required by upstream PresentBench gemini judge")
+    return warnings
+
+
+def command_manifest(
+    commands: list[list[str]],
+    errors: list[str],
+    warnings: list[str] | None = None,
+) -> dict:
     return {
         "schema_version": "presentbench-official-judge-commands/v1",
         "commands": [
@@ -241,13 +252,24 @@ def command_manifest(commands: list[list[str]], errors: list[str]) -> dict:
             for command in commands
         ],
         "errors": errors,
+        "warnings": warnings or [],
     }
 
 
-def write_command_manifest(path: Path, commands: list[list[str]], errors: list[str]) -> None:
+def write_command_manifest(
+    path: Path,
+    commands: list[list[str]],
+    errors: list[str],
+    warnings: list[str] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(command_manifest(commands, errors), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(
+            command_manifest(commands, errors, warnings),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -321,6 +343,10 @@ def main() -> int:
         api_type=args.api_type,
         allow_missing_env=args.allow_missing_env,
     )
+    warnings = preflight_warnings(
+        api_type=args.api_type,
+        allow_missing_env=args.allow_missing_env,
+    )
     if args.all_presentbench:
         if not (args.code_root / "judge_all.py").exists():
             errors.append(f"missing upstream judge_all.py under {args.code_root}")
@@ -367,7 +393,7 @@ def main() -> int:
             f"expected {args.expect_commands} selected judge commands, got {len(commands)}"
         )
     if args.commands_out:
-        write_command_manifest(args.commands_out, commands, errors)
+        write_command_manifest(args.commands_out, commands, errors, warnings)
 
     if errors:
         for error in errors:

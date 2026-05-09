@@ -14,6 +14,7 @@ from scripts.eval.run_presentbench_official_judge import (
     build_judge_command,
     command_manifest,
     parse_mode_result_roots,
+    preflight_warnings,
     selected_judge_commands,
     subprocess_env_with_code_root,
     validate_preflight,
@@ -114,6 +115,17 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                     allow_missing_env=True,
                 )
                 self.assertEqual(errors, [])
+
+    def test_preflight_warnings_records_missing_gemini_key_for_dry_run_manifest(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                preflight_warnings(api_type="gemini", allow_missing_env=True),
+                ["GENAI_API_KEY is required by upstream PresentBench gemini judge"],
+            )
+            self.assertEqual(
+                preflight_warnings(api_type="gemini", allow_missing_env=False),
+                [],
+            )
 
     def test_build_judge_command_targets_one_selected_case(self) -> None:
         command = build_judge_command(
@@ -277,7 +289,11 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
         )
 
     def test_command_manifest_records_argv_and_shell_command(self) -> None:
-        manifest = command_manifest([["/python", "judge.py", "--model", "gemini 3"]], [])
+        manifest = command_manifest(
+            [["/python", "judge.py", "--model", "gemini 3"]],
+            [],
+            ["GENAI_API_KEY is required"],
+        )
 
         self.assertEqual(
             manifest["schema_version"],
@@ -288,6 +304,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             ["/python", "judge.py", "--model", "gemini 3"],
         )
         self.assertIn("'gemini 3'", manifest["commands"][0]["shell"])
+        self.assertEqual(manifest["warnings"], ["GENAI_API_KEY is required"])
 
     def test_cli_dry_run_renders_all_presentbench_modes_without_credentials(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -334,6 +351,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             manifest = json.loads(commands_out.read_text(encoding="utf-8"))
             self.assertEqual(len(manifest["commands"]), 2)
             self.assertIn("--agent_name", manifest["commands"][0]["argv"])
+            self.assertIn("GENAI_API_KEY", "\n".join(manifest["warnings"]))
 
     def test_cli_expect_commands_fails_on_count_mismatch(self) -> None:
         with TemporaryDirectory() as tmp:
