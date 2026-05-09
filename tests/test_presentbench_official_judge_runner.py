@@ -20,6 +20,30 @@ from scripts.eval.run_presentbench_official_judge import (
 )
 
 
+def write_minimal_presentbench_code_root(code_root: Path) -> None:
+    """Create the official-code files required by readiness checks."""
+
+    for relative in (
+        "judge_all.py",
+        "judge.py",
+        "scoring.py",
+        "utils/paths.py",
+        "utils/material_utils.py",
+        "utils/judge_utils.py",
+        "utils/score_utils.py",
+        "utils/api/base.py",
+        "utils/api/judge_api.py",
+        "utils/pptx_to_pdf.py",
+        "utils/count_pages.py",
+        "utils/truncate_pages.py",
+        "utils/encode_file.py",
+        "utils/generate_checklist.py",
+    ):
+        path = code_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# fixture\n", encoding="utf-8")
+
+
 class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
     def test_parse_mode_result_roots_requires_mapping(self) -> None:
         with self.assertRaisesRegex(ValueError, "MODE=PATH"):
@@ -127,12 +151,14 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
     def test_selected_judge_commands_only_renders_unscored_pack_cells(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
+            code_root = root / "code"
             data_root = root / "data"
             case_dir = data_root / "education" / "case1"
             result_root = root / "results" / "prompt"
             result_dir = result_root / "education" / "case1" / "generation_task" / "results"
             case_dir.mkdir(parents=True)
             result_dir.mkdir(parents=True)
+            write_minimal_presentbench_code_root(code_root)
             (data_root / "education" / "common_judge_prompt.json").write_text(
                 "{}", encoding="utf-8"
             )
@@ -163,7 +189,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
 
             commands, errors = selected_judge_commands(
                 packs_path=packs_path,
-                code_root=Path(__file__).resolve().parents[1] / "data/PresentBench_code",
+                code_root=code_root,
                 data_root=data_root,
                 mode_roots={"prompt_only": result_root},
                 python_executable="/python",
@@ -182,12 +208,14 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
     def test_selected_judge_commands_all_scored_is_noop_success(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
+            code_root = root / "code"
             data_root = root / "data"
             case_dir = data_root / "education" / "case1"
             result_root = root / "results" / "prompt"
             result_dir = result_root / "education" / "case1" / "generation_task" / "results"
             case_dir.mkdir(parents=True)
             result_dir.mkdir(parents=True)
+            write_minimal_presentbench_code_root(code_root)
             (data_root / "education" / "common_judge_prompt.json").write_text(
                 "{}", encoding="utf-8"
             )
@@ -222,7 +250,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
 
             commands, errors = selected_judge_commands(
                 packs_path=packs_path,
-                code_root=Path(__file__).resolve().parents[1] / "data/PresentBench_code",
+                code_root=code_root,
                 data_root=data_root,
                 mode_roots={"prompt_only": result_root},
                 python_executable="/python",
