@@ -4,7 +4,10 @@ import unittest
 
 from auto_skill.generated_outputs import (
     apply_outputs_to_pack,
+    index_latest_outputs,
     index_successful_outputs,
+    latest_generation_rows,
+    latest_successful_generation_rows,
     private_leak_matches,
 )
 
@@ -29,6 +32,69 @@ class GeneratedOutputsTests(unittest.TestCase):
         ]
 
         self.assertEqual(list(index_successful_outputs(rows)), ["job-1", "job-3", "job-4"])
+
+    def test_latest_generation_rows_uses_job_and_prompt_sha(self) -> None:
+        rows = [
+            {"status": "error", "job_id": "job-1", "prompt_sha256": "sha-1"},
+            {"status": "success", "job_id": "job-1", "prompt_sha256": "sha-1"},
+            {"status": "success", "job_id": "job-1", "prompt_sha256": "sha-2"},
+            {"status": "success", "job_id": "missing-sha"},
+        ]
+
+        latest = latest_generation_rows(rows)
+
+        self.assertEqual(set(latest), {("job-1", "sha-1"), ("job-1", "sha-2")})
+        self.assertEqual(latest[("job-1", "sha-1")]["status"], "success")
+
+    def test_index_latest_outputs_keeps_rejected_latest_rows(self) -> None:
+        rows = [
+            {"status": "success", "job_id": "job-1", "prompt_sha256": "sha-1"},
+            {
+                "status": "rejected_incomplete_generation",
+                "job_id": "job-1",
+                "prompt_sha256": "sha-1",
+                "finish_reason": "length",
+            },
+            {"status": "error", "job_id": "job-2"},
+        ]
+
+        latest = index_latest_outputs(rows)
+
+        self.assertEqual(latest["job-1"]["status"], "rejected_incomplete_generation")
+        self.assertEqual(latest["job-2"]["status"], "error")
+
+    def test_latest_successful_generation_rows_filters_historical_failures(self) -> None:
+        rows = [
+            {
+                "status": "rejected_incomplete_generation",
+                "job_id": "job-1",
+                "prompt_sha256": "sha-1",
+                "finish_reason": "length",
+            },
+            {
+                "status": "success",
+                "job_id": "job-1",
+                "prompt_sha256": "sha-1",
+                "finish_reason": "stop",
+            },
+            {
+                "status": "rejected_incomplete_generation",
+                "job_id": "job-2",
+                "prompt_sha256": "sha-2",
+                "finish_reason": "length",
+            },
+            {
+                "status": "success",
+                "job_id": "job-3",
+                "prompt_sha256": "sha-3",
+                "finish_reason": "length",
+            },
+        ]
+
+        successful, status_counts = latest_successful_generation_rows(rows)
+
+        self.assertEqual([row["job_id"] for row in successful], ["job-1"])
+        self.assertEqual(status_counts, {"rejected_incomplete_generation": 1, "success": 2})
 
     def test_apply_outputs_to_pack_replaces_placeholder(self) -> None:
         pack = {

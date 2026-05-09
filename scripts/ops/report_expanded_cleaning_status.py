@@ -73,6 +73,51 @@ def source_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(Counter(str(row.get("source") or "unknown") for row in rows).items()))
 
 
+def domain_value(row: dict[str, Any], key: str) -> str | None:
+    """Return a normalized domain metadata value from a split or pack row."""
+
+    domain = row.get("domain")
+    if isinstance(domain, dict):
+        value = domain.get(key)
+        return str(value) if value else None
+    if key == "primary" and domain:
+        return str(domain)
+    return None
+
+
+def coverage_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, int]]]:
+    """Summarize source/domain/language coverage for handoff reports."""
+
+    by_source: dict[str, dict[str, Counter[str]]] = {}
+    for row in rows:
+        source = str(row.get("source") or "unknown")
+        bucket = by_source.setdefault(
+            source,
+            {
+                "primary_domains": Counter(),
+                "secondary_domains": Counter(),
+                "languages": Counter(),
+            },
+        )
+        primary = domain_value(row, "primary")
+        secondary = domain_value(row, "secondary")
+        language = domain_value(row, "language")
+        if primary:
+            bucket["primary_domains"][primary] += 1
+        if secondary:
+            bucket["secondary_domains"][secondary] += 1
+        if language:
+            bucket["languages"][language] += 1
+    return {
+        source: {
+            name: dict(sorted(counter.items()))
+            for name, counter in sorted(counters.items())
+            if counter
+        }
+        for source, counters in sorted(by_source.items())
+    }
+
+
 def frozen_pack_summary(packs: list[dict[str, Any]]) -> dict[str, Any]:
     train_examples = 0
     heldout_tasks = 0
@@ -93,6 +138,7 @@ def frozen_pack_summary(packs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "packs": len(packs),
         "sources": source_counts(packs),
+        "coverage": coverage_summary(packs),
         "train_examples": train_examples,
         "heldout_tasks": heldout_tasks,
         "frozen_train_examples": frozen_examples,
@@ -111,6 +157,143 @@ def audit_file_summary(spec: AuditSpec) -> dict[str, Any]:
         "source_counts": source_counts(rows),
         "success_rows": sum(1 for row in rows if row.get("status") == "success"),
     }
+
+
+def require_dict_rows(rows: list[Any], *, label: str) -> None:
+    """Raise a structured error when a JSONL artifact contains non-object rows."""
+
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise TypeError(f"{label}: row {index + 1} must be an object, got {type(row).__name__}")
+
+
+def maybe_mimo_subset_summary(
+    *,
+    args: argparse.Namespace,
+    splits: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, list[str], list[str]]:
+    """Validate and summarize an optional local MIMO frozen subset."""
+
+    if args.skip_mimo_subset:
+        return None, [], []
+
+    errors: list[str] = []
+    warnings: list[str] = []
+    paths = [
+        args.mimo_subset_packs,
+        args.mimo_subset_private_eval,
+        args.mimo_subset_jobs,
+        args.mimo_subset_generated_outputs,
+    ]
+    missing = [str(path) for path in paths if not path.exists()]
+    if missing:
+        message = f"MIMO subset artifacts missing: {missing}"
+        if args.require_mimo_subset:
+            errors.append(message)
+        else:
+            warnings.append(message)
+        return None, errors, warnings
+
+    try:
+        packs = load_jsonl(args.mimo_subset_packs)
+        private_rows = load_jsonl(args.mimo_subset_private_eval)
+        jobs = load_jsonl(args.mimo_subset_jobs)
+        generated_rows = load_jsonl(args.mimo_subset_generated_outputs)
+        require_dict_rows(packs, label=str(args.mimo_subset_packs))
+        require_dict_rows(private_rows, label=str(args.mimo_subset_private_eval))
+        require_dict_rows(jobs, label=str(args.mimo_subset_jobs))
+        require_dict_rows(generated_rows, label=str(args.mimo_subset_generated_outputs))
+    except (OSError, json.JSONDecodeError, TypeError) as exc:
+        errors.append(f"MIMO subset artifacts invalid: {exc}")
+        return None, errors, warnings
+
+    try:
+        flow = audit_benchmark_flow(
+            splits=splits,
+            packs=packs,
+            private_rows=private_rows,
+            generation_jobs=jobs,
+            generated_rows=generated_rows,
+        )
+        if flow.errors:
+            errors.extend(f"MIMO subset benchmark_flow: {error}" for error in flow.errors)
+        warnings.extend(f"MIMO subset benchmark_flow: {warning}" for warning in flow.warnings)
+
+        pack_summary = frozen_pack_summary(packs)
+        latest_rows = latest_generation_rows(generated_rows)
+        latest_status_counts = Counter(str(row.get("status")) for row in latest_rows.values())
+        if len(latest_rows) != len(jobs):
+            errors.append(
+                f"MIMO subset latest generation rows {len(latest_rows)} "
+                f"do not match jobs {len(jobs)}"
+            )
+        if latest_status_counts != {"success": len(jobs)}:
+            errors.append(
+                "MIMO subset latest generation rows are not all success: "
+                f"{dict(latest_status_counts)}"
+            )
+        if pack_summary["frozen_train_examples"] != pack_summary["train_examples"]:
+            errors.append(
+                "MIMO subset not all train examples are frozen: "
+                f"{pack_summary['frozen_train_examples']}/{pack_summary['train_examples']}"
+            )
+        expected_source_counts = {
+            "PresentBench": args.expect_mimo_subset_present_packs,
+            "WritingBench": args.expect_mimo_subset_writing_packs,
+        }
+        if pack_summary["packs"] != args.expect_mimo_subset_packs:
+            errors.append(
+                "MIMO subset expected "
+                f"{args.expect_mimo_subset_packs} packs, got {pack_summary['packs']}"
+            )
+        if pack_summary["train_examples"] != args.expect_mimo_subset_train_examples:
+            errors.append(
+                "MIMO subset expected "
+                f"{args.expect_mimo_subset_train_examples} train examples, "
+                f"got {pack_summary['train_examples']}"
+            )
+        if pack_summary["heldout_tasks"] != args.expect_mimo_subset_heldout_tasks:
+            errors.append(
+                "MIMO subset expected "
+                f"{args.expect_mimo_subset_heldout_tasks} heldout tasks, "
+                f"got {pack_summary['heldout_tasks']}"
+            )
+        if len(jobs) != args.expect_mimo_subset_generation_jobs:
+            errors.append(
+                "MIMO subset expected "
+                f"{args.expect_mimo_subset_generation_jobs} generation jobs, got {len(jobs)}"
+            )
+        if pack_summary["sources"] != expected_source_counts:
+            errors.append(
+                "MIMO subset source counts mismatch: "
+                f"expected {expected_source_counts}, got {pack_summary['sources']}"
+            )
+    except (SchemaValidationError, TypeError, AttributeError) as exc:
+        errors.append(f"MIMO subset artifacts invalid: {exc}")
+        return None, errors, warnings
+
+    summary = {
+        "status": "ok" if not errors else "failed",
+        "packs": {"path": str(args.mimo_subset_packs), **pack_summary},
+        "private_eval": {
+            "path": str(args.mimo_subset_private_eval),
+            "rows": len(private_rows),
+            "sources": source_counts(private_rows),
+        },
+        "generation_jobs": {"path": str(args.mimo_subset_jobs), "rows": len(jobs)},
+        "generated_outputs": {
+            "path": str(args.mimo_subset_generated_outputs),
+            "rows": len(generated_rows),
+            "latest_rows": len(latest_rows),
+            "latest_status_counts": dict(sorted(latest_status_counts.items())),
+        },
+        "benchmark_flow": {
+            "status": "ok" if flow.ok else "failed",
+            "errors": list(flow.errors),
+            "warnings": list(flow.warnings),
+        },
+    }
+    return summary, errors, warnings
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
@@ -132,7 +315,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     except SchemaValidationError as exc:
         errors.append(f"generated outputs schema invalid: {exc}")
 
-    flow = audit_benchmark_flow(splits=splits, packs=packs, private_rows=private_rows)
+    flow = audit_benchmark_flow(
+        splits=splits,
+        packs=packs,
+        private_rows=private_rows,
+        generation_jobs=jobs,
+        generated_rows=generated_rows,
+    )
     errors.extend(f"benchmark_flow: {error}" for error in flow.errors)
     warnings.extend(f"benchmark_flow: {warning}" for warning in flow.warnings)
 
@@ -219,34 +408,49 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 f"optional audit has non-success rows: {spec.path}: {summary['status_counts']}"
             )
 
+    mimo_subset, mimo_errors, mimo_warnings = maybe_mimo_subset_summary(
+        args=args,
+        splits=splits,
+    )
+    if args.require_mimo_subset:
+        errors.extend(mimo_errors)
+    else:
+        warnings.extend(mimo_errors)
+    warnings.extend(mimo_warnings)
+
     status = "ready" if not errors else "not_ready"
+    artifacts = {
+        "splits": {
+            "path": str(args.splits),
+            "rows": len(splits),
+            "sources": source_counts(splits),
+            "coverage": coverage_summary(splits),
+        },
+        "packs": {"path": str(args.packs), **pack_summary},
+        "private_eval": {
+            "path": str(args.private_eval),
+            "rows": len(private_rows),
+            "sources": source_counts(private_rows),
+        },
+        "generation_jobs": {"path": str(args.jobs), "rows": len(jobs)},
+        "generated_outputs": {
+            "path": str(args.generated_outputs),
+            "rows": len(generated_rows),
+            "latest_rows": len(latest_rows),
+            "latest_status_counts": dict(sorted(latest_status_counts.items())),
+        },
+        "required_audits": required_audits,
+        "optional_audits": optional_audits,
+    }
+    if mimo_subset is not None:
+        artifacts["mimo_subset"] = mimo_subset
+
     return {
         "schema_version": "expanded-cleaning-status/v1",
         "status": status,
         "errors": errors,
         "warnings": warnings,
-        "artifacts": {
-            "splits": {
-                "path": str(args.splits),
-                "rows": len(splits),
-                "sources": source_counts(splits),
-            },
-            "packs": {"path": str(args.packs), **pack_summary},
-            "private_eval": {
-                "path": str(args.private_eval),
-                "rows": len(private_rows),
-                "sources": source_counts(private_rows),
-            },
-            "generation_jobs": {"path": str(args.jobs), "rows": len(jobs)},
-            "generated_outputs": {
-                "path": str(args.generated_outputs),
-                "rows": len(generated_rows),
-                "latest_rows": len(latest_rows),
-                "latest_status_counts": dict(sorted(latest_status_counts.items())),
-            },
-            "required_audits": required_audits,
-            "optional_audits": optional_audits,
-        },
+        "artifacts": artifacts,
     }
 
 
@@ -293,6 +497,48 @@ def main() -> int:
     parser.add_argument("--expect-train-examples", type=int, default=150)
     parser.add_argument("--expect-heldout-tasks", type=int, default=100)
     parser.add_argument("--expect-generation-jobs", type=int, default=150)
+    parser.add_argument(
+        "--mimo-subset-packs",
+        type=Path,
+        default=Path("runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl"),
+    )
+    parser.add_argument(
+        "--mimo-subset-private-eval",
+        type=Path,
+        default=Path("runs/expanded/example_private_eval.30wb_20pb.mimo.sample.jsonl"),
+    )
+    parser.add_argument(
+        "--mimo-subset-jobs",
+        type=Path,
+        default=Path("runs/expanded/example_generation_jobs.30wb_20pb.mimo.sample.jsonl"),
+    )
+    parser.add_argument(
+        "--mimo-subset-generated-outputs",
+        type=Path,
+        default=Path(
+            "runs/expanded/generated_desired_outputs.30wb_20pb.mimo.sample.latest_success.jsonl"
+        ),
+    )
+    parser.add_argument(
+        "--require-mimo-subset",
+        action="store_true",
+        help="Fail when the optional local MIMO frozen subset is missing or invalid.",
+    )
+    parser.add_argument(
+        "--skip-mimo-subset",
+        action="store_true",
+        help=(
+            "Do not inspect the local MIMO frozen subset. Use this when reporting "
+            "a different split whose source-task selection is not aligned with "
+            "the 30WB/20PB MIMO sample."
+        ),
+    )
+    parser.add_argument("--expect-mimo-subset-packs", type=int, default=15)
+    parser.add_argument("--expect-mimo-subset-train-examples", type=int, default=45)
+    parser.add_argument("--expect-mimo-subset-heldout-tasks", type=int, default=30)
+    parser.add_argument("--expect-mimo-subset-generation-jobs", type=int, default=45)
+    parser.add_argument("--expect-mimo-subset-writing-packs", type=int, default=12)
+    parser.add_argument("--expect-mimo-subset-present-packs", type=int, default=3)
     parser.add_argument("--expect-status", choices=["ready", "not_ready"])
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()

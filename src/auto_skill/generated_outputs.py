@@ -51,6 +51,53 @@ def index_successful_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, 
     return outputs
 
 
+def index_latest_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return the latest generation row for each ``job_id`` in append order."""
+
+    outputs: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        job_id = row.get("job_id")
+        if not job_id:
+            continue
+        outputs[str(job_id)] = row
+    return outputs
+
+
+def latest_generation_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return the latest row for each ``(job_id, prompt_sha256)`` pair."""
+
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        job_id = row.get("job_id")
+        prompt_sha = row.get("prompt_sha256")
+        if not job_id or not prompt_sha:
+            continue
+        latest[(str(job_id), str(prompt_sha))] = row
+    return latest
+
+
+def latest_successful_generation_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Filter an append-only generation log to latest successful completed rows.
+
+    The raw generation log intentionally keeps historical API failures and
+    truncated responses. Benchmark-flow and readiness checks should usually use
+    this latest-success view so a later successful retry supersedes an earlier
+    failed attempt for the same prompt.
+    """
+
+    latest = latest_generation_rows(rows)
+    status_counts: dict[str, int] = {}
+    successful = []
+    for row in latest.values():
+        status = str(row.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if status == "success" and row.get("finish_reason") == "stop":
+            successful.append(row)
+    return successful, dict(sorted(status_counts.items()))
+
+
 def apply_outputs_to_pack(
     pack: dict[str, Any],
     outputs_by_job_id: dict[str, dict[str, Any]],
