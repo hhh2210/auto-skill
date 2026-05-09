@@ -502,6 +502,32 @@ multimodal material parsing: PDF pages/materials -> structured evidence
 digest -> examples/materials -> structured slide spec -> HTML or PPTX renderer
 -> PDF -> official judge.
 
+The first multimodal bridge is the material-digest stage. It does not replace
+the current text MVP artifacts; it creates an additional JSONL artifact that a
+future HTML/PPTX renderer can consume. The script renders selected PDF pages to
+PNG and sends them as OpenAI-compatible `image_url` content parts, so use a
+vision-capable model such as `qwen3.5-plus` or a dedicated `QWEN_VL_MODEL`.
+Disable thinking by default for this extraction step; the smoke run showed that
+thinking tokens can truncate the compact digest.
+
+```bash
+uv run python scripts/data/run_presentbench_material_digest.py \
+  --packs artifacts/packs/example_packs.v1.jsonl \
+  --out runs/presentbench_material_digest.qwen3.5plus.smoke.jsonl \
+  --pack-id presentbench_education_THU_DSA \
+  --role heldout \
+  --limit 1 \
+  --pages 1 \
+  --dpi 72 \
+  --temperature 0 \
+  --max-tokens 2048 \
+  --no-enable-thinking
+```
+
+The smoke command above produced a successful row with `image_tokens=410` in the
+provider usage block, confirming that the PDF page image reached Qwen rather
+than being reduced to text-only prompt context.
+
 Readiness statuses are intentionally separated:
 
 - `ready_for_official_judge`: slides exist and upstream `judge_all.py` can score them.

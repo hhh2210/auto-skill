@@ -98,6 +98,16 @@ Expected surfaces:
   chat-completions proxy wrapper with `GOOGLE_THIRD_API_URL` and
   `GOOGLE_THIRD_API_KEY`. Do not add LiteLLM unless multiple non-OpenAI-compatible
   judge backends become a real requirement.
+- PresentBench is not a pure-text benchmark. Full-setting solver work needs
+  multimodal/PDF material perception for source pages, figures, tables, charts,
+  and layout evidence. Direct image generation is not required if we use a
+  renderer-backed route, but the material-parsing stage cannot be text-only.
+- Use `scripts/data/run_presentbench_material_digest.py` as the experimental
+  bridge from selected PresentBench PDF pages to structured material digests.
+  It renders pages to PNG and sends them as OpenAI-compatible `image_url`
+  content parts to Qwen/Qwen-VL. Default to `--no-enable-thinking`; a smoke run
+  with Qwen3.5-Plus confirmed `image_tokens=410`, while thinking mode consumed
+  reasoning tokens and truncated the digest.
 - For long sequential skill-induction runs, use `--stream` to consume Qwen responses
   incrementally. Add `--stream-log` only for debugging one sequential run; do not
   use stream logging in threaded batch cleaning because output will interleave.
@@ -193,6 +203,7 @@ uv run python scripts/data/inspect_benchmarks.py --writingbench-root ../WritingB
 uv run python scripts/data/build_fewshot_splits.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --train-size 3 --heldout-size 2 --max-groups 4 --out artifacts/splits/fewshot_splits.jsonl --summary-out artifacts/splits/fewshot_split_summary.json
 uv run python scripts/data/build_example_packs.py --splits artifacts/splits/fewshot_splits.jsonl --packs-out artifacts/packs/example_packs.jsonl --private-out artifacts/private/example_private_eval.jsonl --jobs-out artifacts/jobs/example_generation_jobs.jsonl --summary-out artifacts/reports/example_pack_summary.md
 uv run python scripts/data/run_generation_jobs.py --jobs artifacts/jobs/example_generation_jobs.jsonl --out artifacts/jobs/generated_desired_outputs.jsonl --limit 1 --dry-run
+uv run python scripts/data/run_presentbench_material_digest.py --packs artifacts/packs/example_packs.v1.jsonl --out runs/presentbench_material_digest.qwen3.5plus.smoke.jsonl --pack-id presentbench_education_THU_DSA --role heldout --limit 1 --pages 1 --dpi 72 --temperature 0 --max-tokens 2048 --no-enable-thinking
 uv run python scripts/skills/run_skill_mvp.py --packs artifacts/packs/example_packs.v1.jsonl --out runs/skill_mvp.qwen.mvp.jsonl --stream --resume --allow-partial --no-enable-thinking --no-leave-one-out --temperature 0.2 --json-temperature 0 --timeout-seconds 900 --max-retries 0 --parse-max-attempts 3 --max-tokens 8192
 RUN_SKILL_MVP=0 RUN_MEMORY=1 RUN_WRITINGBENCH=1 RUN_PRESENTBENCH=1 RUN_VALIDATE=1 PRESENTBENCH_NUM_THREADS=4 scripts/ops/run_mvp_pipeline.sh
 uv run python scripts/eval/run_writingbench_official_eval.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --private-eval artifacts/private/example_private_eval.jsonl --writingbench-root ../WritingBench --limit-heldout 1 --parse-max-attempts 3 --resume --num-threads 16 --dry-run
