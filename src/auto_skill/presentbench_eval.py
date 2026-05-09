@@ -49,6 +49,24 @@ def presentbench_result_dir(result_root: Path, source_task_id: str) -> Path:
     return result_root / source_task_id / "generation_task" / "results"
 
 
+def parse_mode_path_mappings(
+    values: list[str],
+    *,
+    option_label: str = "--mode-result-root",
+) -> dict[str, Path]:
+    roots: dict[str, Path] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"{option_label} must be MODE=PATH, got: {value}")
+        mode, raw_path = value.split("=", 1)
+        mode = mode.strip()
+        raw_path = raw_path.strip()
+        if not mode or not raw_path:
+            raise ValueError(f"{option_label} must be non-empty MODE=PATH, got: {value}")
+        roots[mode] = Path(raw_path).expanduser()
+    return roots
+
+
 def find_slide_artifact(result_dir: Path) -> Path | None:
     for name in ("slides.pdf", "slides.pptx"):
         candidate = result_dir / name

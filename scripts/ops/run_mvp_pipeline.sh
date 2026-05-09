@@ -27,6 +27,7 @@ TEMPERATURE="${TEMPERATURE:-0.2}"
 JSON_TEMPERATURE="${JSON_TEMPERATURE:-0}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-900}"
 MAX_RETRIES="${MAX_RETRIES:-0}"
+PARSE_MAX_ATTEMPTS="${PARSE_MAX_ATTEMPTS:-3}"
 SKILL_MAX_TOKENS="${SKILL_MAX_TOKENS:-8192}"
 EVAL_MAX_TOKENS="${EVAL_MAX_TOKENS:-8192}"
 PRESENTBENCH_NUM_THREADS="${PRESENTBENCH_NUM_THREADS:-4}"
@@ -57,6 +58,7 @@ if [[ "$RUN_SKILL_MVP" == "1" ]]; then
       --json-temperature "$JSON_TEMPERATURE" \
       --timeout-seconds "$TIMEOUT_SECONDS" \
       --max-retries "$MAX_RETRIES" \
+      --parse-max-attempts "$PARSE_MAX_ATTEMPTS" \
       --max-tokens "$SKILL_MAX_TOKENS"
 fi
 
@@ -81,6 +83,7 @@ if [[ "$RUN_WRITINGBENCH" == "1" ]]; then
       --no-enable-thinking \
       --timeout-seconds "$TIMEOUT_SECONDS" \
       --max-retries "$MAX_RETRIES" \
+      --parse-max-attempts "$PARSE_MAX_ATTEMPTS" \
       --max-tokens "$EVAL_MAX_TOKENS" \
       --resume \
       --allow-partial \
@@ -101,6 +104,7 @@ if [[ "$RUN_PRESENTBENCH" == "1" ]]; then
       --no-enable-thinking \
       --timeout-seconds "$TIMEOUT_SECONDS" \
       --max-retries "$MAX_RETRIES" \
+      --parse-max-attempts "$PARSE_MAX_ATTEMPTS" \
       --max-tokens "$EVAL_MAX_TOKENS" \
       --num-threads "$PRESENTBENCH_NUM_THREADS" \
       --resume \

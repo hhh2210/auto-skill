@@ -25,9 +25,13 @@ from auto_skill.eval_summary import (  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import (  # noqa: E402
+    HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
+    build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
+    build_operational_anchor_context,
+    build_presentbench_layout_plan_prompt,
     evaluation_criteria,
     extract_overall_score,
     parse_json_object,
@@ -39,6 +43,23 @@ Use only user-visible examples, reusable skills, task input, and visible materia
 
 JUDGE_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
+REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+SKILL_REQUIRED_MODES = {
+    "one_shot_skill_from_examples",
+    "ours_no_validation",
+    "auto_skill",
+    "examples_plus_one_shot_skill",
+    "examples_plus_feature_skill",
+    "feature_signatures_only",
+    "examples_plus_feature_signatures",
+    "task_first_feature_signatures",
+    "task_first_operational_anchors",
+    "task_first_evidence_anchored_operational_anchors",
+    "task_first_two_level_operational_anchors",
+    "slide_constrained_examples_plus_feature_skill",
+    "layout_plan_examples_plus_feature_skill",
+}
 
 
 @dataclass(frozen=True)
@@ -94,7 +115,20 @@ def skill_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
         skill_md = row.get("skill_md")
         if pack_id and mode and isinstance(skill_md, str) and skill_md.strip():
             index[(str(pack_id), str(mode))] = skill_md
+        feature_signature_context = build_feature_signature_context(row)
+        if pack_id and mode and feature_signature_context:
+            index[(str(pack_id), f"{mode}::feature_signatures")] = feature_signature_context
+        operational_anchor_context = build_operational_anchor_context(row)
+        if pack_id and mode and operational_anchor_context:
+            index[(str(pack_id), f"{mode}::operational_anchors")] = operational_anchor_context
     return index
+
+
+def load_skill_rows(paths: list[Path]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in paths:
+        rows.extend(load_jsonl(path))
+    return rows
 
 
 def select_packs(
@@ -119,13 +153,44 @@ def select_packs(
 
 
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
-    if mode == "one_shot_skill_from_examples":
+    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
         return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode == "ours_no_validation":
+    if mode in {
+        "ours_no_validation",
+        "examples_plus_feature_skill",
+        "feature_signatures_only",
+        "examples_plus_feature_signatures",
+        "task_first_feature_signatures",
+        "task_first_operational_anchors",
+        "task_first_evidence_anchored_operational_anchors",
+        "task_first_two_level_operational_anchors",
+        "slide_constrained_examples_plus_feature_skill",
+        "layout_plan_examples_plus_feature_skill",
+    }:
+        if mode in {
+            "feature_signatures_only",
+            "examples_plus_feature_signatures",
+            "task_first_feature_signatures",
+        }:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
+            )
+        if mode in {
+            "task_first_operational_anchors",
+            "task_first_evidence_anchored_operational_anchors",
+            "task_first_two_level_operational_anchors",
+        }:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::operational_anchors")
+            )
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))
     return None
+
+
+def mode_needs_skill(mode: str) -> bool:
+    return mode in SKILL_REQUIRED_MODES
 
 
 def summarize_rows(
@@ -175,6 +240,63 @@ def load_resume_success_rows(out: Path, expected_cells: list[ScoreCell]) -> list
     return rows
 
 
+def runtime_metadata(
+    *,
+    config: ChatCompletionConfig,
+    judge_config: ChatCompletionConfig | None,
+    temperature: float | None,
+    max_tokens: int,
+    judge_max_tokens: int,
+    max_material_chars: int,
+) -> dict[str, Any]:
+    effective_judge_config = judge_config or config
+    return {
+        "heldout_generation_prompt_version": HELDOUT_GENERATION_PROMPT_VERSION,
+        "solver_model": config.model,
+        "solver_temperature": temperature,
+        "solver_max_tokens": max_tokens,
+        "max_material_chars": max_material_chars,
+        "solver_enable_thinking": config.enable_thinking,
+        "solver_thinking_budget": config.thinking_budget,
+        "judge_enable_thinking": effective_judge_config.enable_thinking,
+        "judge_thinking_budget": effective_judge_config.thinking_budget,
+        "judge_max_tokens": judge_max_tokens,
+    }
+
+
+def row_matches_runtime(
+    row: dict[str, Any],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> bool:
+    if row.get("judge_model") != expected_judge_model:
+        return False
+    for key, value in metadata.items():
+        if key not in row or row[key] != value:
+            return False
+    return True
+
+
+def load_compatible_resume_success_rows(
+    out: Path,
+    expected_cells: list[ScoreCell],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = load_resume_success_rows(out, expected_cells)
+    return [
+        row
+        for row in rows
+        if row_matches_runtime(
+            row,
+            expected_judge_model=expected_judge_model,
+            metadata=metadata,
+        )
+    ]
+
+
 def append_checkpoint_row(out: Path, rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
     rows.append(row)
     write_jsonl(out, rows)
@@ -207,6 +329,8 @@ def score_row_status(
 
     if generation.finish_reason != "stop":
         return "generation_incomplete"
+    if judge.finish_reason in REFUSAL_FINISH_REASONS:
+        return "judge_refusal"
     if judge.finish_reason != "stop":
         return "judge_incomplete"
     if "parse_error" in judge_report or overall_score is None:
@@ -214,6 +338,62 @@ def score_row_status(
     if not is_valid_overall_score(overall_score):
         return "judge_invalid_score"
     return "success"
+
+
+def judge_with_parse_retry(
+    *,
+    judge_client: ChatCompletionClient,
+    judge_prompt: str,
+    generation: PromptRunResult,
+    judge_max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[PromptRunResult, dict[str, Any], float | None, list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    parse_attempts: list[dict[str, Any]] = []
+    last_judge: PromptRunResult | None = None
+    last_report: dict[str, Any] = {"parse_error": "judge_not_called"}
+    last_score: float | None = None
+
+    for attempt in range(1, attempts + 1):
+        judge = call_model(
+            judge_client,
+            system_prompt=JUDGE_SYSTEM_PROMPT,
+            user_prompt=judge_prompt,
+            temperature=0.0,
+            max_tokens=judge_max_tokens,
+        )
+        judge_report = parse_json_object(judge.text)
+        overall_score = extract_overall_score(judge_report)
+        status = score_row_status(
+            generation=generation,
+            judge=judge,
+            judge_report=judge_report,
+            overall_score=overall_score,
+        )
+        parse_attempts.append(
+            {
+                "attempt": attempt,
+                "status": status,
+                "finish_reason": judge.finish_reason,
+                "model": judge.model,
+                "request_id": judge.request_id,
+                "usage": judge.usage,
+                "parse_error": judge_report.get("parse_error"),
+                "overall_score": overall_score,
+            }
+        )
+        last_judge = judge
+        last_report = judge_report
+        last_score = overall_score
+        if status in {"success", "judge_incomplete", "judge_refusal"}:
+            break
+        if status == "judge_invalid_score" and attempt >= attempts:
+            break
+        if status == "judge_parse_error" and attempt >= attempts:
+            break
+
+    assert last_judge is not None
+    return last_judge, last_report, last_score, parse_attempts
 
 
 def eval_failure_row(
@@ -225,8 +405,9 @@ def eval_failure_row(
     evaluator_kind: str,
     solver_model: str | None = None,
     judge_model: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    row = {
         "schema_version": "heldout-eval/v1",
         "pack_id": str(pack["pack_id"]),
         "task_id": str(task["task_id"]),
@@ -242,6 +423,9 @@ def eval_failure_row(
         "solver_model": solver_model,
         "judge_model": judge_model,
     }
+    if metadata:
+        row.update(metadata)
+    return row
 
 
 def eval_model_error_row(
@@ -253,6 +437,7 @@ def eval_model_error_row(
     error: Exception,
     solver_model: str | None = None,
     judge_model: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     row = eval_failure_row(
         pack=pack,
@@ -262,6 +447,7 @@ def eval_model_error_row(
         evaluator_kind=evaluator_kind,
         solver_model=solver_model,
         judge_model=judge_model,
+        metadata=metadata,
     )
     row["error"] = f"{type(error).__name__}: {error}"
     return row
@@ -275,7 +461,9 @@ def evaluate_heldout_job(
     max_tokens: int,
     judge_max_tokens: int,
     max_material_chars: int,
+    metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -287,6 +475,46 @@ def evaluate_heldout_job(
     solver_model_id = config.model
     judge_model_id = (judge_config or config).model
     try:
+        layout_plan: PromptRunResult | None = None
+        layout_plan_text = ""
+        if job.mode == "layout_plan_examples_plus_feature_skill":
+            plan_prompt = build_presentbench_layout_plan_prompt(
+                task=task,
+                examples=job.examples,
+                skill_md=job.skill_md,
+                max_material_chars=max_material_chars,
+            )
+            layout_plan = call_model(
+                client,
+                system_prompt=GENERATION_SYSTEM_PROMPT,
+                user_prompt=plan_prompt,
+                temperature=temperature,
+                max_tokens=min(max_tokens, 2048),
+            )
+            if layout_plan.finish_reason != "stop":
+                row = {
+                    "schema_version": "heldout-eval/v1",
+                    "pack_id": pack_id,
+                    "task_id": task_id,
+                    "source": pack.get("source"),
+                    "mode": job.mode,
+                    "evaluator_kind": job.evaluator_kind,
+                    "status": "layout_plan_incomplete",
+                    "layout_plan": layout_plan.to_json(),
+                    "generation": None,
+                    "judge": None,
+                    "judge_report": None,
+                    "overall_score": None,
+                    "solver_model": layout_plan.model or solver_model_id,
+                    "judge_model": judge_model_id,
+                }
+                row.update(metadata)
+                return cell, row, f"layout_plan_incomplete ({layout_plan.finish_reason})"
+            layout_plan_text = (
+                "\n\nCurrent-task layout plan:\n"
+                + layout_plan.text
+                + "\n\nFollow this plan when writing the final answer."
+            )
         prompt = build_heldout_generation_prompt(
             task=task,
             mode=job.mode,
@@ -294,6 +522,8 @@ def evaluate_heldout_job(
             skill_md=job.skill_md,
             max_material_chars=max_material_chars,
         )
+        if layout_plan_text:
+            prompt += layout_plan_text
         generation = call_model(
             client,
             system_prompt=GENERATION_SYSTEM_PROMPT,
@@ -310,6 +540,7 @@ def evaluate_heldout_job(
                 "mode": job.mode,
                 "evaluator_kind": job.evaluator_kind,
                 "status": "generation_incomplete",
+                "layout_plan": layout_plan.to_json() if layout_plan is not None else None,
                 "generation": generation.to_json(),
                 "judge": None,
                 "judge_report": None,
@@ -317,21 +548,20 @@ def evaluate_heldout_job(
                 "solver_model": generation.model or solver_model_id,
                 "judge_model": judge_model_id,
             }
+            row.update(metadata)
             return cell, row, f"generation_incomplete ({generation.finish_reason})"
         judge_prompt = build_judge_prompt(
             task=task,
             candidate_output=generation.text,
             private_eval=job.private_eval,
         )
-        judge = call_model(
-            judge_client,
-            system_prompt=JUDGE_SYSTEM_PROMPT,
-            user_prompt=judge_prompt,
-            temperature=0.0,
-            max_tokens=judge_max_tokens,
+        judge, judge_report, overall_score, judge_parse_attempts = judge_with_parse_retry(
+            judge_client=judge_client,
+            judge_prompt=judge_prompt,
+            generation=generation,
+            judge_max_tokens=judge_max_tokens,
+            parse_max_attempts=parse_max_attempts,
         )
-        judge_report = parse_json_object(judge.text)
-        overall_score = extract_overall_score(judge_report)
         status = score_row_status(
             generation=generation,
             judge=judge,
@@ -346,13 +576,16 @@ def evaluate_heldout_job(
             "mode": job.mode,
             "evaluator_kind": job.evaluator_kind,
             "status": status,
+            "layout_plan": layout_plan.to_json() if layout_plan is not None else None,
             "generation": generation.to_json(),
             "judge": judge.to_json(),
+            "judge_parse_attempts": judge_parse_attempts,
             "judge_report": judge_report,
             "overall_score": overall_score,
             "solver_model": generation.model or solver_model_id,
             "judge_model": judge.model or judge_model_id,
         }
+        row.update(metadata)
         return cell, row, str(overall_score)
     except Exception as exc:  # noqa: BLE001 - provider failures should not kill whole eval.
         row = eval_model_error_row(
@@ -363,6 +596,7 @@ def evaluate_heldout_job(
             error=exc,
             solver_model=solver_model_id,
             judge_model=judge_model_id,
+            metadata=metadata,
         )
         return cell, row, row["error"]
 
@@ -375,11 +609,13 @@ def run_eval_jobs(
     max_tokens: int,
     judge_max_tokens: int,
     max_material_chars: int,
+    metadata: dict[str, Any],
     num_threads: int,
     out: Path,
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
 ) -> None:
     def run_one(job: HeldoutEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_heldout_job(
@@ -389,7 +625,9 @@ def run_eval_jobs(
             max_tokens=max_tokens,
             judge_max_tokens=judge_max_tokens,
             max_material_chars=max_material_chars,
+            metadata=metadata,
             judge_config=judge_config,
+            parse_max_attempts=parse_max_attempts,
         )
 
     if num_threads == 1:
@@ -425,7 +663,15 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/packs/example_packs.v1.jsonl"),
     )
-    parser.add_argument("--skills", type=Path, default=Path("runs/skill_mvp.qwen.jsonl"))
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        help=(
+            "Skill rows JSONL. Repeat to merge MVP and ours_full skill artifacts. "
+            "Defaults to runs/skill_mvp.qwen.jsonl."
+        ),
+    )
     parser.add_argument(
         "--private-eval",
         type=Path,
@@ -460,6 +706,16 @@ def main() -> int:
     parser.add_argument("--max-material-chars", type=int, default=4000)
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
+        help=(
+            "Retry judge calls when a complete response cannot be parsed into "
+            "a valid numeric score. Provider/network retries remain controlled "
+            "by --max-retries."
+        ),
+    )
     parser.add_argument(
         "--num-threads",
         type=int,
@@ -504,6 +760,17 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    unsupported_modes = sorted(set(modes) & {"task_first_planned_operational_anchors"})
+    if unsupported_modes:
+        print(
+            "error: task_first_planned_operational_anchors is WritingBench-runner only; "
+            "it requires a staged evidence/scaffolding planner.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
     if not selected and not args.dry_run and not args.allow_empty:
         print("error: no packs selected for heldout evaluation", file=sys.stderr)
         return 3
@@ -575,14 +842,32 @@ def main() -> int:
     judge_model = (judge_config or config).model
     temperature = args.temperature if args.temperature is not None else config.temperature
     private_index = private_eval_index(load_jsonl(args.private_eval))
-    skills = skill_index(load_jsonl(args.skills))
+    skill_paths = args.skills or [Path("runs/skill_mvp.qwen.jsonl")]
+    skills = skill_index(load_skill_rows(skill_paths))
 
     expected_cells = expected_score_cells(
         selected,
         modes,
         limit_heldout=args.limit_heldout,
     )
-    rows = load_resume_success_rows(args.out, expected_cells) if args.resume else []
+    metadata = runtime_metadata(
+        config=config,
+        judge_config=judge_config,
+        temperature=temperature,
+        max_tokens=args.max_tokens,
+        judge_max_tokens=args.judge_max_tokens,
+        max_material_chars=args.max_material_chars,
+    )
+    rows = (
+        load_compatible_resume_success_rows(
+            args.out,
+            expected_cells,
+            expected_judge_model=judge_model,
+            metadata=metadata,
+        )
+        if args.resume
+        else []
+    )
     completed_cells = successful_score_cells(rows)
     if args.resume and rows:
         print(f"Loaded {len(rows)} successful checkpoint rows from {args.out}", flush=True)
@@ -618,6 +903,7 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
@@ -633,14 +919,12 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
                 skill_md = mode_skill(mode, skills, pack_id)
-                if (
-                    mode in {"one_shot_skill_from_examples", "ours_no_validation", "auto_skill"}
-                    and not skill_md
-                ):
+                if mode_needs_skill(mode) and not skill_md:
                     append_checkpoint_row(
                         args.out,
                         rows,
@@ -660,6 +944,7 @@ def main() -> int:
                             evaluator_kind=args.evaluator_kind,
                             solver_model=solver_model,
                             judge_model=judge_model,
+                            metadata=metadata,
                         )
                     )
                     continue
@@ -683,11 +968,13 @@ def main() -> int:
         max_tokens=args.max_tokens,
         judge_max_tokens=args.judge_max_tokens,
         max_material_chars=args.max_material_chars,
+        metadata=metadata,
         num_threads=num_threads,
         out=args.out,
         rows=rows,
         completed_cells=completed_cells,
         judge_config=judge_config,
+        parse_max_attempts=args.parse_max_attempts,
     )
 
     write_jsonl(args.out, rows)

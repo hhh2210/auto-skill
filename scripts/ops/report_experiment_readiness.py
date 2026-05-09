@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -22,21 +25,30 @@ from auto_skill.readiness import (  # noqa: E402
 
 PROFILE_DEFAULT_PATHS = {
     "smoke": {
-        "skills": Path("runs/skill_mvp.qwen.mvp.jsonl"),
-        "writing_eval": Path("runs/writingbench_official_eval.qwen.mvp.jsonl"),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [Path("runs/skill_mvp.qwen.mvp.jsonl")],
+        "writing_eval": [Path("runs/writingbench_official_eval.qwen.mvp.jsonl")],
+        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
     },
     "mvp": {
-        "skills": Path("runs/skill_mvp.qwen.mvp.jsonl"),
-        "writing_eval": Path("runs/writingbench_official_eval.qwen.mvp.jsonl"),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [Path("runs/skill_mvp.qwen.mvp.jsonl")],
+        "writing_eval": [
+            Path("runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl")
+        ],
+        "present_surrogate_eval": [Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl")],
     },
     "full": {
-        "skills": Path("runs/skill_mvp.qwen.ours_full.writingbench.jsonl"),
-        "writing_eval": Path(
-            "runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl"
-        ),
-        "present_surrogate_eval": Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+        "skills": [
+            Path("runs/skill_mvp.qwen.mvp.jsonl"),
+            Path("runs/skill_mvp.qwen.ours_full.writingbench.jsonl"),
+            Path("runs/skill_mvp.qwen.ours_full.presentbench.jsonl"),
+        ],
+        "writing_eval": [
+            Path("runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl")
+        ],
+        "present_surrogate_eval": [
+            Path("runs/presentbench_surrogate_eval.qwen.mvp.jsonl"),
+            Path("runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl"),
+        ],
     },
 }
 
@@ -51,6 +63,35 @@ def load_readiness_jsonl(
         missing_messages.append(f"{label}: file not found: {path}")
         return []
     return load_jsonl(path)
+
+
+def load_readiness_jsonls(
+    paths: list[Path],
+    *,
+    label: str,
+    missing_messages: list[str],
+) -> list[dict]:
+    rows: list[dict] = []
+    for path in paths:
+        rows.extend(
+            load_readiness_jsonl(
+                path,
+                label=label,
+                missing_messages=missing_messages,
+            )
+        )
+    return rows
+
+
+def env_var_is_set(name: str, *, env_file: Path) -> bool:
+    """Return whether ``name`` is set in the process env or local env file."""
+
+    value = os.getenv(name)
+    if value:
+        return True
+    if not env_file.exists():
+        return False
+    return bool(dotenv_values(env_file).get(name))
 
 
 def main() -> int:
@@ -70,21 +111,45 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/packs/example_packs.v1.jsonl"),
     )
-    parser.add_argument("--skills", type=Path)
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        help="Skill artifact JSONL. Repeat to merge multiple skill row files.",
+    )
     parser.add_argument(
         "--writing-eval",
         type=Path,
+        action="append",
+        help="WritingBench eval JSONL. Repeat to merge multiple eval row files.",
     )
     parser.add_argument(
         "--present-surrogate-eval",
         type=Path,
+        action="append",
+        help="PresentBench surrogate eval JSONL. Repeat to merge multiple eval row files.",
     )
     parser.add_argument(
         "--present-official-scores",
         type=Path,
-        default=Path("runs/presentbench_official_scores.jsonl"),
+        action="append",
+        help=(
+            "PresentBench official score JSONL. Repeat to merge multiple score row files. "
+            "Defaults to runs/presentbench_official_scores.jsonl."
+        ),
     )
     parser.add_argument("--limit-heldout", type=int)
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path(".env"),
+        help="Local env file used only for readiness warnings about runnable external gates.",
+    )
+    parser.add_argument(
+        "--present-official-env-var",
+        default="GENAI_API_KEY",
+        help="Environment variable required by the upstream PresentBench Gemini judge.",
+    )
     parser.add_argument("--out", type=Path, default=Path("runs/experiment_readiness.json"))
     parser.add_argument(
         "--allow-not-ready",
@@ -107,11 +172,17 @@ def main() -> int:
     args = parser.parse_args()
     profile = readiness_profile(args.profile)
     profile_paths = PROFILE_DEFAULT_PATHS[args.profile]
-    skills_path = args.skills or profile_paths["skills"]
-    writing_eval_path = args.writing_eval or profile_paths["writing_eval"]
-    present_surrogate_eval_path = (
+    skills_paths = args.skills or profile_paths["skills"]
+    writing_eval_paths = args.writing_eval or profile_paths["writing_eval"]
+    present_surrogate_eval_paths = (
         args.present_surrogate_eval or profile_paths["present_surrogate_eval"]
     )
+    if args.present_official_scores:
+        present_official_paths = args.present_official_scores
+    elif profile.require_presentbench_official:
+        present_official_paths = [Path("runs/presentbench_official_scores.jsonl")]
+    else:
+        present_official_paths = []
     require_presentbench_official = (
         profile.require_presentbench_official and not args.allow_missing_presentbench_official
     )
@@ -121,28 +192,37 @@ def main() -> int:
     present_official_missing_messages = artifact_blockers
     if not require_presentbench_official:
         present_official_missing_messages = artifact_warnings
+    if require_presentbench_official and not env_var_is_set(
+        args.present_official_env_var,
+        env_file=args.env_file,
+    ):
+        artifact_warnings.append(
+            "PresentBench official judge env var missing: "
+            f"{args.present_official_env_var}; score summarization can inspect "
+            "existing YAMLs, but running upstream judge.py requires this variable."
+        )
     packs = load_readiness_jsonl(
         args.packs,
         label="packs",
         missing_messages=artifact_blockers,
     )
-    skill_rows = load_readiness_jsonl(
-        skills_path,
+    skill_rows = load_readiness_jsonls(
+        skills_paths,
         label="skills",
         missing_messages=artifact_blockers,
     )
-    writing_eval_rows = load_readiness_jsonl(
-        writing_eval_path,
+    writing_eval_rows = load_readiness_jsonls(
+        writing_eval_paths,
         label="writingbench_eval",
         missing_messages=artifact_blockers,
     )
-    present_surrogate_rows = load_readiness_jsonl(
-        present_surrogate_eval_path,
+    present_surrogate_rows = load_readiness_jsonls(
+        present_surrogate_eval_paths,
         label="presentbench_surrogate_eval",
         missing_messages=artifact_blockers,
     )
-    present_official_rows = load_readiness_jsonl(
-        args.present_official_scores,
+    present_official_rows = load_readiness_jsonls(
+        present_official_paths,
         label="presentbench_official_scores",
         missing_messages=present_official_missing_messages,
     )

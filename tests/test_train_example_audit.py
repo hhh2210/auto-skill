@@ -1,15 +1,36 @@
 from __future__ import annotations
 
+import sys
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from scripts.eval.audit_train_examples import (
     chat_result_json,
     desired_output_text,
+    generic_audit_with_parse_retry,
     generic_judge_status,
+    main,
     summarize_rows,
     train_private_index,
 )
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
+        self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
+
+    def complete(self, *_args, **_kwargs):
+        text = self.texts.pop(0)
+        finish_reason = self.finish_reasons.pop(0)
+        return SimpleNamespace(
+            text=text,
+            model="judge",
+            finish_reason=finish_reason,
+            usage={"total_tokens": 1},
+            request_id="req",
+        )
 
 
 class TrainExampleAuditTests(unittest.TestCase):
@@ -91,6 +112,14 @@ class TrainExampleAuditTests(unittest.TestCase):
         )
         self.assertEqual(
             generic_judge_status(
+                finish_reason="content_filter",
+                judge_report={"overall_score": 8},
+                overall_score=8,
+            ),
+            "judge_refusal",
+        )
+        self.assertEqual(
+            generic_judge_status(
                 finish_reason="stop",
                 judge_report={"parse_error": "bad"},
                 overall_score=None,
@@ -125,6 +154,47 @@ class TrainExampleAuditTests(unittest.TestCase):
                 "request_id": "req",
             },
         )
+
+    def test_generic_audit_retries_parse_error(self) -> None:
+        judge, report, score, status, calls = generic_audit_with_parse_retry(
+            judge_client=SequencedCompletionClient(["bad", '{"overall_score": 7}']),
+            judge_prompt="score",
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.text, '{"overall_score": 7}')
+        self.assertEqual(report, {"overall_score": 7})
+        self.assertEqual(score, 7.0)
+        self.assertEqual(status, "success")
+        self.assertEqual([call["status"] for call in calls], ["judge_parse_error", "success"])
+
+    def test_generic_audit_records_refusal_without_retry(self) -> None:
+        judge, report, score, status, calls = generic_audit_with_parse_retry(
+            judge_client=SequencedCompletionClient(
+                ["blocked", '{"overall_score": 7}'],
+                finish_reasons=["safety", "stop"],
+            ),
+            judge_prompt="score",
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.text, "blocked")
+        self.assertEqual(status, "judge_refusal")
+        self.assertIn("parse_error", report)
+        self.assertIsNone(score)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["finish_reason"], "safety")
+        self.assertEqual(calls[0]["status"], "judge_refusal")
+
+    def test_cli_rejects_invalid_parse_attempts_before_dry_run(self) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            ["audit_train_examples.py", "--parse-max-attempts", "0", "--dry-run"],
+        ):
+            self.assertEqual(main(), 2)
 
     def test_summary_accepts_presentbench_audit_success(self) -> None:
         summary = summarize_rows(

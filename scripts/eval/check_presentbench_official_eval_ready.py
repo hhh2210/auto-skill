@@ -17,8 +17,17 @@ if str(SRC_ROOT) not in sys.path:
 
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.mvp import user_examples_from_pack  # noqa: E402
-from auto_skill.presentbench_eval import check_presentbench_official_eval_readiness  # noqa: E402
+from auto_skill.presentbench_eval import (  # noqa: E402
+    check_presentbench_official_eval_readiness,
+    parse_mode_path_mappings,
+)
 from scripts.eval.run_heldout_eval import select_packs  # noqa: E402
+
+
+def parse_mode_result_roots(values: list[str] | None, *, default_root: Path) -> dict[str, Path]:
+    if not values:
+        return {"auto_skill": default_root}
+    return parse_mode_path_mappings(values, option_label="--mode-result-root")
 
 
 def main() -> int:
@@ -47,6 +56,15 @@ def main() -> int:
             "<result-root>/<source_task_id>/generation_task/results/slides.pdf or slides.pptx."
         ),
     )
+    parser.add_argument(
+        "--mode-result-root",
+        action="append",
+        help=(
+            "Mode-to-result-root mapping, e.g. "
+            "prompt_only=../PresentBench/results/prompt_only. Repeat to check "
+            "multiple modes in one output. Defaults to auto_skill=<result-root>."
+        ),
+    )
     parser.add_argument("--out", type=Path, default=Path("runs/presentbench_official_ready.jsonl"))
     parser.add_argument(
         "--judge-model",
@@ -66,6 +84,14 @@ def main() -> int:
         help="Exit 0 when filters select no PresentBench heldout tasks. Default is fail-closed.",
     )
     args = parser.parse_args()
+    try:
+        result_roots = parse_mode_result_roots(
+            args.mode_result_root,
+            default_root=args.result_root,
+        )
+    except ValueError as exc:
+        print(f"configuration error: {exc}", file=sys.stderr)
+        return 2
 
     packs = load_jsonl(args.packs)
     selected = select_packs(
@@ -82,16 +108,18 @@ def main() -> int:
         if args.limit_heldout is not None:
             heldout_tasks = heldout_tasks[: args.limit_heldout]
         for task in heldout_tasks:
-            readiness = check_presentbench_official_eval_readiness(
-                task=task,
-                data_root=args.data_root,
-                result_root=args.result_root,
-                code_root=args.code_root,
-                judge_model=args.judge_model,
-            ).to_json()
-            readiness["pack_id"] = pack["pack_id"]
-            readiness["source"] = "PresentBench"
-            rows.append(readiness)
+            for mode, result_root in result_roots.items():
+                readiness = check_presentbench_official_eval_readiness(
+                    task=task,
+                    data_root=args.data_root,
+                    result_root=result_root,
+                    code_root=args.code_root,
+                    judge_model=args.judge_model,
+                ).to_json()
+                readiness["pack_id"] = pack["pack_id"]
+                readiness["source"] = "PresentBench"
+                readiness["mode"] = mode
+                rows.append(readiness)
 
     write_jsonl(args.out, rows)
     counts = {}

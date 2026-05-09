@@ -184,7 +184,7 @@ def eval_coverage(
     required_modes: tuple[str, ...] = MVP_EVAL_MODES,
 ) -> dict[str, dict[str, Any]]:
     by_pack_task: dict[tuple[str, str], dict[str, Any]] = defaultdict(
-        lambda: {"modes": {}, "status_counts": Counter()}
+        lambda: {"modes": {}, "mode_statuses": defaultdict(list), "status_counts": Counter()}
     )
     for row in rows:
         pack_id = str(row.get("pack_id") or "")
@@ -195,19 +195,30 @@ def eval_coverage(
         status = str(row.get("status") or "unknown")
         item = by_pack_task[(pack_id, task_id)]
         item["modes"][mode] = status
+        item["mode_statuses"][mode].append(status)
         item["status_counts"][status] += 1
 
     result = {}
     for (pack_id, task_id), item in by_pack_task.items():
         missing = [mode for mode in required_modes if mode not in item["modes"]]
-        non_success = {
-            mode: status for mode, status in item["modes"].items() if status != "success"
-        }
+        non_success = {}
+        duplicate_modes = {}
+        for mode, statuses in item["mode_statuses"].items():
+            if len(statuses) > 1:
+                duplicate_modes[mode] = list(statuses)
+            failed_statuses = [status for status in statuses if status != "success"]
+            if failed_statuses:
+                non_success[mode] = (
+                    failed_statuses[0]
+                    if len(statuses) == 1
+                    else f"duplicate_statuses:{sorted(set(statuses))}"
+                )
         key = f"{pack_id}::{task_id}"
         result[key] = {
             "pack_id": pack_id,
             "task_id": task_id,
             "modes": item["modes"],
+            "duplicate_modes": duplicate_modes,
             "missing_modes": missing,
             "non_success_modes": non_success,
             "status_counts": dict(item["status_counts"]),
@@ -216,16 +227,47 @@ def eval_coverage(
     return result
 
 
-def collect_models(rows: list[dict[str, Any]], *, keys: tuple[str, ...]) -> set[str]:
-    """Collect non-empty model identifiers from row top-level fields."""
+def _string_values_from_path(value: Any, path: tuple[str, ...]) -> list[str]:
+    if not path:
+        if isinstance(value, str) and value.strip():
+            return [value]
+        return []
+    if isinstance(value, list):
+        values = []
+        for item in value:
+            values.extend(_string_values_from_path(item, path))
+        return values
+    if not isinstance(value, dict):
+        return []
+    return _string_values_from_path(value.get(path[0]), path[1:])
+
+
+def row_model_values(row: dict[str, Any], paths: tuple[tuple[str, ...], ...]) -> set[str]:
+    """Collect model identifiers from a row using top-level and legacy nested paths."""
+
+    values: set[str] = set()
+    for path in paths:
+        values.update(_string_values_from_path(row, path))
+    return values
+
+
+def collect_models(rows: list[dict[str, Any]], *, paths: tuple[tuple[str, ...], ...]) -> set[str]:
+    """Collect non-empty model identifiers from row fields."""
 
     models: set[str] = set()
     for row in rows:
-        for key in keys:
-            value = row.get(key)
-            if isinstance(value, str) and value.strip():
-                models.add(value)
+        models.update(row_model_values(row, paths))
     return models
+
+
+def missing_model_count(rows: list[dict[str, Any]], *, paths: tuple[tuple[str, ...], ...]) -> int:
+    """Count rows that do not expose a non-empty model identifier."""
+
+    missing = 0
+    for row in rows:
+        if not row_model_values(row, paths):
+            missing += 1
+    return missing
 
 
 def model_inventory(
@@ -235,17 +277,60 @@ def model_inventory(
 ) -> dict[str, Any]:
     """Inventory of solver/judge models seen across skill and eval artifacts."""
 
-    skill_solvers = collect_models(skill_rows, keys=("solver_model",))
-    eval_solvers = collect_models(eval_rows, keys=("solver_model",))
-    eval_judges = collect_models(eval_rows, keys=("judge_model",))
+    skill_solver_paths = (("solver_model",), ("model_calls", "model"))
+    eval_solver_paths = (
+        ("solver_model",),
+        ("generation", "model"),
+        ("run", "model"),
+        ("signature_generation", "model"),
+    )
+    eval_judge_paths = (("judge_model",), ("judge", "model"), ("judge_calls", "model"))
+    skill_solvers = collect_models(skill_rows, paths=skill_solver_paths)
+    eval_solvers = collect_models(eval_rows, paths=eval_solver_paths)
+    eval_judges = collect_models(eval_rows, paths=eval_judge_paths)
+    successful_eval_rows = [row for row in eval_rows if row.get("status") == "success"]
+    scored_eval_solvers = collect_models(successful_eval_rows, paths=eval_solver_paths)
+    scored_eval_judges = collect_models(successful_eval_rows, paths=eval_judge_paths)
     union = skill_solvers | eval_solvers | eval_judges
+    scored_union = skill_solvers | scored_eval_solvers | scored_eval_judges
+    missing = {
+        "skill_solver_model": missing_model_count(skill_rows, paths=skill_solver_paths),
+        "eval_solver_model": missing_model_count(eval_rows, paths=eval_solver_paths),
+        "eval_judge_model": missing_model_count(eval_rows, paths=eval_judge_paths),
+    }
+    scored_missing = {
+        "skill_solver_model": missing_model_count(skill_rows, paths=skill_solver_paths),
+        "eval_solver_model": missing_model_count(
+            successful_eval_rows,
+            paths=eval_solver_paths,
+        ),
+        "eval_judge_model": missing_model_count(
+            successful_eval_rows,
+            paths=eval_judge_paths,
+        ),
+    }
     return {
         "skill_solver_models": sorted(skill_solvers),
         "eval_solver_models": sorted(eval_solvers),
         "eval_judge_models": sorted(eval_judges),
         "all_models": sorted(union),
+        "missing_model_identity": missing,
+        "model_identity_complete": not any(missing.values()),
         "monoculture": len(union) == 1 if union else False,
         "monoculture_model": next(iter(union)) if len(union) == 1 else None,
+        "scored": {
+            "skill_solver_models": sorted(skill_solvers),
+            "eval_solver_models": sorted(scored_eval_solvers),
+            "eval_judge_models": sorted(scored_eval_judges),
+            "all_models": sorted(scored_union),
+            "successful_eval_rows": len(successful_eval_rows),
+            "missing_model_identity": scored_missing,
+            "model_identity_complete": not any(scored_missing.values()),
+            "monoculture": len(scored_union) == 1 if scored_union else False,
+            "monoculture_model": (
+                next(iter(scored_union)) if len(scored_union) == 1 else None
+            ),
+        },
     }
 
 
@@ -322,11 +407,42 @@ def readiness_report(
         eval_rows=writing_eval_rows + present_surrogate_rows + present_official_rows,
     )
     if inventory["monoculture"] and inventory["monoculture_model"]:
-        warnings.append(
-            "model_monoculture: all skill induction, generation, and judge rows "
-            f"share model {inventory['monoculture_model']}; results are smoke-only "
-            "(see README cross-model recipe)."
-        )
+        if inventory["model_identity_complete"]:
+            warnings.append(
+                "model_monoculture: all skill induction, generation, and judge rows "
+                f"share model {inventory['monoculture_model']}; results are smoke-only "
+                "(see README cross-model recipe)."
+            )
+        else:
+            warnings.append(
+                "model_monoculture: visible solver/judge model fields share model "
+                f"{inventory['monoculture_model']}, but some rows are missing "
+                "model identity "
+                f"{inventory['missing_model_identity']}; results are smoke-only "
+                "(see README cross-model recipe)."
+            )
+
+    scored_inventory = inventory["scored"]
+    if (
+        scored_inventory["successful_eval_rows"]
+        and scored_inventory["monoculture"]
+        and scored_inventory["monoculture_model"]
+        and not inventory["monoculture"]
+    ):
+        if scored_inventory["model_identity_complete"]:
+            warnings.append(
+                "scored_model_monoculture: scored eval rows plus skill rows share model "
+                f"{scored_inventory['monoculture_model']}; other model identities appear "
+                "only on non-success or placeholder rows."
+            )
+        else:
+            warnings.append(
+                "scored_model_monoculture: visible scored solver/judge model fields "
+                f"share model {scored_inventory['monoculture_model']}, but some scored "
+                "rows are missing model identity "
+                f"{scored_inventory['missing_model_identity']}; other model identities "
+                "appear only on non-success or placeholder rows."
+            )
 
     if not packs:
         blockers.append("no example packs loaded")
@@ -393,22 +509,23 @@ def readiness_report(
                 f"{key}: incomplete PresentBench surrogate eval coverage"
             )
 
-    present_official_issues = blockers if require_presentbench_official else warnings
-    present_official_keys = {
-        (value["pack_id"], value["task_id"]) for value in present_official_cov.values()
-    }
-    if expected_present and not present_official_rows:
-        present_official_issues.append("PresentBench official score rows are absent")
-    if require_complete_coverage:
-        for target in sorted(expected_present - present_official_keys):
-            present_official_issues.append(
-                f"{target[0]}::{target[1]}: missing PresentBench official score rows"
-            )
-    for key, coverage in sorted(present_official_cov.items()):
-        if not coverage["ready"]:
-            present_official_issues.append(
-                f"{key}: incomplete PresentBench official score coverage"
-            )
+    if require_presentbench_official or present_official_rows:
+        present_official_issues = blockers if require_presentbench_official else warnings
+        present_official_keys = {
+            (value["pack_id"], value["task_id"]) for value in present_official_cov.values()
+        }
+        if expected_present and not present_official_rows:
+            present_official_issues.append("PresentBench official score rows are absent")
+        if require_complete_coverage:
+            for target in sorted(expected_present - present_official_keys):
+                present_official_issues.append(
+                    f"{target[0]}::{target[1]}: missing PresentBench official score rows"
+                )
+        for key, coverage in sorted(present_official_cov.items()):
+            if not coverage["ready"]:
+                present_official_issues.append(
+                    f"{key}: incomplete PresentBench official score coverage"
+                )
 
     return {
         "profile": {
