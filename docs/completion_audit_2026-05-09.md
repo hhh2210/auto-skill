@@ -29,15 +29,15 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Current pushed `main`: `0c2d359`
-  (`fix: fail closed when applying rejected outputs`). The commit is visible on
+- Current pushed `main`: `84c7563`
+  (`fix: record presentbench judge dry-run warnings`). The commit is visible on
   GitHub at
-  `https://github.com/hhh2210/auto-skill/commit/0c2d35999a4da67507cd5e6f425760f3c81aa0bd`.
-- Local validation for `0c2d359` is green:
-  `uv run python -m unittest discover -s tests` reports 300 tests OK,
+  `https://github.com/hhh2210/auto-skill/commit/84c7563147ed6206de7af7220b07357d4855e472`.
+- Local validation for `84c7563` is green:
+  `uv run python -m unittest discover -s tests` reports 301 tests OK,
   `uv run ruff check .` reports all checks passed, `diff -q AGENTS.md CLAUDE.md`
   is clean, and `git diff --check` is clean.
-- The latest GitHub Actions status for `0c2d359` was not reliably verified in
+- The latest GitHub Actions status for `84c7563` was not reliably verified in
   this environment: `gh run list` is blocked by the current approval policy and
   the unauthenticated GitHub Actions page intermittently fails to load current
   runs. Do not treat older CI runs as proof for the latest commit.
@@ -87,7 +87,9 @@ fails closed without `--allow-missing-env`; with `--dry-run --allow-missing-env`
 it intentionally renders exactly 16 selected `judge.py` commands for the current
 4 PresentBench packs x 2 heldout x 2 modes and writes them to a JSON command
 manifest with `--commands-out`. `--expect-commands 16` fails closed if the
-selected cell count drifts.
+selected cell count drifts. As of `84c7563`, the command manifest also records
+dry-run warnings such as the missing `GENAI_API_KEY` requirement, so handoff
+readers can see the blocker without parsing stderr.
 
 As of commit `aa85fe5`, the official-score summarizer also records explicit
 `solver_model` / `judge_model` metadata when invoked with `--solver-model` and
