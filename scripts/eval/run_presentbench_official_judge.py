@@ -9,6 +9,7 @@ import os
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -221,6 +222,29 @@ def subprocess_env_with_code_root(code_root: Path) -> dict[str, str]:
     return env
 
 
+def run_commands(commands: list[list[str]], *, env: dict[str, str], max_workers: int) -> int:
+    if max_workers < 1:
+        raise ValueError("--max-workers must be >= 1")
+    if max_workers == 1 or len(commands) <= 1:
+        for command in commands:
+            completed = subprocess.run(command, check=False, env=env)
+            if completed.returncode != 0:
+                return completed.returncode
+        return 0
+
+    first_failure: int | None = None
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_command = {
+            executor.submit(subprocess.run, command, check=False, env=env): command
+            for command in commands
+        }
+        for future in as_completed(future_to_command):
+            completed = future.result()
+            if completed.returncode != 0 and first_failure is None:
+                first_failure = completed.returncode
+    return first_failure or 0
+
+
 def preflight_warnings(*, api_type: str, allow_missing_env: bool) -> list[str]:
     warnings: list[str] = []
     if api_type.startswith("gemini") and allow_missing_env and not os.getenv("GENAI_API_KEY"):
@@ -394,11 +418,7 @@ def main() -> int:
         return 0
 
     env = subprocess_env_with_code_root(args.code_root)
-    for command in commands:
-        completed = subprocess.run(command, check=False, env=env)
-        if completed.returncode != 0:
-            return completed.returncode
-    return 0
+    return run_commands(commands, env=env, max_workers=args.max_workers)
 
 
 if __name__ == "__main__":

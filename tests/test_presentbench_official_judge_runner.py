@@ -15,6 +15,7 @@ from scripts.eval.run_presentbench_official_judge import (
     command_manifest,
     parse_mode_result_roots,
     preflight_warnings,
+    run_commands,
     selected_judge_commands,
     subprocess_env_with_code_root,
     validate_preflight,
@@ -290,6 +291,35 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             f"{code_root.resolve()}{os.pathsep}/existing",
         )
 
+    def test_run_commands_uses_worker_pool_and_returns_first_failure(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(
+            command: list[str],
+            *,
+            check: bool,
+            env: dict[str, str],
+        ) -> subprocess.CompletedProcess:
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 7 if command[-1] == "bad" else 0)
+
+        with patch("scripts.eval.run_presentbench_official_judge.subprocess.run", fake_run):
+            returncode = run_commands(
+                [["/python", "ok1"], ["/python", "bad"], ["/python", "ok2"]],
+                env={"PYTHONPATH": "/code"},
+                max_workers=2,
+            )
+
+        self.assertEqual(returncode, 7)
+        self.assertCountEqual(
+            calls,
+            [["/python", "ok1"], ["/python", "bad"], ["/python", "ok2"]],
+        )
+
+    def test_run_commands_rejects_invalid_worker_count(self) -> None:
+        with self.assertRaisesRegex(ValueError, "max-workers"):
+            run_commands([["/python", "judge.py"]], env={}, max_workers=0)
+
     def test_command_manifest_records_argv_and_shell_command(self) -> None:
         manifest = command_manifest(
             [["/python", "judge.py", "--model", "gemini 3"]],
@@ -327,6 +357,8 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 [
                     sys.executable,
                     "scripts/eval/run_presentbench_official_judge.py",
+                    "--env-file",
+                    str(root / "empty.env"),
                     "--code-root",
                     str(code_root),
                     "--data-root",
@@ -345,6 +377,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 cwd=Path(__file__).resolve().parents[1],
                 text=True,
                 capture_output=True,
+                env={k: v for k, v in os.environ.items() if k != "GENAI_API_KEY"},
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
