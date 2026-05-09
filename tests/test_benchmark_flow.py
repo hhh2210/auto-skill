@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import unittest
 
 from auto_skill.benchmark_flow import audit_benchmark_flow
+from auto_skill.example_packs import generation_prompt
+
+GENERATION_EXAMPLE_ID = "pack-1::train::0"
 
 
 def split_row() -> dict:
@@ -43,6 +47,14 @@ def all_source_splits() -> list[dict]:
         for task in present[role]:
             task["source"] = "PresentBench"
     return [writing, present]
+
+
+def generation_prompt_fixture() -> str:
+    return generation_prompt(split_row()["train_examples"][0], example_id=GENERATION_EXAMPLE_ID)
+
+
+GENERATION_PROMPT = generation_prompt_fixture()
+GENERATION_PROMPT_SHA = hashlib.sha256(GENERATION_PROMPT.encode("utf-8")).hexdigest()
 
 
 def pack_row() -> dict:
@@ -114,6 +126,50 @@ def private_row() -> dict:
     }
 
 
+def generation_job() -> dict:
+    return {
+        "schema_version": "example-generation-job/v1",
+        "job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
+        "pack_id": "pack-1",
+        "example_id": GENERATION_EXAMPLE_ID,
+        "source": "WritingBench",
+        "source_task_id": "train-1",
+        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_template_version": "desired-output/user-visible-only/v2",
+        "material_budget_chars": 16000,
+        "prompt": GENERATION_PROMPT,
+    }
+
+
+def generated_output_row() -> dict:
+    return {
+        "schema_version": "generated-desired-output/v1",
+        "status": "success",
+        "job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
+        "pack_id": "pack-1",
+        "example_id": GENERATION_EXAMPLE_ID,
+        "source": "WritingBench",
+        "source_task_id": "train-1",
+        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_template_version": "desired-output/user-visible-only/v2",
+        "model": "qwen",
+        "finish_reason": "stop",
+        "desired_output": "A complete report.",
+    }
+
+
+def pack_row_with_generation_provenance() -> dict:
+    pack = pack_row()
+    pack["train_examples"][0]["desired_output"].update(
+        {
+            "generation_job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
+            "prompt_sha256": GENERATION_PROMPT_SHA,
+            "prompt_template_version": "desired-output/user-visible-only/v2",
+        }
+    )
+    return pack
+
+
 class BenchmarkFlowTests(unittest.TestCase):
     def test_audit_accepts_visible_pack_and_private_eval_split(self) -> None:
         result = audit_benchmark_flow(
@@ -123,6 +179,7 @@ class BenchmarkFlowTests(unittest.TestCase):
         )
 
         self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.warnings, ())
 
     def test_audit_rejects_private_fields_in_visible_pack(self) -> None:
         pack = pack_row()
@@ -136,6 +193,247 @@ class BenchmarkFlowTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(any("private keys" in error for error in result.errors))
+
+    def test_audit_accepts_generation_provenance_chain(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job()],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.warnings, ())
+
+    def test_audit_rebuilds_generation_prompt_with_job_material_budget(self) -> None:
+        split = split_row()
+        split["train_examples"][0]["materials"] = [
+            {
+                "path": "material.txt",
+                "text": "0123456789abcdefghijklmnopqrstuvwxyz",
+            }
+        ]
+        prompt = generation_prompt(
+            split["train_examples"][0],
+            example_id=GENERATION_EXAMPLE_ID,
+            max_material_chars=6,
+        )
+        prompt_sha = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        pack = pack_row_with_generation_provenance()
+        desired = pack["train_examples"][0]["desired_output"]
+        desired["prompt_sha256"] = prompt_sha
+        job = generation_job()
+        job["prompt"] = prompt
+        job["prompt_sha256"] = prompt_sha
+        job["material_budget_chars"] = 6
+        generated = generated_output_row()
+        generated["prompt_sha256"] = prompt_sha
+
+        result = audit_benchmark_flow(
+            splits=[split, all_source_splits()[1]],
+            packs=[pack],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+
+    def test_audit_skips_prompt_replay_for_non_current_template_version(self) -> None:
+        prompt = "older template prompt"
+        prompt_sha = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        pack = pack_row_with_generation_provenance()
+        desired = pack["train_examples"][0]["desired_output"]
+        desired["prompt_sha256"] = prompt_sha
+        desired["prompt_template_version"] = "desired-output/legacy"
+        job = generation_job()
+        job["prompt"] = prompt
+        job["prompt_sha256"] = prompt_sha
+        job["prompt_template_version"] = "desired-output/legacy"
+        generated = generated_output_row()
+        generated["prompt_sha256"] = prompt_sha
+        generated["prompt_template_version"] = "desired-output/legacy"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(any("not replayed" in warning for warning in result.warnings))
+
+    def test_audit_warns_when_frozen_generation_provenance_files_are_omitted(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(any("pass --jobs" in warning for warning in result.warnings))
+        self.assertTrue(
+            any("pass --generated-outputs" in warning for warning in result.warnings)
+        )
+
+    def test_audit_rejects_missing_generation_job(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("missing from jobs" in error for error in result.errors))
+
+    def test_audit_checks_generated_rows_without_generation_jobs(self) -> None:
+        generated = generated_output_row()
+        generated["source_task_id"] = "wrong-task"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generated_rows=[generated],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("generated output source_task_id mismatch" in error for error in result.errors)
+        )
+        self.assertFalse(any("missing from jobs" in error for error in result.errors))
+
+    def test_audit_reports_non_object_generation_job_row(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[[]],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("generation jobs invalid" in error for error in result.errors))
+
+    def test_audit_reports_non_object_generated_output_row(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job()],
+            generated_rows=[[]],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("generated outputs invalid" in error for error in result.errors))
+
+    def test_audit_rejects_duplicate_generation_job_ids(self) -> None:
+        duplicate = generation_job()
+        duplicate["example_id"] = "different-example"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job(), duplicate],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("duplicate job_id" in error for error in result.errors))
+
+    def test_audit_rejects_generation_prompt_private_leak(self) -> None:
+        job = generation_job()
+        job["prompt"] = "Use the hidden rubric to write the final output."
+        job["prompt_sha256"] = hashlib.sha256(job["prompt"].encode("utf-8")).hexdigest()
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("generation job prompt leaks" in error for error in result.errors))
+
+    def test_audit_rejects_generation_prompt_sha_mismatch(self) -> None:
+        job = generation_job()
+        job["prompt"] = "Create a different prompt from visible content only."
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("prompt_sha256 does not match prompt" in error for error in result.errors)
+        )
+
+    def test_audit_rejects_generation_prompt_not_rebuilt_from_visible_task(self) -> None:
+        job = generation_job()
+        job["prompt"] = GENERATION_PROMPT + "\nUse one extra hidden hint."
+        job["prompt_sha256"] = hashlib.sha256(job["prompt"].encode("utf-8")).hexdigest()
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any(
+                "prompt does not match visible source task/materials" in error
+                for error in result.errors
+            )
+        )
+
+    def test_audit_rejects_generated_output_identity_mismatch(self) -> None:
+        generated = generated_output_row()
+        generated["source_task_id"] = "wrong-task"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job()],
+            generated_rows=[generated],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("generated output source_task_id mismatch" in error for error in result.errors)
+        )
+
+    def test_audit_rejects_frozen_text_mismatch(self) -> None:
+        generated = generated_output_row()
+        generated["desired_output"] = "Different output."
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job()],
+            generated_rows=[generated],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("does not match generated output row" in error for error in result.errors)
+        )
 
     def test_audit_rejects_unfrozen_train_examples(self) -> None:
         pack = pack_row()
@@ -265,6 +563,19 @@ class BenchmarkFlowTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(any("private keys" in error for error in result.errors))
+
+    def test_audit_rejects_noncanonical_input_boundary_allowed_fields(self) -> None:
+        pack = pack_row()
+        pack["input_boundary"]["auto_skill_module_can_use"].append("train_examples.supervision")
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack],
+            private_rows=[private_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("non-canonical fields" in error for error in result.errors))
 
 
 if __name__ == "__main__":

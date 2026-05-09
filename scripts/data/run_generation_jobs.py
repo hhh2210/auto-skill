@@ -18,7 +18,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from auto_skill.example_packs import load_jsonl  # noqa: E402
+from auto_skill.example_packs import load_jsonl, load_jsonl_lenient_final_line  # noqa: E402
 from auto_skill.generated_outputs import private_leak_matches  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 
@@ -46,34 +46,20 @@ def read_existing_successes(path: Path) -> dict[str, set[str]]:
         return {}
     completed: dict[str, set[str]] = {}
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+        rows, warnings = load_jsonl_lenient_final_line(path)
+    except (OSError, json.JSONDecodeError) as exc:
         print(f"error: failed to read existing output file {path}: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
-    non_empty_indexes = [index for index, line in enumerate(lines) if line.strip()]
-    last_non_empty = non_empty_indexes[-1] if non_empty_indexes else -1
-    rows = []
-    for index, line in enumerate(lines):
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            if index == last_non_empty:
-                print(
-                    (
-                        "warning: ignoring malformed final JSONL line in "
-                        f"{path}: line {index + 1}: {exc}"
-                    ),
-                    file=sys.stderr,
-                )
-                continue
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    for row in rows:
+        if not isinstance(row, dict):
             print(
-                f"error: malformed JSONL line in {path}: line {index + 1}: {exc}",
+                f"error: malformed JSONL row in {path}: expected object, "
+                f"got {type(row).__name__}",
                 file=sys.stderr,
             )
-            raise SystemExit(2) from exc
-    for row in rows:
+            raise SystemExit(2)
         if (
             row.get("status") == "success"
             and row.get("job_id")
@@ -90,25 +76,20 @@ def read_existing_latest_statuses(path: Path) -> dict[tuple[str, str], str]:
         return {}
     latest: dict[tuple[str, str], str] = {}
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+        rows, warnings = load_jsonl_lenient_final_line(path)
+    except (OSError, json.JSONDecodeError) as exc:
         print(f"error: failed to read existing output file {path}: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
-    non_empty_indexes = [index for index, line in enumerate(lines) if line.strip()]
-    last_non_empty = non_empty_indexes[-1] if non_empty_indexes else -1
-    for index, line in enumerate(lines):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            if index == last_non_empty:
-                continue
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    for row in rows:
+        if not isinstance(row, dict):
             print(
-                f"error: malformed JSONL line in {path}: line {index + 1}: {exc}",
+                f"error: malformed JSONL row in {path}: expected object, "
+                f"got {type(row).__name__}",
                 file=sys.stderr,
             )
-            raise SystemExit(2) from exc
+            raise SystemExit(2)
         job_id = row.get("job_id")
         prompt_sha = row.get("prompt_sha256")
         status = row.get("status")
@@ -245,6 +226,8 @@ def build_output_row(
     config: ChatCompletionConfig,
     temperature: float | None,
     max_tokens: int,
+    enable_thinking: bool | None,
+    thinking_budget: int | None,
     print_lock: threading.Lock,
     index: int,
     total: int,
@@ -263,6 +246,8 @@ def build_output_row(
             build_messages(job),
             temperature=temperature,
             max_tokens=max_tokens,
+            enable_thinking=enable_thinking,
+            thinking_budget=thinking_budget,
         )
         leak_matches = private_leak_matches(result.text)
         if leak_matches:
@@ -302,6 +287,8 @@ def build_output_row(
                 "generation_params": {
                     "temperature": temperature,
                     "max_tokens": max_tokens,
+                    "enable_thinking": enable_thinking,
+                    "thinking_budget": thinking_budget,
                     "configured_model": config.model,
                     "base_url": config.base_url,
                 },
@@ -322,6 +309,8 @@ def build_output_row(
             "generation_params": {
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "enable_thinking": enable_thinking,
+                "thinking_budget": thinking_budget,
                 "configured_model": config.model,
                 "base_url": config.base_url,
             },
@@ -388,6 +377,8 @@ def main() -> int:
         ),
     )
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--thinking-budget", type=positive_int)
     parser.add_argument(
         "--timeout-seconds",
         type=positive_float,
@@ -478,11 +469,18 @@ def main() -> int:
     temperature = args.temperature
     if temperature is None:
         temperature = config.temperature
+    enable_thinking = args.enable_thinking
+    if enable_thinking is None:
+        enable_thinking = config.enable_thinking
+    thinking_budget = args.thinking_budget
+    if thinking_budget is None:
+        thinking_budget = config.thinking_budget
 
     print(
         f"Running {len(selected)} jobs with model={config.model} "
         f"base_url={config.base_url} num_threads={num_threads} "
-        f"timeout_seconds={config.timeout_seconds} max_retries={config.max_retries}"
+        f"timeout_seconds={config.timeout_seconds} max_retries={config.max_retries} "
+        f"enable_thinking={enable_thinking} thinking_budget={thinking_budget}"
     )
     started_all = time.monotonic()
     print_lock = threading.Lock()
@@ -495,6 +493,8 @@ def main() -> int:
                 config=config,
                 temperature=temperature,
                 max_tokens=args.max_tokens,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
                 print_lock=print_lock,
                 index=index,
                 total=len(selected),

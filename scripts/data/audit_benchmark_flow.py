@@ -34,6 +34,16 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/private/example_private_eval.jsonl"),
     )
+    parser.add_argument(
+        "--jobs",
+        type=Path,
+        help="Optional example-generation job JSONL to verify generation provenance.",
+    )
+    parser.add_argument(
+        "--generated-outputs",
+        type=Path,
+        help="Optional generated desired-output JSONL to verify frozen output provenance.",
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
@@ -41,6 +51,8 @@ def main() -> int:
         splits=load_jsonl(args.splits),
         packs=load_jsonl(args.packs),
         private_rows=load_jsonl(args.private_eval),
+        generation_jobs=load_jsonl(args.jobs) if args.jobs else None,
+        generated_rows=load_jsonl(args.generated_outputs) if args.generated_outputs else None,
     )
     report = {
         "schema_version": "benchmark-flow-audit/v1",

@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.generated_outputs import (  # noqa: E402
     apply_outputs_to_pack,
-    index_successful_outputs,
+    index_latest_outputs,
 )
 
 
@@ -37,7 +37,7 @@ def main() -> int:
 
     packs = load_jsonl(args.packs)
     generations = load_jsonl(args.generations)
-    outputs_by_job_id = index_successful_outputs(generations)
+    outputs_by_job_id = index_latest_outputs(generations)
 
     updated_packs = []
     total_applied = 0
@@ -50,13 +50,13 @@ def main() -> int:
         total_missing += missing
         total_rejected += rejected
 
-    write_jsonl(args.out, updated_packs)
-    print(f"Wrote {len(updated_packs)} packs to {args.out}")
     print(f"Applied desired outputs: {total_applied}")
     print(f"Missing desired outputs: {total_missing}")
     print(f"Rejected desired outputs: {total_rejected}")
     if total_rejected or (total_missing and not args.allow_missing):
         return 2
+    write_jsonl(args.out, updated_packs)
+    print(f"Wrote {len(updated_packs)} packs to {args.out}")
     return 0
 
 

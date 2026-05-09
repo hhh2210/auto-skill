@@ -6,6 +6,8 @@ import re
 from copy import deepcopy
 from typing import Any
 
+from auto_skill.schemas import SchemaValidationError
+
 PRIVATE_LEAK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -39,6 +41,16 @@ def private_leak_matches(text: str) -> list[str]:
     return [pattern.pattern for pattern in PRIVATE_LEAK_PATTERNS if pattern.search(text)]
 
 
+def require_object_rows(rows: list[Any], *, label: str) -> None:
+    """Validate that a loaded JSONL artifact contains only object rows."""
+
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise SchemaValidationError(
+                f"{label}: row {index} must be an object, got {type(row).__name__}"
+            )
+
+
 def index_successful_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     outputs: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -51,9 +63,66 @@ def index_successful_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, 
     return outputs
 
 
+def index_latest_outputs(rows: list[dict[str, Any]]) -> dict[Any, dict[str, Any]]:
+    """Return latest generation rows indexed by prompt-aware and job-only keys.
+
+    The tuple key is used when a pack records the expected prompt hash. The
+    job-only key is retained for legacy placeholder packs that do not yet carry
+    prompt provenance.
+    """
+
+    outputs: dict[Any, dict[str, Any]] = {}
+    for row in rows:
+        job_id = row.get("job_id")
+        if not job_id:
+            continue
+        job_key = str(job_id)
+        outputs[job_key] = row
+        prompt_sha = row.get("prompt_sha256")
+        if prompt_sha:
+            outputs[(job_key, str(prompt_sha))] = row
+    return outputs
+
+
+def latest_generation_rows(rows: list[Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return the latest row for each ``(job_id, prompt_sha256)`` pair."""
+
+    require_object_rows(rows, label="generation rows")
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        job_id = row.get("job_id")
+        prompt_sha = row.get("prompt_sha256")
+        if not job_id or not prompt_sha:
+            continue
+        latest[(str(job_id), str(prompt_sha))] = row
+    return latest
+
+
+def latest_successful_generation_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Filter an append-only generation log to latest successful completed rows.
+
+    The raw generation log intentionally keeps historical API failures and
+    truncated responses. Benchmark-flow and readiness checks should usually use
+    this latest-success view so a later successful retry supersedes an earlier
+    failed attempt for the same prompt.
+    """
+
+    latest = latest_generation_rows(rows)
+    status_counts: dict[str, int] = {}
+    successful = []
+    for row in latest.values():
+        status = str(row.get("status") or "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+        if status == "success" and row.get("finish_reason") == "stop":
+            successful.append(row)
+    return successful, dict(sorted(status_counts.items()))
+
+
 def apply_outputs_to_pack(
     pack: dict[str, Any],
-    outputs_by_job_id: dict[str, dict[str, Any]],
+    outputs_by_job_id: dict[Any, dict[str, Any]],
 ) -> tuple[dict[str, Any], int, int, int]:
     updated = deepcopy(pack)
     applied = 0
@@ -68,7 +137,15 @@ def apply_outputs_to_pack(
         job_id = desired_output.get("generation_job_id")
         if not job_id:
             continue
-        generated = outputs_by_job_id.get(str(job_id))
+        job_key = str(job_id)
+        expected_prompt_sha = desired_output.get("prompt_sha256")
+        generated = None
+        if isinstance(expected_prompt_sha, str) and expected_prompt_sha:
+            generated = outputs_by_job_id.get((job_key, expected_prompt_sha))
+            if generated is None:
+                generated = outputs_by_job_id.get(job_key)
+        else:
+            generated = outputs_by_job_id.get(job_key)
         if generated is None:
             missing += 1
             continue
@@ -93,7 +170,6 @@ def apply_outputs_to_pack(
                 }
             )
             continue
-        expected_prompt_sha = desired_output.get("prompt_sha256")
         actual_prompt_sha = generated.get("prompt_sha256")
         if expected_prompt_sha and actual_prompt_sha != expected_prompt_sha:
             rejected += 1
