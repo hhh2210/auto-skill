@@ -122,9 +122,11 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status rea
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 ```
 
-Remote CI on `main` is also green in the latest documented run:
+Remote CI on `main` is also green in post-fix example runs:
 `https://github.com/hhh2210/auto-skill/actions/runs/25591714603` completed with
-`success` for `bb511e8`. Earlier post-push failures were clean-checkout
+`success` for `bb511e8`, and
+`https://github.com/hhh2210/auto-skill/actions/runs/25591797681` completed with
+`success` for `c306671`. Earlier post-push failures were clean-checkout
 test-fixture issues around ignored PresentBench official code, not runtime
 failures in the benchmark pipeline. The fixture fix landed in `58b79fb`
 (`test: make presentbench judge runner fixtures self-contained`).
@@ -146,6 +148,10 @@ Current MVP readiness is green across both checked-in heldout tasks:
 - Required MVP skill modes: covered for all 8 smoke packs.
 - Readiness warning remains: all solver/judge rows are Qwen3.5-Plus
   monoculture, so this is smoke evidence only.
+- The full-profile model inventory may show `monoculture=false` because missing
+  PresentBench official placeholder rows carry `gemini-3-flash-preview` judge
+  identity. Do not treat that field alone as de-monoculture evidence until real
+  official score rows exist.
 
 Full experiment readiness is intentionally not green yet:
 

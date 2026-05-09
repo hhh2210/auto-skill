@@ -29,9 +29,11 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Latest documented GitHub Actions run:
+- Example post-fix GitHub Actions runs:
   `https://github.com/hhh2210/auto-skill/actions/runs/25591714603`
-  completed with `success` for `bb511e8`.
+  completed with `success` for `bb511e8`, and
+  `https://github.com/hhh2210/auto-skill/actions/runs/25591797681`
+  completed with `success` for `c306671`.
 - The preceding CI failures were caused by two PresentBench official judge-runner
   tests depending on the local ignored `data/PresentBench_code` checkout. The
   fixture fix landed in `58b79fb`
@@ -83,6 +85,13 @@ but no longer emits missing-model-identity warnings for those placeholder rows.
 As of commit `d357f60`, the full-profile gate also emits an explicit warning
 when `GENAI_API_KEY` is absent from the process environment and local `.env`,
 because upstream PresentBench `judge.py` cannot be run without it.
+
+Do not read `model_inventory.monoculture=false` in the full-profile report as a
+paper-facing de-monoculture claim by itself. The full profile includes
+`gemini-3-flash-preview` identity on missing PresentBench official placeholder
+rows; those rows do not yet contain real official scores. The scored MVP
+readiness gate is still Qwen-only unless it is explicitly paired with the MIMO
+judge-swap artifacts listed later in this audit.
 
 Canonical current readiness reports are:
 
