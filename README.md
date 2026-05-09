@@ -389,8 +389,12 @@ uv run python scripts/eval/run_writingbench_official_eval.py \
 `run_self_consistency_metric.py` accept the same `--judge-config-prefix`. Each
 written eval row carries top-level `solver_model` and `judge_model`;
 `scripts/metrics/summarize_mvp_metrics.py` aggregates these into a `model_inventory`
-block, and `scripts/ops/report_experiment_readiness.py` emits a
-`model_monoculture` warning when every row collapses to a single model.
+block. `scripts/ops/report_experiment_readiness.py` emits `model_monoculture`
+when every visible row collapses to a single model, and also exposes
+`model_inventory.scored` for paper-facing claims. The `scored` block excludes
+non-success eval rows such as `missing_score_artifact`, so placeholder
+PresentBench official rows cannot falsely break a Qwen-only scored run; in that
+case the gate emits `scored_model_monoculture`.
 
 For WritingBench, use the source benchmark's evaluator prompt and per-criterion
 scoring shape:

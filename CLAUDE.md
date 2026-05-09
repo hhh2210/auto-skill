@@ -149,8 +149,11 @@ Expected surfaces:
   the eval runners' `--judge-config-prefix` flag (e.g. `JUDGE`). Only the
   prefixed `MODEL` env var is required; `BASE_URL`/`API_KEY` fall back to
   `BAILIAN_*`. Eval rows persist top-level `solver_model` and `judge_model`;
-  `report_experiment_readiness.py` emits a `model_monoculture` warning when
-  every row collapses to a single model.
+  `report_experiment_readiness.py` emits `model_monoculture` when every visible
+  row collapses to a single model. For paper-facing claims, inspect
+  `model_inventory.scored`: it excludes non-success eval rows such as
+  `missing_score_artifact`, so placeholder official rows cannot falsely break a
+  Qwen-only scored run. In that case the gate emits `scored_model_monoculture`.
 - Before pushing code, run `uv run python -m unittest discover -s tests`,
   `uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl`,
   and the readiness gate below. A not-ready report is acceptable during
