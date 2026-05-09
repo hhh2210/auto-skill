@@ -61,7 +61,51 @@ class GeneratedOutputsTests(unittest.TestCase):
         latest = index_latest_outputs(rows)
 
         self.assertEqual(latest["job-1"]["status"], "rejected_incomplete_generation")
+        self.assertEqual(latest[("job-1", "sha-1")]["status"], "rejected_incomplete_generation")
         self.assertEqual(latest["job-2"]["status"], "error")
+
+    def test_index_then_apply_uses_exact_prompt_hash_when_available(self) -> None:
+        pack = {
+            "train_examples": [
+                {
+                    "example_id": "ex-1",
+                    "desired_output": {
+                        "status": "needs_generation",
+                        "generation_job_id": "job-1",
+                        "prompt_sha256": "sha-1",
+                    },
+                }
+            ]
+        }
+        rows = [
+            {
+                "status": "success",
+                "job_id": "job-1",
+                "desired_output": "old prompt answer",
+                "prompt_sha256": "sha-1",
+                "finish_reason": "stop",
+            },
+            {
+                "status": "success",
+                "job_id": "job-1",
+                "desired_output": "new prompt answer",
+                "prompt_sha256": "sha-2",
+                "finish_reason": "stop",
+            },
+        ]
+
+        updated, applied, missing, rejected = apply_outputs_to_pack(
+            pack,
+            index_latest_outputs(rows),
+        )
+
+        self.assertEqual(applied, 1)
+        self.assertEqual(missing, 0)
+        self.assertEqual(rejected, 0)
+        self.assertEqual(
+            updated["train_examples"][0]["desired_output"]["text"],
+            "old prompt answer",
+        )
 
     def test_latest_successful_generation_rows_filters_historical_failures(self) -> None:
         rows = [

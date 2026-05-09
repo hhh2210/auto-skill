@@ -13,12 +13,12 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
+from auto_skill.example_packs import load_jsonl_lenient_final_line, write_jsonl  # noqa: E402
 from auto_skill.generated_outputs import (  # noqa: E402
     latest_successful_generation_rows,
     require_object_rows,
 )
-from auto_skill.schemas import SchemaValidationError  # noqa: E402
+from auto_skill.schemas import SchemaValidationError, validate_artifact_rows  # noqa: E402
 
 
 def main() -> int:
@@ -55,9 +55,20 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    rows = load_jsonl(args.generations)
+    try:
+        rows, load_warnings = load_jsonl_lenient_final_line(args.generations)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: failed to read generation log {args.generations}: {exc}", file=sys.stderr)
+        return 2
+    for warning in load_warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     try:
         require_object_rows(rows, label=str(args.generations))
+        validate_artifact_rows(
+            rows,
+            kind="generated_outputs",
+            label=str(args.generations),
+        )
     except SchemaValidationError as exc:
         print(f"error: invalid generation log: {exc}", file=sys.stderr)
         return 2

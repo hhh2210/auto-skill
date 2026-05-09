@@ -9,6 +9,32 @@ from unittest.mock import patch
 from scripts.data import export_latest_successful_generations
 
 
+def generation_row(
+    *,
+    status: str = "success",
+    job_id: str = "job-1",
+    prompt_sha256: str = "sha-1",
+    finish_reason: str = "stop",
+    desired_output: str | None = "final",
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "schema_version": "generated-desired-output/v1",
+        "status": status,
+        "job_id": job_id,
+        "pack_id": "pack-1",
+        "example_id": "ex-1",
+        "source": "WritingBench",
+        "source_task_id": "task-1",
+        "prompt_sha256": prompt_sha256,
+        "prompt_template_version": "desired-output/user-visible-only/v2",
+        "model": "qwen",
+        "finish_reason": finish_reason,
+    }
+    if status == "success" and desired_output is not None:
+        row["desired_output"] = desired_output
+    return row
+
+
 class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
     def test_cli_exports_latest_successes_and_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -17,18 +43,8 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
             out = root / "latest_success.jsonl"
             summary = root / "summary.json"
             rows = [
-                {
-                    "status": "rejected_incomplete_generation",
-                    "job_id": "job-1",
-                    "prompt_sha256": "sha-1",
-                    "finish_reason": "length",
-                },
-                {
-                    "status": "success",
-                    "job_id": "job-1",
-                    "prompt_sha256": "sha-1",
-                    "finish_reason": "stop",
-                },
+                generation_row(status="rejected_incomplete_generation", finish_reason="length"),
+                generation_row(),
             ]
             generations.write_text(
                 "\n".join(json.dumps(row) for row in rows) + "\n",
@@ -66,12 +82,10 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
             out = root / "latest_success.jsonl"
             generations.write_text(
                 json.dumps(
-                    {
-                        "status": "rejected_incomplete_generation",
-                        "job_id": "job-1",
-                        "prompt_sha256": "sha-1",
-                        "finish_reason": "length",
-                    }
+                    generation_row(
+                        status="rejected_incomplete_generation",
+                        finish_reason="length",
+                    )
                 )
                 + "\n",
                 encoding="utf-8",
@@ -97,14 +111,7 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
             generations = root / "generations.jsonl"
             out = root / "latest_success.jsonl"
             generations.write_text(
-                json.dumps(
-                    {
-                        "status": "success",
-                        "job_id": "job-1",
-                        "prompt_sha256": "sha-1",
-                        "finish_reason": "length",
-                    }
-                )
+                json.dumps(generation_row(finish_reason="length"))
                 + "\n",
                 encoding="utf-8",
             )
@@ -120,7 +127,7 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
                     str(out),
                 ],
             ):
-                self.assertEqual(export_latest_successful_generations.main(), 4)
+                self.assertEqual(export_latest_successful_generations.main(), 2)
             self.assertFalse(out.exists())
 
     def test_cli_does_not_write_when_expected_success_count_mismatches(self) -> None:
@@ -129,14 +136,7 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
             generations = root / "generations.jsonl"
             out = root / "latest_success.jsonl"
             generations.write_text(
-                json.dumps(
-                    {
-                        "status": "success",
-                        "job_id": "job-1",
-                        "prompt_sha256": "sha-1",
-                        "finish_reason": "stop",
-                    }
-                )
+                json.dumps(generation_row())
                 + "\n",
                 encoding="utf-8",
             )
@@ -185,12 +185,10 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
             out = root / "latest_success.jsonl"
             generations.write_text(
                 json.dumps(
-                    {
-                        "status": "rejected_incomplete_generation",
-                        "job_id": "job-1",
-                        "prompt_sha256": "sha-1",
-                        "finish_reason": "length",
-                    }
+                    generation_row(
+                        status="rejected_incomplete_generation",
+                        finish_reason="length",
+                    )
                 )
                 + "\n",
                 encoding="utf-8",
@@ -211,6 +209,54 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
                 self.assertEqual(export_latest_successful_generations.main(), 0)
             self.assertTrue(out.exists())
             self.assertEqual(out.read_text(encoding="utf-8"), "")
+
+    def test_cli_fails_for_schema_invalid_success_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generations = root / "generations.jsonl"
+            out = root / "latest_success.jsonl"
+            row = generation_row()
+            row.pop("pack_id")
+            generations.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+            with patch.object(
+                export_latest_successful_generations.sys,
+                "argv",
+                [
+                    "export_latest_successful_generations.py",
+                    "--generations",
+                    str(generations),
+                    "--out",
+                    str(out),
+                ],
+            ):
+                self.assertEqual(export_latest_successful_generations.main(), 2)
+            self.assertFalse(out.exists())
+
+    def test_cli_ignores_malformed_final_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generations = root / "generations.jsonl"
+            out = root / "latest_success.jsonl"
+            generations.write_text(
+                json.dumps(generation_row()) + "\n" + '{"schema_version":',
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                export_latest_successful_generations.sys,
+                "argv",
+                [
+                    "export_latest_successful_generations.py",
+                    "--generations",
+                    str(generations),
+                    "--out",
+                    str(out),
+                ],
+            ):
+                self.assertEqual(export_latest_successful_generations.main(), 0)
+            exported = [json.loads(line) for line in out.read_text().splitlines()]
+            self.assertEqual([row["job_id"] for row in exported], ["job-1"])
 
 
 if __name__ == "__main__":

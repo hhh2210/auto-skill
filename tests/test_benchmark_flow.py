@@ -136,6 +136,7 @@ def generation_job() -> dict:
         "source_task_id": "train-1",
         "prompt_sha256": GENERATION_PROMPT_SHA,
         "prompt_template_version": "desired-output/user-visible-only/v2",
+        "material_budget_chars": 16000,
         "prompt": GENERATION_PROMPT,
     }
 
@@ -204,6 +205,66 @@ class BenchmarkFlowTests(unittest.TestCase):
 
         self.assertTrue(result.ok, result.errors)
         self.assertEqual(result.warnings, ())
+
+    def test_audit_rebuilds_generation_prompt_with_job_material_budget(self) -> None:
+        split = split_row()
+        split["train_examples"][0]["materials"] = [
+            {
+                "path": "material.txt",
+                "text": "0123456789abcdefghijklmnopqrstuvwxyz",
+            }
+        ]
+        prompt = generation_prompt(
+            split["train_examples"][0],
+            example_id=GENERATION_EXAMPLE_ID,
+            max_material_chars=6,
+        )
+        prompt_sha = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        pack = pack_row_with_generation_provenance()
+        desired = pack["train_examples"][0]["desired_output"]
+        desired["prompt_sha256"] = prompt_sha
+        job = generation_job()
+        job["prompt"] = prompt
+        job["prompt_sha256"] = prompt_sha
+        job["material_budget_chars"] = 6
+        generated = generated_output_row()
+        generated["prompt_sha256"] = prompt_sha
+
+        result = audit_benchmark_flow(
+            splits=[split, all_source_splits()[1]],
+            packs=[pack],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+
+    def test_audit_skips_prompt_replay_for_non_current_template_version(self) -> None:
+        prompt = "older template prompt"
+        prompt_sha = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        pack = pack_row_with_generation_provenance()
+        desired = pack["train_examples"][0]["desired_output"]
+        desired["prompt_sha256"] = prompt_sha
+        desired["prompt_template_version"] = "desired-output/legacy"
+        job = generation_job()
+        job["prompt"] = prompt
+        job["prompt_sha256"] = prompt_sha
+        job["prompt_template_version"] = "desired-output/legacy"
+        generated = generated_output_row()
+        generated["prompt_sha256"] = prompt_sha
+        generated["prompt_template_version"] = "desired-output/legacy"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(any("not replayed" in warning for warning in result.warnings))
 
     def test_audit_warns_when_frozen_generation_provenance_files_are_omitted(self) -> None:
         result = audit_benchmark_flow(

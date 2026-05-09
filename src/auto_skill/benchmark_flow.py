@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from auto_skill.data_cleaning import ValidationError, validate_splits
-from auto_skill.example_packs import generation_prompt
+from auto_skill.example_packs import (
+    MAX_MATERIAL_CHARS,
+    PROMPT_TEMPLATE_VERSION,
+    generation_prompt,
+)
 from auto_skill.generated_outputs import (
     latest_generation_rows,
     private_leak_matches,
@@ -379,19 +383,35 @@ def audit_benchmark_flow(
                     if not isinstance(prompt, str) or not prompt.strip():
                         errors.append(f"{label}: generation job prompt is empty")
                     else:
+                        template_version = job.get("prompt_template_version")
                         source_task = split_train_by_source.get(
                             (str(example.get("source")), str(example.get("source_task_id")))
                         )
-                        if source_task is not None:
+                        if source_task is not None and template_version == PROMPT_TEMPLATE_VERSION:
+                            material_budget = job.get("material_budget_chars")
+                            if material_budget is None:
+                                material_budget = MAX_MATERIAL_CHARS
+                            if not isinstance(material_budget, int) or material_budget <= 0:
+                                errors.append(
+                                    f"{label}: generation job material_budget_chars "
+                                    "must be a positive integer"
+                                )
+                                material_budget = MAX_MATERIAL_CHARS
                             expected_prompt = generation_prompt(
                                 source_task,
                                 example_id=str(example.get("example_id")),
+                                max_material_chars=material_budget,
                             )
                             if prompt != expected_prompt:
                                 errors.append(
                                     f"{label}: generation job prompt does not match "
                                     "visible source task/materials"
                                 )
+                        elif source_task is not None:
+                            warnings.append(
+                                f"{label}: generation job prompt_template_version "
+                                f"{template_version!r} is not replayed by current auditor"
+                            )
                         actual_prompt_sha = _sha256_text(prompt)
                         if job.get("prompt_sha256") != actual_prompt_sha:
                             errors.append(

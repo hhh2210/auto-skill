@@ -250,10 +250,14 @@ def maybe_mimo_subset_summary(
                 "MIMO subset expected "
                 f"{args.expect_mimo_subset_generation_jobs} generation jobs, got {len(jobs)}"
             )
-        if pack_summary["sources"] != expected_source_counts:
+        actual_source_counts = {
+            source: int(pack_summary["sources"].get(source, 0))
+            for source in expected_source_counts
+        }
+        if actual_source_counts != expected_source_counts:
             errors.append(
                 "MIMO subset source counts mismatch: "
-                f"expected {expected_source_counts}, got {pack_summary['sources']}"
+                f"expected {expected_source_counts}, got {actual_source_counts}"
             )
     except (SchemaValidationError, TypeError, AttributeError) as exc:
         errors.append(f"MIMO subset artifacts invalid: {exc}")
