@@ -45,22 +45,22 @@ uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs art
 uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
 ```
 
-Fail-closed by design:
+Fail-closed readiness and fail-open official-judge command rendering:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run --allow-missing-env --expect-commands 16 --commands-out runs/presentbench_official_judge_commands.json
 ```
 
-The full-profile blockers are exactly the 8 PresentBench tasks x 2 official
-modes whose upstream score YAMLs are missing. The official-judge dry-run fails
-closed with `GENAI_API_KEY is required by upstream PresentBench gemini judge`.
-Current `.env` contains Bailian and MIMO variables, but no `GENAI_API_KEY`; the
-upstream PresentBench checkout only supports `gemini` / `gemini_inline`. With
-`--dry-run --allow-missing-env`, the wrapper renders exactly 16 selected
-`judge.py` commands for the current 4 PresentBench packs x 2 heldout x 2 modes
-and can write them to a JSON command manifest with `--commands-out`.
-`--expect-commands 16` fails closed if the selected cell count drifts.
+The full-profile readiness gate fails closed on the 8 PresentBench tasks x 2
+official modes whose upstream score YAMLs are missing. Current `.env` contains
+Bailian and MIMO variables, but no `GENAI_API_KEY`; the upstream PresentBench
+checkout only supports `gemini` / `gemini_inline`. The official-judge wrapper
+fails closed without `--allow-missing-env`; with `--dry-run --allow-missing-env`,
+it intentionally renders exactly 16 selected `judge.py` commands for the current
+4 PresentBench packs x 2 heldout x 2 modes and writes them to a JSON command
+manifest with `--commands-out`. `--expect-commands 16` fails closed if the
+selected cell count drifts.
 
 Canonical current readiness reports are:
 
