@@ -42,6 +42,7 @@ for handoff, but not research-confident for a paper claim.
 | Generic deliverable guardrail is insufficient | `notes/deliverable_guard_probe_2026-05-09.md` shows Education Consulting `examples_plus_feature_skill` improves to near prompt-only but `ours_no_validation` still scores 5.4 vs prompt-only 7.6 after adding final-deliverable priority; deterministic n-gram contamination evidence is mixed | The failure is deeper than "the model wrote an outline" | Target skill-only compression loss and task-specific constraint extraction before blaming example copying |
 | Skill compression is cheap but lossy | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes use about 21-29% of few-shot generation input tokens, but WritingBench negative transfer remains 37.5-75% depending on mode/judge. `notes/feature_signature_ablation_2026-05-09.md` shows compact-signature and task-first signature smokes still below prompt-only/few-shot. Sanitized `task_first_operational_anchors` reaches 6.0 on one hard cell, and its four-pack means are Qwen 6.05 / MIMO 7.05. | A cost-only win is not enough for the main method claim; shortening context and simple task-first ordering are insufficient. Operational/detail anchors recover some lost signal but still do not beat few-shot examples on the four-pack slice. | Redesign anchors with a grounding policy before expanding N |
 | Operational anchors can fabricate specifics | `runs/expanded/grounding_eval.mimo_judge.operational_anchors.sample4_wb.heldout1.summary.json` reports 4/4 success, mean grounding score 4.5, mean hallucination risk 6.75, and mean unsupported claim count 8.0 for `task_first_operational_anchors`. | Apparent task-completion gains can come from plausible unsupported facts rather than transferable example structure | Add evidence-aware slots: required detail type, allowed source, and fallback behavior when current evidence is missing |
+| Prompt-level evidence policy helps but is insufficient | `runs/expanded/grounding_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.summary.json` reports mean grounding 5.75, hallucination risk 6.0, and unsupported claim count 4.0; Qwen task mean is 6.25 and MIMO task mean is 6.85. | Admonitions reduce unsupported details without collapsing task score, but high-risk cells remain | Add a structured evidence-extraction stage before generation |
 
 ## Current Strategy Decision
 
@@ -68,8 +69,9 @@ loop is:
    benchmark win.
 5. Prefer operational/detail anchors over another skill-only LOO loop; current
    evidence says standalone compression is cheap but unstable, while
-   operational anchors partially recover output completeness but fabricate too
-   many unsupported specifics without an explicit evidence policy.
+   operational anchors partially recover output completeness. The prompt-level
+   evidence policy cuts unsupported claims but still leaves high-risk cells, so
+   the next loop should extract current-task fact whitelists before generation.
 
 ## Handoff Commands
 

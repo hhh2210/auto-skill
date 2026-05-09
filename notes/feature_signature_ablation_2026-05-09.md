@@ -342,6 +342,58 @@ Interpretation:
   score and should be used to reject or revise candidate methods before running
   larger N.
 
+## Evidence-Policy Fix
+
+A minimal prompt fix was added to `task_first_operational_anchors`:
+
+- anchors are requests for detail types, not permission to invent facts;
+- concrete names, numbers, citations, routes, costs, methods, datasets, tools,
+  cases, outcomes, dates, standards, and compatibility claims must appear in
+  the current task input or materials;
+- when current evidence lacks a value, use a generic treatment or say the
+  materials do not specify it;
+- do not create fictional named cases, statistics, references, or capabilities.
+
+Task-score artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+
+Grounding artifact:
+
+- `runs/expanded/grounding_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success.
+
+| Metric | Old anchors | Evidence-policy anchors |
+|---|---:|---:|
+| Qwen WritingBench mean | 6.05 | 6.25 |
+| MIMO judge-swap mean | 7.05 | 6.85 |
+| MIMO grounding mean | 4.5 | 5.75 |
+| MIMO hallucination risk mean | 6.75 | 6.0 |
+| MIMO unsupported claim count mean | 8.0 | 4.0 |
+
+Per-pack evidence-policy scores:
+
+| Pack | Qwen score | MIMO score | Grounding | Risk | Unsupported |
+|---|---:|---:|---:|---:|---:|
+| Academic Engineering Paper Outline EN | 6.8 | 7.8 | 6 | 8 | 7 |
+| Product Description EN | 5.6 | 4.4 | 7 | 3 | 2 |
+| Travel Guide ZH | 6.2 | 7.2 | 4 | 8 | 5 |
+| Education Consulting EN | 6.4 | 8.0 | 6 | 5 | 2 |
+
+Interpretation:
+
+- The evidence policy is a real improvement on the grounding diagnostic while
+  keeping task scores roughly intact.
+- It is still not enough: Travel Guide and Academic remain high-risk, and the
+  method only slightly beats few-shot under Qwen while remaining below few-shot
+  under MIMO on the four-pack mean.
+- The next method step should move beyond prompt admonitions to structured
+  evidence extraction: enumerate allowable current-task facts first, then let
+  anchors request only those facts or generic fallback content.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -356,4 +408,5 @@ may need to preserve operational anchors such as expected detail depth,
 evidence density, and how to instantiate task-specific empirical material. The
 `task_first_operational_anchors` four-pack check is a concrete partial recovery
 signal, but the grounding probe shows the current version still fabricates too
-many unsupported specifics.
+many unsupported specifics. The evidence-policy fix reduces this risk but does
+not eliminate it.

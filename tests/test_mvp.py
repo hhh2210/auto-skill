@@ -220,6 +220,8 @@ class MVPTests(unittest.TestCase):
         self.assertIn("key variables", context)
         self.assertIn("evaluation metrics", context)
         self.assertIn("current-task entities", context)
+        self.assertIn("Only fill a detail slot", context)
+        self.assertIn("current evidence lacks a concrete value", context)
         self.assertIn("Anti-leakage checks", context)
         self.assertNotIn("Indoor temperature", context)
         self.assertNotIn("CO2 concentration", context)
@@ -234,10 +236,12 @@ class MVPTests(unittest.TestCase):
         )
 
         self.assertIn("Mode: task_first_operational_anchors", prompt)
-        self.assertIn("Reusable feature signatures:", prompt)
+        self.assertIn("Reusable operational anchors:", prompt)
+        self.assertIn("Evidence policy for operational anchors", prompt)
+        self.assertIn("Treat anchors as requests for detail types", prompt)
         self.assertLess(
             prompt.index("Heldout task input:"),
-            prompt.index("Reusable feature signatures:"),
+            prompt.index("Reusable operational anchors:"),
         )
 
 

@@ -314,6 +314,26 @@ def build_task_first_feature_signature_prompt(
     task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
     materials = material_context(task.get("materials", []), max_chars=max_material_chars)
     signatures = feature_signatures or "(missing feature signatures)"
+    signature_label = (
+        "Reusable operational anchors"
+        if mode == "task_first_operational_anchors"
+        else "Reusable feature signatures"
+    )
+    evidence_policy = ""
+    if mode == "task_first_operational_anchors":
+        evidence_policy = """
+Evidence policy for operational anchors:
+- Treat anchors as requests for detail types, not permission to invent facts.
+- Before using any concrete name, number, citation, route, cost, method,
+  dataset, tool, case study, outcome, date, standard, or compatibility claim,
+  verify that it appears in the current task input or material excerpts.
+- If the current evidence does not provide a concrete value, write a generic
+  but useful treatment instead of fabricating a specific detail.
+- It is acceptable to say that the current materials do not specify a concrete
+  value when the task asks for one and no evidence is available.
+- Do not create fictional examples, named cases, statistics, references, or
+  vendor/product capabilities to satisfy an anchor slot.
+"""
     return f"""Complete the heldout task below.
 
 Mode: {mode}
@@ -331,6 +351,7 @@ Current-task deliverable priority:
   tone, and self-checks.
 - Do not import task-specific facts, domains, entities, section topics, or
   numeric details from training examples unless they appear in the current task.
+{evidence_policy}
 
 Task ID: {task_id}
 
@@ -340,7 +361,7 @@ Heldout task input:
 Material excerpts:
 {materials}
 
-Reusable feature signatures:
+{signature_label}:
 {signatures}
 """
 
@@ -428,6 +449,10 @@ def build_operational_anchor_context(
         [
             "Turn concrete current-task entities, variables, methods, standards, datasets, "
             "dates, and case-study details into substantive sections or bullets.",
+            "Only fill a detail slot with a concrete fact when that fact appears in the "
+            "current task input or current materials.",
+            "When the current evidence lacks a concrete value, keep the treatment generic "
+            "or state that the available materials do not specify it.",
             "Prefer completed content over placeholders; use placeholders only when the "
             "current task explicitly asks for an outline or future-populated section.",
             "For every major current-task requirement, include both the high-level section "
