@@ -29,9 +29,20 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Current post-fix GitHub Actions run:
-  `https://github.com/hhh2210/auto-skill/actions/runs/25592360328`
-  completed with `success` for `f0e1dc7`
+- Current pushed `main`: `0c2d359`
+  (`fix: fail closed when applying rejected outputs`). The commit is visible on
+  GitHub at
+  `https://github.com/hhh2210/auto-skill/commit/0c2d35999a4da67507cd5e6f425760f3c81aa0bd`.
+- Local validation for `0c2d359` is green:
+  `uv run python -m unittest discover -s tests` reports 300 tests OK,
+  `uv run ruff check .` reports all checks passed, `diff -q AGENTS.md CLAUDE.md`
+  is clean, and `git diff --check` is clean.
+- The latest GitHub Actions status for `0c2d359` was not reliably verified in
+  this environment: `gh run list` is blocked by the current approval policy and
+  the unauthenticated GitHub Actions page intermittently fails to load current
+  runs. Do not treat older CI runs as proof for the latest commit.
+- Last directly observed green CI before this local-only verification was the
+  fixture-readiness CI series ending at `f0e1dc7`
   (`test: label fixture readiness ci gate`).
 - CI intentionally checks the MVP readiness contract with committed fixture
   artifacts, not ignored real `runs/*` artifacts. The real local MVP and
