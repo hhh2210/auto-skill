@@ -157,7 +157,7 @@ Known blockers:
   `ready_for_official_judge: 16` across 4 packs x 2 heldout x 2 official modes.
   The local `runs/presentbench_official_scores.jsonl` file still contains
   `missing_score_artifact` rows because upstream `*_score.yaml` files have not
-  been produced by `judge_all.py`.
+  been produced by the selected upstream `judge.py` cells.
 - Full-profile skill and surrogate rows now cover all 8 smoke packs locally.
   `report_experiment_readiness.py --profile full` merges split MVP,
   WritingBench `ours_full`, PresentBench `ours_full`, and PresentBench
