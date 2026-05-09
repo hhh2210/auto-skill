@@ -23,10 +23,12 @@ class PresentBenchEvalTests(unittest.TestCase):
     def test_parse_mode_result_roots_requires_mode_mapping(self) -> None:
         with self.assertRaisesRegex(ValueError, "MODE=PATH"):
             parse_mode_result_roots(["bad"], default_root=Path("results/auto_skill"))
+        with self.assertRaisesRegex(ValueError, "non-empty MODE=PATH"):
+            parse_mode_result_roots(["prompt_only=   "], default_root=Path("results/auto_skill"))
 
         self.assertEqual(
             parse_mode_result_roots(
-                ["prompt_only=results/prompt", "auto_skill=results/auto"],
+                ["prompt_only= results/prompt ", "auto_skill=results/auto"],
                 default_root=Path("unused"),
             ),
             {

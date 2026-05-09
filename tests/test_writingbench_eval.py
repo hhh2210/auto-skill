@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from auto_skill.llm import ChatCompletionConfig
 from auto_skill.mvp import (
@@ -19,7 +21,9 @@ from auto_skill.writingbench_eval import (
 )
 from scripts.eval.run_heldout_eval import append_checkpoint_row
 from scripts.eval.run_writingbench_official_eval import (
+    WritingBenchEvalJob,
     build_generation_with_optional_plan,
+    evaluate_writingbench_job,
     existing_rows_outside_expected_cells,
     has_non_success_rows,
     is_reusable_candidate_row,
@@ -177,6 +181,7 @@ class WritingBenchEvalTests(unittest.TestCase):
             plan_parse_max_attempts=3,
         )
 
+        self.assertIsNotNone(generation)
         self.assertEqual(generation.text, "final answer")
         self.assertIsNotNone(plan_call)
         self.assertIsInstance(plan, dict)
@@ -186,6 +191,60 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertEqual(plan["planner_attempts"][1]["attempt"], 2)
         self.assertEqual(client.texts, [])
         self.assertNotIn("planner_attempts", client.user_prompts[-1])
+
+    def test_planned_mode_returns_no_generation_when_planner_fails(self) -> None:
+        client = SequencedCompletionClient(["planner blocked"], finish_reasons=["safety"])
+
+        generation, plan, plan_call = build_generation_with_optional_plan(
+            client=client,  # type: ignore[arg-type]
+            task={"task_id": "task-1", "task_input": "Write an answer.", "materials": []},
+            mode="task_first_planned_operational_anchors",
+            examples=[],
+            skill_md="# Task-Grounded Operational Anchors",
+            temperature=0.2,
+            max_tokens=1024,
+            max_material_chars=4000,
+            plan_parse_max_attempts=3,
+        )
+
+        self.assertIsNone(generation)
+        self.assertIsNotNone(plan_call)
+        self.assertEqual(plan_call.text, "planner blocked")
+        self.assertIsInstance(plan, dict)
+        self.assertEqual(plan["planner_attempts"][0]["finish_reason"], "safety")
+
+    def test_planner_failure_row_does_not_store_planner_as_generation(self) -> None:
+        client = SequencedCompletionClient(["planner blocked"], finish_reasons=["length"])
+        job = WritingBenchEvalJob(
+            pack={"pack_id": "pack-1"},
+            task={"task_id": "task-1", "task_input": "Write an answer.", "materials": []},
+            mode="task_first_planned_operational_anchors",
+            examples=[],
+            criteria=[],
+            skill_md="# Task-Grounded Operational Anchors",
+        )
+        config = ChatCompletionConfig(
+            base_url="https://example.test/v1",
+            api_key="key",
+            model="solver",
+        )
+
+        with patch("scripts.eval.run_writingbench_official_eval.ChatCompletionClient") as factory:
+            factory.return_value = client
+            _cell, row, status = evaluate_writingbench_job(
+                job,
+                config=config,
+                templates=SimpleNamespace(evaluate_system="judge", evaluate_prompt="{response}"),
+                temperature=0.2,
+                max_tokens=1024,
+                judge_max_tokens=128,
+                max_material_chars=4000,
+                metadata={},
+            )
+
+        self.assertEqual(status, "planning_incomplete")
+        self.assertIsNone(row["generation"])
+        self.assertEqual(row["evidence_plan_call"]["text"], "planner blocked")
 
     def test_runtime_metadata_tracks_reuse_and_judge_thinking(self) -> None:
         solver = ChatCompletionConfig(

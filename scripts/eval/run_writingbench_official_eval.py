@@ -371,7 +371,7 @@ def build_generation_with_optional_plan(
     max_tokens: int,
     max_material_chars: int,
     plan_parse_max_attempts: int = 3,
-) -> tuple[PromptRunResult, dict[str, Any] | None, PromptRunResult | None]:
+) -> tuple[PromptRunResult | None, dict[str, Any] | None, PromptRunResult | None]:
     """Generate heldout output, optionally using a prior evidence plan."""
 
     if mode != "task_first_planned_operational_anchors":
@@ -421,14 +421,14 @@ def build_generation_with_optional_plan(
         )
         if plan_call.finish_reason != "stop":
             plan = {**plan, "planner_attempts": attempts}
-            return plan_call, plan, plan_call
+            return None, plan, plan_call
         if "parse_error" in plan or schema_errors:
             if attempt < max(1, plan_parse_max_attempts):
                 continue
             if schema_errors:
                 plan = {**plan, "schema_errors": schema_errors}
             plan = {**plan, "planner_attempts": attempts}
-            return plan_call, plan, plan_call
+            return None, plan, plan_call
         break
     assert plan_call is not None
     clean_plan = plan
@@ -547,7 +547,7 @@ def evaluate_writingbench_job(
             and job.reused_row is None
             and evidence_plan_call is not None
             and (
-                generation.finish_reason != "stop"
+                generation is None
                 or (
                     isinstance(evidence_plan, dict)
                     and (
@@ -566,7 +566,7 @@ def evaluate_writingbench_job(
                 "evaluator_kind": JUDGE_KIND,
                 "status": (
                     "planning_incomplete"
-                    if generation.finish_reason != "stop"
+                    if evidence_plan_call.get("finish_reason") != "stop"
                     else (
                         "planning_schema_error"
                         if isinstance(evidence_plan, dict)
@@ -579,11 +579,12 @@ def evaluate_writingbench_job(
                 "evidence_plan_call": evidence_plan_call,
                 "scores": {},
                 "overall_score": None,
-                "solver_model": generation.model or solver_model_id,
+                "solver_model": evidence_plan_call.get("model") or solver_model_id,
                 "judge_model": judge_model_id,
             }
             row.update(metadata)
             return cell, row, row["status"]
+        assert generation is not None
         if generation.finish_reason != "stop":
             row = {
                 "schema_version": "writingbench-official-eval/v1",

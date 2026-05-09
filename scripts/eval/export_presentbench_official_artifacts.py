@@ -17,7 +17,10 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from auto_skill.example_packs import load_jsonl  # noqa: E402
-from auto_skill.presentbench_eval import presentbench_result_dir  # noqa: E402
+from auto_skill.presentbench_eval import (  # noqa: E402
+    parse_mode_path_mappings,
+    presentbench_result_dir,
+)
 
 SLIDE_HEADING_RE = re.compile(r"^\s*(?:#{1,3}\s*)?Slide\s+\d+\s*[:.-]?\s*(.*)$", re.I)
 
@@ -36,16 +39,7 @@ def pack_task_index(packs: list[dict[str, Any]]) -> dict[tuple[str, str], dict[s
 
 
 def mode_result_roots(values: list[str]) -> dict[str, Path]:
-    roots = {}
-    for value in values:
-        if "=" not in value:
-            raise ValueError(f"--mode-result-root must be MODE=PATH, got: {value}")
-        mode, raw_path = value.split("=", 1)
-        mode = mode.strip()
-        if not mode:
-            raise ValueError(f"--mode-result-root mode is empty: {value}")
-        roots[mode] = Path(raw_path).expanduser()
-    return roots
+    return parse_mode_path_mappings(values, option_label="--mode-result-root")
 
 
 def clean_text(text: str) -> str:

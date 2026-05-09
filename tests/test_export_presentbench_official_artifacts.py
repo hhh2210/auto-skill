@@ -15,6 +15,13 @@ class ExportPresentBenchOfficialArtifactsTests(unittest.TestCase):
     def test_mode_result_roots_requires_mapping(self) -> None:
         with self.assertRaisesRegex(ValueError, "MODE=PATH"):
             mode_result_roots(["bad"])
+        with self.assertRaisesRegex(ValueError, "non-empty MODE=PATH"):
+            mode_result_roots(["auto_skill=  "])
+
+        self.assertEqual(
+            mode_result_roots([" auto_skill = results/auto "]),
+            {"auto_skill": Path("results/auto")},
+        )
 
     def test_split_slide_pages_uses_slide_headings(self) -> None:
         pages = split_slide_pages("# Slide 1: A\nbody\n\nSlide 2: B\nbody", max_pages=10)

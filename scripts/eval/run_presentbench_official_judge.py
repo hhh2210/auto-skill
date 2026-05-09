@@ -23,6 +23,7 @@ if str(SRC_ROOT) not in sys.path:
 from auto_skill.example_packs import load_jsonl  # noqa: E402
 from auto_skill.presentbench_eval import (  # noqa: E402
     check_presentbench_official_eval_readiness,
+    parse_mode_path_mappings,
 )
 from scripts.eval.run_heldout_eval import select_packs  # noqa: E402
 
@@ -33,17 +34,7 @@ DEFAULT_MODE_RESULT_ROOTS = [
 
 
 def parse_mode_result_roots(raw_values: list[str]) -> dict[str, Path]:
-    roots: dict[str, Path] = {}
-    for raw in raw_values:
-        if "=" not in raw:
-            raise ValueError(f"expected MODE=PATH, got {raw!r}")
-        mode, path = raw.split("=", 1)
-        mode = mode.strip()
-        path = path.strip()
-        if not mode or not path:
-            raise ValueError(f"expected non-empty MODE=PATH, got {raw!r}")
-        roots[mode] = Path(path)
-    return roots
+    return parse_mode_path_mappings(raw_values, option_label="--mode-result-root")
 
 
 def build_judge_all_command(

@@ -17,23 +17,17 @@ if str(SRC_ROOT) not in sys.path:
 
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.mvp import user_examples_from_pack  # noqa: E402
-from auto_skill.presentbench_eval import check_presentbench_official_eval_readiness  # noqa: E402
+from auto_skill.presentbench_eval import (  # noqa: E402
+    check_presentbench_official_eval_readiness,
+    parse_mode_path_mappings,
+)
 from scripts.eval.run_heldout_eval import select_packs  # noqa: E402
 
 
 def parse_mode_result_roots(values: list[str] | None, *, default_root: Path) -> dict[str, Path]:
     if not values:
         return {"auto_skill": default_root}
-    roots = {}
-    for value in values:
-        if "=" not in value:
-            raise ValueError(f"--mode-result-root must be MODE=PATH, got: {value}")
-        mode, raw_path = value.split("=", 1)
-        mode = mode.strip()
-        if not mode:
-            raise ValueError(f"--mode-result-root mode is empty: {value}")
-        roots[mode] = Path(raw_path).expanduser()
-    return roots
+    return parse_mode_path_mappings(values, option_label="--mode-result-root")
 
 
 def main() -> int:

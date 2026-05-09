@@ -49,10 +49,12 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
     def test_parse_mode_result_roots_requires_mapping(self) -> None:
         with self.assertRaisesRegex(ValueError, "MODE=PATH"):
             parse_mode_result_roots(["/tmp/results"])
+        with self.assertRaisesRegex(ValueError, "non-empty MODE=PATH"):
+            parse_mode_result_roots(["auto_skill=  "])
 
     def test_parse_mode_result_roots_maps_repeated_values(self) -> None:
         roots = parse_mode_result_roots(
-            ["prompt_only=/tmp/prompt", "auto_skill=/tmp/skill"]
+            ["prompt_only= /tmp/prompt ", "auto_skill=/tmp/skill"]
         )
 
         self.assertEqual(

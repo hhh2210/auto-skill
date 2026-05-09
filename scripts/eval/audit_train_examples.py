@@ -39,6 +39,7 @@ AUDIT_SCHEMA_VERSION = "train-example-quality-audit/v1"
 AUDIT_MODE = "desired_output"
 AUDIT_KIND = "private_train_example_quality_audit"
 DEFAULT_PARSE_MAX_ATTEMPTS = 3
+REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
 GENERIC_AUDIT_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
 
@@ -113,6 +114,8 @@ def generic_judge_status(
     judge_report: dict[str, Any],
     overall_score: float | None,
 ) -> str:
+    if finish_reason in REFUSAL_FINISH_REASONS:
+        return "judge_refusal"
     if finish_reason != "stop":
         return "judge_incomplete"
     if "parse_error" in judge_report or overall_score is None:
@@ -170,7 +173,7 @@ def generic_audit_with_parse_retry(
                 "overall_score": overall_score,
             }
         )
-        if status in {"success", "judge_incomplete"}:
+        if status in {"success", "judge_incomplete", "judge_refusal"}:
             break
     assert judge is not None
     return judge, judge_report, overall_score, status, judge_calls
