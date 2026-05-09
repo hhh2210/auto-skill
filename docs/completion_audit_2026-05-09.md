@@ -29,15 +29,15 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Current pushed `main`: `84c7563`
-  (`fix: record presentbench judge dry-run warnings`). The commit is visible on
-  GitHub at
+- Latest code-bearing commit covered by this audit: `84c7563`
+  (`fix: record presentbench judge dry-run warnings`). Documentation-only
+  commits may appear after it on `main`. The code commit is visible on GitHub at
   `https://github.com/hhh2210/auto-skill/commit/84c7563147ed6206de7af7220b07357d4855e472`.
 - Local validation for `84c7563` is green:
   `uv run python -m unittest discover -s tests` reports 301 tests OK,
   `uv run ruff check .` reports all checks passed, `diff -q AGENTS.md CLAUDE.md`
   is clean, and `git diff --check` is clean.
-- The latest GitHub Actions status for `84c7563` was not reliably verified in
+- The latest GitHub Actions status for this code-bearing state was not reliably verified in
   this environment: `gh run list` is blocked by the current approval policy and
   the unauthenticated GitHub Actions page intermittently fails to load current
   runs. Do not treat older CI runs as proof for the latest commit.
