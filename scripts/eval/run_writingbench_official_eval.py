@@ -26,9 +26,16 @@ from auto_skill.eval_summary import (  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import (  # noqa: E402
+    HELDOUT_GENERATION_PROMPT_VERSION,
     PromptRunResult,
+    build_evidence_scaffolding_plan_prompt,
+    build_feature_signature_context,
     build_heldout_generation_prompt,
+    build_operational_anchor_context,
+    build_planned_operational_anchor_prompt,
+    parse_json_object,
     user_examples_from_pack,
+    validate_evidence_plan,
 )
 from auto_skill.writingbench_eval import (  # noqa: E402
     average_writingbench_scores,
@@ -39,6 +46,7 @@ from auto_skill.writingbench_eval import (  # noqa: E402
 from scripts.eval.run_heldout_eval import (  # noqa: E402
     GENERATION_SYSTEM_PROMPT,
     append_checkpoint_row,
+    load_skill_rows,
     private_eval_index,
     select_packs,
     skill_index,
@@ -46,10 +54,23 @@ from scripts.eval.run_heldout_eval import (  # noqa: E402
 )
 
 JUDGE_KIND = "writingbench_official_prompt_qwen_judge"
+REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+DEFAULT_PLAN_PARSE_MAX_ATTEMPTS = 3
 SKILL_REQUIRED_MODES = {
     "one_shot_skill_from_examples",
     "ours_no_validation",
     "auto_skill",
+    "examples_plus_one_shot_skill",
+    "examples_plus_feature_skill",
+    "feature_signatures_only",
+    "examples_plus_feature_signatures",
+    "task_first_feature_signatures",
+    "task_first_operational_anchors",
+    "task_first_evidence_anchored_operational_anchors",
+    "task_first_two_level_operational_anchors",
+    "task_first_planned_operational_anchors",
+    "slide_constrained_examples_plus_feature_skill",
 }
 
 
@@ -90,13 +111,55 @@ def call_model(
 
 
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
-    if mode == "one_shot_skill_from_examples":
+    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
         return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode == "ours_no_validation":
+    if mode in {
+        "ours_no_validation",
+        "examples_plus_feature_skill",
+        "feature_signatures_only",
+        "examples_plus_feature_signatures",
+        "task_first_feature_signatures",
+        "task_first_operational_anchors",
+        "task_first_evidence_anchored_operational_anchors",
+        "task_first_two_level_operational_anchors",
+        "task_first_planned_operational_anchors",
+        "slide_constrained_examples_plus_feature_skill",
+    }:
+        if mode in {
+            "feature_signatures_only",
+            "examples_plus_feature_signatures",
+            "task_first_feature_signatures",
+        }:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
+            )
+        if mode in {
+            "task_first_operational_anchors",
+            "task_first_evidence_anchored_operational_anchors",
+            "task_first_two_level_operational_anchors",
+            "task_first_planned_operational_anchors",
+        }:
+            return skills.get(
+                (pack_id, "auto_skill_feature_driven_no_validation::operational_anchors")
+            )
         return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
     if mode == "auto_skill":
         return skills.get((pack_id, "auto_skill_ours_full"))
     return None
+
+
+def skill_index_with_feature_signatures(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
+    index = skill_index(rows)
+    for row in rows:
+        pack_id = row.get("pack_id")
+        mode = row.get("mode")
+        feature_signature_context = build_feature_signature_context(row)
+        if pack_id and mode and feature_signature_context:
+            index[(str(pack_id), f"{mode}::feature_signatures")] = feature_signature_context
+        operational_anchor_context = build_operational_anchor_context(row)
+        if pack_id and mode and operational_anchor_context:
+            index[(str(pack_id), f"{mode}::operational_anchors")] = operational_anchor_context
+    return index
 
 
 def is_reusable_candidate_row(row: dict[str, Any] | None) -> bool:
@@ -138,6 +201,7 @@ def runtime_metadata(
         "judge_max_tokens": judge_max_tokens,
     }
     if reuse_candidates_from is None:
+        metadata["heldout_generation_prompt_version"] = HELDOUT_GENERATION_PROMPT_VERSION
         metadata["solver_model"] = config.model
         metadata["solver_temperature"] = temperature
         metadata["solver_max_tokens"] = max_tokens
@@ -189,6 +253,22 @@ def load_compatible_resume_success_rows(
     return rows
 
 
+def existing_rows_outside_expected_cells(
+    out: Path, expected_cells: list[ScoreCell]
+) -> list[ScoreCell]:
+    if not out.exists():
+        return []
+    expected = set(expected_cells)
+    outside: list[ScoreCell] = []
+    seen: set[ScoreCell] = set()
+    for row in load_jsonl(out):
+        cell = row_score_cell(row)
+        if cell not in expected and cell not in seen:
+            outside.append(cell)
+            seen.add(cell)
+    return outside
+
+
 def summarize_rows(
     rows: list[dict[str, Any]],
     *,
@@ -226,6 +306,7 @@ def score_with_writingbench_prompt(
     criteria: list[dict[str, Any]],
     max_tokens: int,
     judge_client: ChatCompletionClient | None = None,
+    parse_max_attempts: int = 1,
 ) -> tuple[str, dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     scores: dict[str, list[dict[str, Any]]] = {}
     judge_calls: list[dict[str, Any]] = []
@@ -240,23 +321,36 @@ def score_with_writingbench_prompt(
             response=response,
             criteria=criterion,
         )
-        judge = call_model(
-            judge_runner,
-            system_prompt=system_prompt,
-            user_prompt=prompt,
-            temperature=0.0,
-            max_tokens=max_tokens,
-        )
-        parsed = parse_writingbench_score(judge.text)
+        parsed: dict[str, Any] | None = None
+        judge: PromptRunResult | None = None
+        for attempt in range(1, max(1, parse_max_attempts) + 1):
+            judge = call_model(
+                judge_runner,
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                temperature=0.0,
+                max_tokens=max_tokens,
+            )
+            parsed = parse_writingbench_score(judge.text)
+            judge_calls.append(
+                {
+                    "criterion": name,
+                    "attempt": attempt,
+                    "finish_reason": judge.finish_reason,
+                    "model": judge.model,
+                    "usage": judge.usage,
+                    "parse_error": parsed.get("parse_error"),
+                    "score": parsed.get("score"),
+                }
+            )
+            if judge.finish_reason != "stop" or "parse_error" not in parsed:
+                break
+        assert judge is not None
+        assert parsed is not None
         scores.setdefault(name, []).append(parsed)
-        judge_calls.append(
-            {
-                "criterion": name,
-                "finish_reason": judge.finish_reason,
-                "model": judge.model,
-                "usage": judge.usage,
-            }
-        )
+        if judge.finish_reason in REFUSAL_FINISH_REASONS:
+            status = "judge_refusal"
+            break
         if judge.finish_reason != "stop":
             status = "judge_incomplete"
             break
@@ -264,6 +358,94 @@ def score_with_writingbench_prompt(
             status = "judge_parse_error"
             break
     return status, scores, judge_calls
+
+
+def build_generation_with_optional_plan(
+    *,
+    client: ChatCompletionClient,
+    task: dict[str, Any],
+    mode: str,
+    examples: list[Any],
+    skill_md: str | None,
+    temperature: float | None,
+    max_tokens: int,
+    max_material_chars: int,
+    plan_parse_max_attempts: int = 3,
+) -> tuple[PromptRunResult, dict[str, Any] | None, PromptRunResult | None]:
+    """Generate heldout output, optionally using a prior evidence plan."""
+
+    if mode != "task_first_planned_operational_anchors":
+        prompt = build_heldout_generation_prompt(
+            task=task,
+            mode=mode,
+            examples=examples,
+            skill_md=skill_md,
+            max_material_chars=max_material_chars,
+        )
+        generation = call_model(
+            client,
+            system_prompt=GENERATION_SYSTEM_PROMPT,
+            user_prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return generation, None, None
+
+    plan_prompt = build_evidence_scaffolding_plan_prompt(
+        task=task,
+        operational_anchors=skill_md,
+        max_material_chars=max_material_chars,
+    )
+    attempts: list[dict[str, Any]] = []
+    plan_call: PromptRunResult | None = None
+    plan: dict[str, Any] = {}
+    for attempt in range(1, max(1, plan_parse_max_attempts) + 1):
+        plan_call = call_model(
+            client,
+            system_prompt=GENERATION_SYSTEM_PROMPT,
+            user_prompt=plan_prompt,
+            temperature=0.0,
+            max_tokens=min(max_tokens, 4096),
+        )
+        plan = parse_json_object(plan_call.text)
+        schema_errors = [] if "parse_error" in plan else validate_evidence_plan(plan)
+        attempts.append(
+            {
+                "attempt": attempt,
+                "finish_reason": plan_call.finish_reason,
+                "model": plan_call.model,
+                "usage": plan_call.usage,
+                "parse_error": plan.get("parse_error"),
+                "schema_errors": schema_errors,
+            }
+        )
+        if plan_call.finish_reason != "stop":
+            plan = {**plan, "planner_attempts": attempts}
+            return plan_call, plan, plan_call
+        if "parse_error" in plan or schema_errors:
+            if attempt < max(1, plan_parse_max_attempts):
+                continue
+            if schema_errors:
+                plan = {**plan, "schema_errors": schema_errors}
+            plan = {**plan, "planner_attempts": attempts}
+            return plan_call, plan, plan_call
+        break
+    assert plan_call is not None
+    clean_plan = plan
+    generation_prompt = build_planned_operational_anchor_prompt(
+        task=task,
+        operational_anchors=skill_md,
+        evidence_plan=clean_plan,
+        max_material_chars=max_material_chars,
+    )
+    generation = call_model(
+        client,
+        system_prompt=GENERATION_SYSTEM_PROMPT,
+        user_prompt=generation_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return generation, {**clean_plan, "planner_attempts": attempts}, plan_call
 
 
 def eval_failure_row(
@@ -330,6 +512,8 @@ def evaluate_writingbench_job(
     max_material_chars: int,
     metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
+    plan_parse_max_attempts: int = DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -343,21 +527,63 @@ def evaluate_writingbench_job(
     try:
         if job.reused_row is not None:
             generation = PromptRunResult(**job.reused_row["generation"])
+            evidence_plan = job.reused_row.get("evidence_plan")
+            evidence_plan_call = job.reused_row.get("evidence_plan_call")
         else:
-            prompt = build_heldout_generation_prompt(
+            generation, evidence_plan, plan_call = build_generation_with_optional_plan(
+                client=client,
                 task=task,
                 mode=job.mode,
                 examples=job.examples,
                 skill_md=job.skill_md,
-                max_material_chars=max_material_chars,
-            )
-            generation = call_model(
-                client,
-                system_prompt=GENERATION_SYSTEM_PROMPT,
-                user_prompt=prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                max_material_chars=max_material_chars,
+                plan_parse_max_attempts=plan_parse_max_attempts,
             )
+            evidence_plan_call = plan_call.to_json() if plan_call is not None else None
+        if (
+            job.mode == "task_first_planned_operational_anchors"
+            and job.reused_row is None
+            and evidence_plan_call is not None
+            and (
+                generation.finish_reason != "stop"
+                or (
+                    isinstance(evidence_plan, dict)
+                    and (
+                        "parse_error" in evidence_plan
+                        or "schema_errors" in evidence_plan
+                    )
+                )
+            )
+        ):
+            row = {
+                "schema_version": "writingbench-official-eval/v1",
+                "pack_id": pack_id,
+                "task_id": task_id,
+                "source_task_id": task.get("source_task_id"),
+                "mode": job.mode,
+                "evaluator_kind": JUDGE_KIND,
+                "status": (
+                    "planning_incomplete"
+                    if generation.finish_reason != "stop"
+                    else (
+                        "planning_schema_error"
+                        if isinstance(evidence_plan, dict)
+                        and "schema_errors" in evidence_plan
+                        else "planning_parse_error"
+                    )
+                ),
+                "generation": None,
+                "evidence_plan": evidence_plan,
+                "evidence_plan_call": evidence_plan_call,
+                "scores": {},
+                "overall_score": None,
+                "solver_model": generation.model or solver_model_id,
+                "judge_model": judge_model_id,
+            }
+            row.update(metadata)
+            return cell, row, row["status"]
         if generation.finish_reason != "stop":
             row = {
                 "schema_version": "writingbench-official-eval/v1",
@@ -368,6 +594,8 @@ def evaluate_writingbench_job(
                 "evaluator_kind": JUDGE_KIND,
                 "status": "generation_incomplete",
                 "generation": generation.to_json(),
+                "evidence_plan": evidence_plan,
+                "evidence_plan_call": evidence_plan_call,
                 "scores": {},
                 "overall_score": None,
                 "solver_model": generation.model or solver_model_id,
@@ -385,6 +613,7 @@ def evaluate_writingbench_job(
             criteria=job.criteria,
             max_tokens=judge_max_tokens,
             judge_client=judge_client,
+            parse_max_attempts=parse_max_attempts,
         )
         overall_score = average_writingbench_scores(scores) if status == "success" else None
         first_judge_model = next(
@@ -401,6 +630,8 @@ def evaluate_writingbench_job(
             "official_prompt_file": templates.prompt_file,
             "status": status,
             "generation": generation.to_json(),
+            "evidence_plan": evidence_plan,
+            "evidence_plan_call": evidence_plan_call,
             "judge_calls": judge_calls,
             "scores": scores,
             "overall_score": overall_score,
@@ -437,6 +668,8 @@ def run_eval_jobs(
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
+    plan_parse_max_attempts: int = DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
 ) -> None:
     def run_one(job: WritingBenchEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_writingbench_job(
@@ -449,6 +682,8 @@ def run_eval_jobs(
             max_material_chars=max_material_chars,
             metadata=metadata,
             judge_config=judge_config,
+            parse_max_attempts=parse_max_attempts,
+            plan_parse_max_attempts=plan_parse_max_attempts,
         )
 
     if num_threads == 1:
@@ -484,7 +719,15 @@ def main() -> int:
         type=Path,
         default=Path("artifacts/packs/example_packs.v1.jsonl"),
     )
-    parser.add_argument("--skills", type=Path, default=Path("runs/skill_mvp.qwen.jsonl"))
+    parser.add_argument(
+        "--skills",
+        type=Path,
+        action="append",
+        help=(
+            "Skill rows JSONL. Repeat to merge MVP and ours_full skill artifacts. "
+            "Defaults to runs/skill_mvp.qwen.jsonl."
+        ),
+    )
     parser.add_argument(
         "--private-eval",
         type=Path,
@@ -547,6 +790,26 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
+        help=(
+            "Retry each WritingBench judge criterion when a complete response "
+            "cannot be parsed as a valid score. Provider/network retries remain "
+            "controlled by --max-retries."
+        ),
+    )
+    parser.add_argument(
+        "--plan-parse-max-attempts",
+        type=int,
+        default=DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
+        help=(
+            "Retry the staged evidence planner when its complete response is not "
+            "valid planner JSON or fails the planner schema. Provider/network "
+            "retries remain controlled by --max-retries."
+        ),
+    )
+    parser.add_argument(
         "--num-threads",
         type=int,
         default=None,
@@ -578,6 +841,15 @@ def main() -> int:
         help="Exit 0 when filters select no evaluable rows. Default is fail-closed.",
     )
     parser.add_argument(
+        "--allow-output-prune",
+        action="store_true",
+        help=(
+            "Allow rewriting an existing --out file with only the currently selected "
+            "cells. Without this flag, --resume fails closed when --out contains "
+            "rows outside the selected pack/task/mode set."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Load existing success rows from --out and skip completed pack/task/mode cells.",
@@ -594,6 +866,20 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    unsupported_modes = sorted(set(modes) & {"layout_plan_examples_plus_feature_skill"})
+    if unsupported_modes:
+        print(
+            "error: layout_plan_examples_plus_feature_skill is PresentBench-surrogate only; "
+            "use scripts/eval/run_heldout_eval.py for that ablation.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
+    if args.plan_parse_max_attempts <= 0:
+        print("error: --plan-parse-max-attempts must be positive", file=sys.stderr)
+        return 2
     if not selected and not args.dry_run and not args.allow_empty:
         print(
             "error: no WritingBench packs selected for official-prompt evaluation",
@@ -708,7 +994,12 @@ def main() -> int:
             f"{len(reuse_index)} source rows indexed",
             flush=True,
         )
-    skills = {} if reuse_enabled else skill_index(load_jsonl(args.skills))
+    skill_paths = args.skills or [Path("runs/skill_mvp.qwen.jsonl")]
+    skills = (
+        {}
+        if reuse_enabled
+        else skill_index_with_feature_signatures(load_skill_rows(skill_paths))
+    )
 
     expected_cells = expected_score_cells(
         selected,
@@ -724,6 +1015,19 @@ def main() -> int:
         judge_max_tokens=args.judge_max_tokens,
         max_material_chars=args.max_material_chars,
     )
+    outside_cells = existing_rows_outside_expected_cells(args.out, expected_cells)
+    if args.resume and outside_cells and not args.allow_output_prune:
+        preview = [
+            {"pack_id": pack_id, "task_id": task_id, "mode": mode}
+            for pack_id, task_id, mode in outside_cells[:5]
+        ]
+        print(
+            "error: existing --out contains rows outside the selected cells; "
+            "use a new --out path or pass --allow-output-prune if truncating is intentional. "
+            f"examples={json.dumps(preview, ensure_ascii=False)}",
+            file=sys.stderr,
+        )
+        return 2
     rows = (
         load_compatible_resume_success_rows(
             args.out,
@@ -845,6 +1149,8 @@ def main() -> int:
         rows=rows,
         completed_cells=completed_cells,
         judge_config=judge_config,
+        parse_max_attempts=args.parse_max_attempts,
+        plan_parse_max_attempts=args.plan_parse_max_attempts,
     )
 
     write_jsonl(args.out, rows)

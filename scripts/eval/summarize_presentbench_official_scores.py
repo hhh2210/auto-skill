@@ -40,6 +40,17 @@ def parse_score_roots(values: list[str]) -> dict[str, Path]:
     return roots
 
 
+def model_identity_fields(
+    *, solver_model: str | None, judge_model: str | None
+) -> dict[str, str]:
+    fields = {}
+    if solver_model:
+        fields["solver_model"] = solver_model
+    if judge_model:
+        fields["judge_model"] = judge_model
+    return fields
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -72,6 +83,13 @@ def main() -> int:
     parser.add_argument(
         "--judge-model",
         help="Optional upstream judge model prefix used to select *_score.yaml files.",
+    )
+    parser.add_argument(
+        "--solver-model",
+        help=(
+            "Optional model identity for the candidate outputs already written "
+            "under each --score-root. This is metadata only; no model call is made."
+        ),
     )
     parser.add_argument("--pack-id", action="append")
     parser.add_argument("--limit-packs", type=int)
@@ -131,6 +149,12 @@ def main() -> int:
                     "overall_score": None,
                     "score": None,
                 }
+                row.update(
+                    model_identity_fields(
+                        solver_model=args.solver_model,
+                        judge_model=args.judge_model,
+                    )
+                )
                 if readiness["status"] == "missing_official_eval_artifacts":
                     row["status"] = "missing_official_eval_artifacts"
                 elif readiness["status"] == "ambiguous_score_artifacts":
