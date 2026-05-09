@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -80,6 +83,17 @@ def load_readiness_jsonls(
     return rows
 
 
+def env_var_is_set(name: str, *, env_file: Path) -> bool:
+    """Return whether ``name`` is set in the process env or local env file."""
+
+    value = os.getenv(name)
+    if value:
+        return True
+    if not env_file.exists():
+        return False
+    return bool(dotenv_values(env_file).get(name))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -125,6 +139,17 @@ def main() -> int:
         ),
     )
     parser.add_argument("--limit-heldout", type=int)
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=Path(".env"),
+        help="Local env file used only for readiness warnings about runnable external gates.",
+    )
+    parser.add_argument(
+        "--present-official-env-var",
+        default="GENAI_API_KEY",
+        help="Environment variable required by the upstream PresentBench Gemini judge.",
+    )
     parser.add_argument("--out", type=Path, default=Path("runs/experiment_readiness.json"))
     parser.add_argument(
         "--allow-not-ready",
@@ -167,6 +192,15 @@ def main() -> int:
     present_official_missing_messages = artifact_blockers
     if not require_presentbench_official:
         present_official_missing_messages = artifact_warnings
+    if require_presentbench_official and not env_var_is_set(
+        args.present_official_env_var,
+        env_file=args.env_file,
+    ):
+        artifact_warnings.append(
+            "PresentBench official judge env var missing: "
+            f"{args.present_official_env_var}; score summarization can inspect "
+            "existing YAMLs, but running upstream judge.py requires this variable."
+        )
     packs = load_readiness_jsonl(
         args.packs,
         label="packs",

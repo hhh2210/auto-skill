@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "ops" / "report_experiment_readiness.py"
+
+
+def subprocess_env_without(*names: str) -> dict[str, str]:
+    env = os.environ.copy()
+    for name in names:
+        env.pop(name, None)
+    return env
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -225,6 +233,7 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
                     "runs/readiness.json",
                 ],
                 cwd=tmp,
+                env=subprocess_env_without("GENAI_API_KEY"),
                 check=False,
                 text=True,
                 capture_output=True,
@@ -265,6 +274,7 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
                     "runs/readiness.json",
                 ],
                 cwd=tmp,
+                env=subprocess_env_without("GENAI_API_KEY"),
                 check=False,
                 text=True,
                 capture_output=True,
@@ -300,6 +310,7 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
                     "runs/readiness.json",
                 ],
                 cwd=tmp,
+                env=subprocess_env_without("GENAI_API_KEY"),
                 check=False,
                 text=True,
                 capture_output=True,
@@ -309,6 +320,13 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
             report = json.loads((tmp / "runs/readiness.json").read_text(encoding="utf-8"))
             self.assertEqual(report["profile"]["name"], "full")
             self.assertEqual(report["status"], "not_ready")
+            self.assertTrue(
+                any(
+                    "PresentBench official judge env var missing" in item
+                    for item in report["warnings"]
+                ),
+                report["warnings"],
+            )
 
     def test_full_profile_default_merges_mvp_and_ours_full_skill_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -358,6 +376,7 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
                     "runs/readiness.json",
                 ],
                 cwd=tmp,
+                env=subprocess_env_without("GENAI_API_KEY"),
                 check=False,
                 text=True,
                 capture_output=True,
@@ -379,6 +398,44 @@ class ReportExperimentReadinessCliTests(unittest.TestCase):
                     for item in report["blockers"]
                 ),
                 report["blockers"],
+            )
+
+    def test_full_profile_suppresses_official_env_warning_when_env_is_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            write_jsonl(tmp / "artifacts/packs/example_packs.v1.jsonl", [pack_row()])
+            write_jsonl(tmp / "runs/skill_mvp.qwen.mvp.jsonl", skill_rows())
+            write_jsonl(tmp / "runs/writingbench_official_eval.qwen.mvp.jsonl", eval_rows())
+            write_jsonl(tmp / "runs/presentbench_surrogate_eval.qwen.mvp.jsonl", [])
+            (tmp / ".env").write_text("GENAI_API_KEY=test-key\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--profile",
+                    "full",
+                    "--limit-heldout",
+                    "1",
+                    "--expect-status",
+                    "not_ready",
+                    "--out",
+                    "runs/readiness.json",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads((tmp / "runs/readiness.json").read_text(encoding="utf-8"))
+            self.assertFalse(
+                any(
+                    "PresentBench official judge env var missing" in item
+                    for item in report["warnings"]
+                ),
+                report["warnings"],
             )
 
     def test_cli_can_merge_repeated_skill_inputs(self) -> None:
