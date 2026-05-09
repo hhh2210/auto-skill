@@ -70,6 +70,7 @@ def train_example_text(pack: dict[str, Any]) -> str:
         for material in example.get("materials") or []:
             if isinstance(material, dict):
                 chunks.append(str(material.get("path") or ""))
+                chunks.append(str(material.get("text") or ""))
         desired = example.get("desired_output")
         if isinstance(desired, dict):
             chunks.append(str(desired.get("text") or ""))

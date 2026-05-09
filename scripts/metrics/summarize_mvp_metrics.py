@@ -186,17 +186,22 @@ def expected_cells_for_eval(
 ) -> list[ScoreCell] | None:
     if not packs or not modes:
         return None
+    modes_set: set[str] = set()
+    expected_modes = []
+    for mode in modes:
+        if mode in modes_set:
+            continue
+        modes_set.add(mode)
+        expected_modes.append(mode)
     source = infer_eval_source(path, rows)
-    observed_modes = {
-        str(row.get("mode"))
-        for row in rows
-        if isinstance(row.get("mode"), str) and str(row.get("mode")) in set(modes)
-    }
-    expected_modes = [mode for mode in modes if mode in observed_modes] or modes
     selected = [
         pack for pack in packs if source is None or str(pack.get("source")) == source
     ]
-    return expected_score_cells(selected, expected_modes, limit_heldout=limit_heldout)
+    return expected_score_cells(
+        selected,
+        expected_modes,
+        limit_heldout=limit_heldout,
+    )
 
 
 def row_judge_model(row: dict[str, Any]) -> str:
@@ -242,6 +247,12 @@ def summarize_cross_eval_groups(
     summaries = []
     for (bucket, evaluator, judge_model), group in sorted(groups.items()):
         rows = group["rows"]
+        duplicates = duplicate_score_cells(rows)
+        if duplicates:
+            raise ValueError(
+                "duplicate score cells in cross-eval group "
+                f"{bucket}/{evaluator}/{judge_model}: {duplicates}"
+            )
         expected_cells = expected_cells_for_eval(
             path=Path("combined_eval_rows.jsonl"),
             rows=rows,
@@ -266,6 +277,23 @@ def summarize_cross_eval_groups(
             }
         )
     return summaries
+
+
+def duplicate_score_cells(rows: list[dict[str, Any]]) -> list[ScoreCell]:
+    seen: set[ScoreCell] = set()
+    duplicates: set[ScoreCell] = set()
+    for row in rows:
+        cell = (
+            str(row.get("pack_id") or ""),
+            str(row.get("task_id") or ""),
+            str(row.get("mode") or ""),
+        )
+        if not all(cell):
+            continue
+        if cell in seen:
+            duplicates.add(cell)
+        seen.add(cell)
+    return sorted(duplicates)
 
 
 def metrics_model_inventories(

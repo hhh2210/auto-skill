@@ -149,6 +149,48 @@ class ExampleContaminationTests(unittest.TestCase):
             {item["phrase"] for item in report[0]["top_matches"]},
         )
 
+    def test_train_material_text_is_user_visible_example_text(self) -> None:
+        packs = [
+            {
+                "pack_id": "pack-1",
+                "train_examples": [
+                    {
+                        "task_input": "Write with a source file.",
+                        "materials": [
+                            {
+                                "path": "materials/source.pdf",
+                                "text": "source-only carbon audit protocol",
+                            }
+                        ],
+                        "desired_output": {"status": "generated", "text": "Output."},
+                    }
+                ],
+                "heldout_tasks": [
+                    {
+                        "task_id": "task-1",
+                        "task_input": "Write unrelated advice.",
+                        "materials": [],
+                    }
+                ],
+            }
+        ]
+        eval_rows = [
+            {
+                "pack_id": "pack-1",
+                "task_id": "task-1",
+                "mode": "skill",
+                "status": "success",
+                "generation": {"text": "Mentions carbon audit protocol."},
+            }
+        ]
+
+        report = build_contamination_report(packs=packs, eval_rows=eval_rows, n=3)
+
+        self.assertIn(
+            "carbon audit protocol",
+            {item["phrase"] for item in report[0]["top_matches"]},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

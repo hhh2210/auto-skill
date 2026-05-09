@@ -35,6 +35,8 @@ def success_index(rows: list[dict[str, Any]]) -> dict[Cell, dict[str, Any]]:
             continue
         cell = row_cell(row)
         if all(cell) and isinstance(row.get("overall_score"), (int, float)):
+            if cell in index:
+                raise ValueError(f"duplicate success cell: {cell}")
             index[cell] = row
     return index
 

@@ -131,6 +131,65 @@ def load_resume_success_rows(
     return rows
 
 
+def runtime_metadata(
+    *,
+    config: ChatCompletionConfig,
+    judge_config_prefix: str | None,
+    max_tokens: int,
+    parse_max_attempts: int,
+    max_evidence_chars: int,
+    max_candidate_chars: int,
+) -> dict[str, Any]:
+    return {
+        "judge_config_prefix": judge_config_prefix,
+        "judge_enable_thinking": config.enable_thinking,
+        "judge_thinking_budget": config.thinking_budget,
+        "judge_max_tokens": max_tokens,
+        "grounding_parse_max_attempts": parse_max_attempts,
+        "max_evidence_chars": max_evidence_chars,
+        "max_candidate_chars": max_candidate_chars,
+    }
+
+
+def row_matches_runtime(
+    row: dict[str, Any],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> bool:
+    if row.get("judge_model") != expected_judge_model:
+        return False
+    for key, value in metadata.items():
+        if key not in row or row[key] != value:
+            return False
+    return True
+
+
+def load_compatible_resume_success_rows(
+    out: Path,
+    expected_cells: set[tuple[str, str, str]],
+    *,
+    expected_judge_model: str,
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if not out.exists():
+        return []
+    rows = []
+    for row in load_jsonl(out):
+        if row.get("status") != "success":
+            continue
+        if row_cell(row) not in expected_cells:
+            continue
+        if not row_matches_runtime(
+            row,
+            expected_judge_model=expected_judge_model,
+            metadata=metadata,
+        ):
+            continue
+        rows.append(row)
+    return rows
+
+
 def judge_with_parse_retry(
     *,
     client: ChatCompletionClient,
@@ -171,6 +230,7 @@ def evaluate_job(
     parse_max_attempts: int,
     max_evidence_chars: int,
     max_candidate_chars: int,
+    metadata: dict[str, Any],
 ) -> tuple[tuple[str, str, str], dict[str, Any]]:
     candidate_row = job.candidate_row
     pack_id, task_id, mode = row_cell(candidate_row)
@@ -207,6 +267,7 @@ def evaluate_job(
             "judge_parse_attempts": attempts,
             "solver_model": candidate_model(candidate_row),
             "judge_model": judge.model or config.model,
+            **metadata,
         }
     except Exception as exc:  # noqa: BLE001 - keep batch runs fail-soft per cell.
         return cell, {
@@ -226,6 +287,7 @@ def evaluate_job(
             "judge_parse_attempts": 0,
             "solver_model": candidate_model(candidate_row),
             "judge_model": config.model,
+            **metadata,
         }
 
 
@@ -337,7 +399,24 @@ def main() -> int:
     if skipped:
         print(f"warning: skipped {len(skipped)} selected rows due to missing context")
     expected_cells = {row_cell(job.candidate_row) for job in jobs}
-    rows = load_resume_success_rows(args.out, expected_cells) if args.resume else []
+    metadata = runtime_metadata(
+        config=config,
+        judge_config_prefix=args.judge_config_prefix,
+        max_tokens=args.max_tokens,
+        parse_max_attempts=args.parse_max_attempts,
+        max_evidence_chars=args.max_evidence_chars,
+        max_candidate_chars=args.max_candidate_chars,
+    )
+    rows = (
+        load_compatible_resume_success_rows(
+            args.out,
+            expected_cells,
+            expected_judge_model=config.model,
+            metadata=metadata,
+        )
+        if args.resume
+        else []
+    )
     completed = {row_cell(row) for row in rows}
     pending = [job for job in jobs if row_cell(job.candidate_row) not in completed]
 
@@ -354,6 +433,7 @@ def main() -> int:
                 parse_max_attempts=args.parse_max_attempts,
                 max_evidence_chars=args.max_evidence_chars,
                 max_candidate_chars=args.max_candidate_chars,
+                metadata=metadata,
             )
             results[cell] = row
             print(f"[{index}/{len(pending)}] {cell[0]} {cell[2]}: {row['status']}")
@@ -368,6 +448,7 @@ def main() -> int:
                     parse_max_attempts=args.parse_max_attempts,
                     max_evidence_chars=args.max_evidence_chars,
                     max_candidate_chars=args.max_candidate_chars,
+                    metadata=metadata,
                 )
                 for job in pending
             ]
@@ -386,6 +467,8 @@ def main() -> int:
             encoding="utf-8",
         )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if any(row.get("status") != "success" for row in ordered) and not args.allow_partial:
+        return 3
     return 0
 
 

@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts.metrics.summarize_mvp_metrics import (
+    duplicate_score_cells,
     expected_cells_for_eval,
     main,
     metrics_model_inventories,
@@ -30,7 +31,7 @@ class SummarizeMvpMetricsTests(unittest.TestCase):
 
         self.assertEqual(row_judge_model(row), "qwen3.5-plus")
 
-    def test_expected_cells_use_observed_modes_for_split_eval_files(self) -> None:
+    def test_expected_cells_do_not_mask_whole_missing_modes(self) -> None:
         packs = [
             {
                 "pack_id": "writingbench_pack",
@@ -65,7 +66,11 @@ class SummarizeMvpMetricsTests(unittest.TestCase):
         self.assertEqual(
             cells,
             [
+                ("writingbench_pack", "task-1", "prompt_only"),
+                ("writingbench_pack", "task-1", "few_shot_examples_only"),
                 ("writingbench_pack", "task-1", "examples_plus_feature_skill"),
+                ("writingbench_pack", "task-2", "prompt_only"),
+                ("writingbench_pack", "task-2", "few_shot_examples_only"),
                 ("writingbench_pack", "task-2", "examples_plus_feature_skill"),
             ],
         )
@@ -117,6 +122,48 @@ class SummarizeMvpMetricsTests(unittest.TestCase):
         self.assertEqual(paired["count"], 1)
         self.assertEqual(paired["expected_pairs"], 1)
         self.assertEqual(paired["mean_delta"], 2)
+
+    def test_cross_eval_summary_rejects_duplicate_cells(self) -> None:
+        packs = [
+            {
+                "pack_id": "writingbench_pack",
+                "source": "WritingBench",
+                "heldout_tasks": [{"task_id": "task-1"}],
+            }
+        ]
+        duplicate_rows = [
+            {
+                "pack_id": "writingbench_pack",
+                "task_id": "task-1",
+                "mode": "prompt_only",
+                "status": "success",
+                "overall_score": 7,
+                "evaluator_kind": "writingbench_official_prompt_qwen_judge",
+                "judge_model": "qwen3.5-plus",
+            },
+            {
+                "pack_id": "writingbench_pack",
+                "task_id": "task-1",
+                "mode": "prompt_only",
+                "status": "success",
+                "overall_score": 8,
+                "evaluator_kind": "writingbench_official_prompt_qwen_judge",
+                "judge_model": "qwen3.5-plus",
+            },
+        ]
+
+        self.assertEqual(
+            duplicate_score_cells(duplicate_rows),
+            [("writingbench_pack", "task-1", "prompt_only")],
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate score cells"):
+            summarize_cross_eval_groups(
+                [(Path("runs/writingbench_baseline.jsonl"), duplicate_rows)],
+                packs=packs,
+                modes=["prompt_only"],
+                baseline_mode="prompt_only",
+                limit_heldout=None,
+            )
 
     def test_model_inventory_keeps_diagnostics_out_of_paper_facing_inventory(
         self,

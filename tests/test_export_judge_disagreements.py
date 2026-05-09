@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.metrics.export_judge_disagreements import build_disagreement_packets
+from scripts.metrics.export_judge_disagreements import (
+    build_disagreement_packets,
+    success_index,
+)
 
 
 def row(mode: str, score: float, *, text: str = "candidate") -> dict:
@@ -195,6 +198,10 @@ class ExportJudgeDisagreementsTests(unittest.TestCase):
                 "status": "missing",
             },
         )
+
+    def test_success_index_rejects_duplicate_success_cells(self) -> None:
+        with self.assertRaisesRegex(ValueError, "duplicate success cell"):
+            success_index([row("skill", 4), row("skill", 5)])
 
 
 if __name__ == "__main__":

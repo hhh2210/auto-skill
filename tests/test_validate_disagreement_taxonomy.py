@@ -4,14 +4,17 @@ import unittest
 
 from scripts.metrics.validate_disagreement_taxonomy import validate_taxonomy
 
+VALID_CANDIDATE_HASH = "a" * 64
+VALID_BASELINE_HASH = "b" * 64
+
 
 def packet(
     mode: str = "skill",
     *,
     pack_id: str = "pack-1",
     task_id: str = "task-1",
-    candidate_hash: str = "candidate-hash",
-    baseline_hash: str = "baseline-hash",
+    candidate_hash: str | None = VALID_CANDIDATE_HASH,
+    baseline_hash: str | None = VALID_BASELINE_HASH,
 ) -> dict:
     return {
         "pack_id": pack_id,
@@ -27,8 +30,8 @@ def annotation(
     *,
     pack_id: str = "pack-1",
     task_id: str = "task-1",
-    candidate_hash: str = "candidate-hash",
-    baseline_hash: str = "baseline-hash",
+    candidate_hash: str | None = VALID_CANDIDATE_HASH,
+    baseline_hash: str | None = VALID_BASELINE_HASH,
     label: str = "candidate_error",
     more_credible_signal: str = "left",
 ) -> dict:
@@ -75,12 +78,33 @@ class ValidateDisagreementTaxonomyTests(unittest.TestCase):
 
     def test_rejects_hash_mismatch(self) -> None:
         report = validate_taxonomy(
-            [packet(candidate_hash="expected")],
-            [annotation(candidate_hash="actual")],
+            [packet(candidate_hash="a" * 64)],
+            [annotation(candidate_hash="c" * 64)],
         )
 
         self.assertEqual(report["status"], "error")
         self.assertIn("packet hash mismatch", report["errors"][0])
+
+    def test_rejects_missing_hashes_instead_of_accepting_none_equals_none(self) -> None:
+        report = validate_taxonomy(
+            [packet(candidate_hash=None)],
+            [annotation(candidate_hash=None)],
+        )
+
+        self.assertEqual(report["status"], "error")
+        self.assertTrue(any("packet candidate_sha256" in error for error in report["errors"]))
+        self.assertTrue(
+            any("annotation candidate_sha256" in error for error in report["errors"])
+        )
+
+    def test_rejects_non_sha256_hashes(self) -> None:
+        report = validate_taxonomy(
+            [packet(candidate_hash="not-a-sha")],
+            [annotation(candidate_hash="also-not-a-sha")],
+        )
+
+        self.assertEqual(report["status"], "error")
+        self.assertTrue(any("64-hex sha256" in error for error in report["errors"]))
 
     def test_rejects_unknown_label_and_signal(self) -> None:
         report = validate_taxonomy(

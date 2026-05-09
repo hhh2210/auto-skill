@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,11 @@ ALLOWED_CREDIBLE_SIGNALS = {
     "neither",
     "unresolved",
 }
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def valid_sha256(value: Any) -> bool:
+    return isinstance(value, str) and SHA256_RE.fullmatch(value) is not None
 
 
 def packet_key(row: dict[str, Any]) -> tuple[str, str, str]:
@@ -88,6 +94,10 @@ def validate_taxonomy(
         if not all(key):
             errors.append("packet missing pack_id/task_id/mode")
             continue
+        packet_hashes = expected_hashes(packet)
+        for name, value in packet_hashes.items():
+            if not valid_sha256(value):
+                errors.append(f"{key}: packet {name} must be non-empty 64-hex sha256")
         if key in packet_index:
             errors.append(f"{key}: duplicate packet row")
             continue
@@ -98,6 +108,10 @@ def validate_taxonomy(
         if not all(key):
             errors.append("annotation missing packet_ref pack_id/task_id/mode")
             continue
+        annot_hashes = annotation_hashes(annotation)
+        for name, value in annot_hashes.items():
+            if not valid_sha256(value):
+                errors.append(f"{key}: annotation {name} must be non-empty 64-hex sha256")
         annotation_index.setdefault(key, []).append(annotation)
         if annotation.get("label") not in ALLOWED_LABELS:
             errors.append(f"{key}: invalid label {annotation.get('label')!r}")
