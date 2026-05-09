@@ -163,6 +163,10 @@ To re-check the local expanded-cleaning handoff state:
 ```bash
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/data/export_latest_successful_generations.py \
+  --generations runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --out runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-successes 426
 uv run python scripts/ops/report_expanded_cleaning_status.py \
   --splits runs/expanded/fewshot_splits.max_available.jsonl \
   --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \

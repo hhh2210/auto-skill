@@ -166,9 +166,14 @@ uv run python scripts/data/run_generation_jobs.py \
 Apply successful generations:
 
 ```bash
+uv run python scripts/data/export_latest_successful_generations.py \
+  --generations runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --out runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-successes 426
+
 uv run python scripts/data/apply_generated_outputs.py \
   --packs runs/expanded/example_packs.max_available.needs_generation.jsonl \
-  --generations runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --generations runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
   --out runs/expanded/example_packs.max_available.qwen.v1.jsonl
 ```
 
