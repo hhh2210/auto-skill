@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from unittest.mock import patch
 from scripts.eval.run_presentbench_official_judge import (
     build_judge_all_command,
     build_judge_command,
+    command_manifest,
     parse_mode_result_roots,
     selected_judge_commands,
     subprocess_env_with_code_root,
@@ -246,6 +248,19 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             f"{code_root.resolve()}{os.pathsep}/existing",
         )
 
+    def test_command_manifest_records_argv_and_shell_command(self) -> None:
+        manifest = command_manifest([["/python", "judge.py", "--model", "gemini 3"]], [])
+
+        self.assertEqual(
+            manifest["schema_version"],
+            "presentbench-official-judge-commands/v1",
+        )
+        self.assertEqual(
+            manifest["commands"][0]["argv"],
+            ["/python", "judge.py", "--model", "gemini 3"],
+        )
+        self.assertIn("'gemini 3'", manifest["commands"][0]["shell"])
+
     def test_cli_dry_run_renders_all_presentbench_modes_without_credentials(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -253,6 +268,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             data_root = root / "data"
             prompt_root = root / "prompt"
             skill_root = root / "skill"
+            commands_out = root / "commands.json"
             code_root.mkdir()
             data_root.mkdir()
             prompt_root.mkdir()
@@ -275,6 +291,8 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                     "--dry-run",
                     "--allow-missing-env",
                     "--all-presentbench",
+                    "--commands-out",
+                    str(commands_out),
                 ],
                 check=False,
                 cwd=Path(__file__).resolve().parents[1],
@@ -282,9 +300,12 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 capture_output=True,
             )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn("--agent_name prompt_only", completed.stdout)
-        self.assertIn("--agent_name auto_skill", completed.stdout)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("--agent_name prompt_only", completed.stdout)
+            self.assertIn("--agent_name auto_skill", completed.stdout)
+            manifest = json.loads(commands_out.read_text(encoding="utf-8"))
+            self.assertEqual(len(manifest["commands"]), 2)
+            self.assertIn("--agent_name", manifest["commands"][0]["argv"])
 
     def test_allow_missing_env_is_dry_run_only(self) -> None:
         completed = subprocess.run(

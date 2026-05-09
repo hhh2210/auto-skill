@@ -472,7 +472,9 @@ uv run python scripts/eval/run_presentbench_official_judge.py \
 ```
 
 Use `--dry-run --allow-missing-env` to verify commands without `GENAI_API_KEY`.
-Do not use `--allow-missing-env` for a real run.
+Add `--commands-out runs/presentbench_official_judge_commands.json` to write a
+handoff manifest containing both argv lists and shell-safe commands. Do not use
+`--allow-missing-env` for a real run.
 
 After upstream score YAMLs exist, summarize official PresentBench scores and paired
 deltas with explicit mode roots:

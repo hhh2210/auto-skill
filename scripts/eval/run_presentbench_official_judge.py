@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -228,6 +230,28 @@ def subprocess_env_with_code_root(code_root: Path) -> dict[str, str]:
     return env
 
 
+def command_manifest(commands: list[list[str]], errors: list[str]) -> dict:
+    return {
+        "schema_version": "presentbench-official-judge-commands/v1",
+        "commands": [
+            {
+                "argv": command,
+                "shell": " ".join(shlex.quote(part) for part in command),
+            }
+            for command in commands
+        ],
+        "errors": errors,
+    }
+
+
+def write_command_manifest(path: Path, commands: list[list[str]], errors: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(command_manifest(commands, errors), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
@@ -262,6 +286,11 @@ def main() -> int:
     parser.add_argument("--thinking-level")
     parser.add_argument("--min-timestamp")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--commands-out",
+        type=Path,
+        help="Write rendered judge commands to a JSON manifest for handoff/debugging.",
+    )
     parser.add_argument(
         "--allow-missing-env",
         action="store_true",
@@ -328,6 +357,8 @@ def main() -> int:
         print(" ".join(command))
     if not commands and not errors:
         print("No unscored selected PresentBench official judge cells.")
+    if args.commands_out:
+        write_command_manifest(args.commands_out, commands, errors)
 
     if errors:
         for error in errors:
