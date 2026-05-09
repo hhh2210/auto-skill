@@ -484,6 +484,7 @@ deltas with explicit mode roots:
 ```bash
 uv run python scripts/eval/summarize_presentbench_official_scores.py \
   --packs artifacts/packs/example_packs.v1.jsonl \
+  --solver-model qwen3.5-plus \
   --judge-model gemini-3-flash-preview \
   --score-root prompt_only=../PresentBench/results/prompt_only \
   --score-root auto_skill=../PresentBench/results/auto_skill
