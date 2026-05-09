@@ -32,6 +32,10 @@ DEFAULT_MODE_RESULT_ROOTS = [
     "auto_skill=../PresentBench/results/auto_skill",
 ]
 
+CHAT_JUDGE_SCRIPT = REPO_ROOT / "scripts" / "eval" / "run_presentbench_chat_judge.py"
+CHAT_JUDGE_API_TYPES = {"openai"}
+GEMINI_API_TYPES = {"gemini", "gemini_inline"}
+
 
 def parse_mode_result_roots(raw_values: list[str]) -> dict[str, Path]:
     return parse_mode_path_mappings(raw_values, option_label="--mode-result-root")
@@ -71,6 +75,14 @@ def build_judge_all_command(
     if min_timestamp:
         command.extend(["--min_timestamp", min_timestamp])
     return command
+
+
+def resolve_judge_script(*, code_root: Path, api_type: str) -> Path:
+    """Pick which judge entrypoint handles ``api_type`` (upstream vs in-repo chat)."""
+
+    if api_type in CHAT_JUDGE_API_TYPES:
+        return CHAT_JUDGE_SCRIPT
+    return code_root / "judge.py"
 
 
 def build_judge_command(
@@ -121,6 +133,17 @@ def build_judge_command(
     return command
 
 
+def _openai_judge_env_present() -> bool:
+    base_url = os.getenv("GOOGLE_THIRD_API_URL")
+    api_key = os.getenv("GOOGLE_THIRD_API_KEY")
+    return bool(base_url) and bool(api_key)
+
+
+OPENAI_JUDGE_ENV_HINT = (
+    "GOOGLE_THIRD_API_URL+GOOGLE_THIRD_API_KEY are required for --api-type openai"
+)
+
+
 def validate_preflight(
     *,
     code_root: Path,
@@ -130,19 +153,28 @@ def validate_preflight(
     allow_missing_env: bool,
 ) -> list[str]:
     errors: list[str] = []
-    if not (code_root / "judge.py").exists():
-        errors.append(f"missing upstream judge.py under {code_root}")
+    if api_type in CHAT_JUDGE_API_TYPES:
+        if not CHAT_JUDGE_SCRIPT.exists():
+            errors.append(f"missing in-repo chat judge script: {CHAT_JUDGE_SCRIPT}")
+    else:
+        if not (code_root / "judge.py").exists():
+            errors.append(f"missing upstream judge.py under {code_root}")
     if not data_root.exists():
         errors.append(f"PresentBench data root does not exist: {data_root}")
     for mode, result_root in mode_roots.items():
         if not result_root.exists():
             errors.append(f"{mode}: result root does not exist: {result_root}")
-    if api_type.startswith("gemini") and not os.getenv("GENAI_API_KEY"):
+    if api_type in GEMINI_API_TYPES and not os.getenv("GENAI_API_KEY"):
         message = "GENAI_API_KEY is required by upstream PresentBench gemini judge"
         if allow_missing_env:
             print(f"warning: {message}", file=sys.stderr)
         else:
             errors.append(message)
+    if api_type in CHAT_JUDGE_API_TYPES and not _openai_judge_env_present():
+        if allow_missing_env:
+            print(f"warning: {OPENAI_JUDGE_ENV_HINT}", file=sys.stderr)
+        else:
+            errors.append(OPENAI_JUDGE_ENV_HINT)
     return errors
 
 
@@ -172,7 +204,7 @@ def selected_judge_commands(
     commands: list[list[str]] = []
     errors: list[str] = []
     selected_cells = 0
-    judge = code_root / "judge.py"
+    judge = resolve_judge_script(code_root=code_root, api_type=api_type)
     runnable_statuses = {"ready_for_official_judge", "ready_for_zero_score"}
     for pack in selected:
         heldout_tasks = pack.get("heldout_tasks", [])
@@ -229,8 +261,12 @@ def outer_subprocess_workers(*, all_presentbench: bool, max_workers: int) -> int
 
 def preflight_warnings(*, api_type: str, allow_missing_env: bool) -> list[str]:
     warnings: list[str] = []
-    if api_type.startswith("gemini") and allow_missing_env and not os.getenv("GENAI_API_KEY"):
+    if not allow_missing_env:
+        return warnings
+    if api_type in GEMINI_API_TYPES and not os.getenv("GENAI_API_KEY"):
         warnings.append("GENAI_API_KEY is required by upstream PresentBench gemini judge")
+    if api_type in CHAT_JUDGE_API_TYPES and not _openai_judge_env_present():
+        warnings.append(OPENAI_JUDGE_ENV_HINT)
     return warnings
 
 
@@ -287,7 +323,15 @@ def main() -> int:
         default=None,
         help="MODE=PATH result root. Repeat for each official mode.",
     )
-    parser.add_argument("--api-type", default="gemini")
+    parser.add_argument(
+        "--api-type",
+        default="gemini",
+        help=(
+            "Judge backend. 'gemini'/'gemini_inline' use upstream judge.py; "
+            "'openai' routes to the in-repo chat-completions judge "
+            "(GOOGLE_THIRD_API_URL/GOOGLE_THIRD_API_KEY env)."
+        ),
+    )
     parser.add_argument("--model", default="gemini-3-flash-preview")
     parser.add_argument("--max-workers", type=int, default=4)
     parser.add_argument("--retry", type=int, default=5)
@@ -340,7 +384,10 @@ def main() -> int:
     parser.add_argument(
         "--allow-missing-env",
         action="store_true",
-        help="Permit dry-run command rendering without GENAI_API_KEY.",
+        help=(
+            "Permit dry-run command rendering without judge credentials "
+            "(GENAI_API_KEY for gemini; GOOGLE_THIRD_API_* for openai)."
+        ),
     )
     args = parser.parse_args()
 
@@ -367,24 +414,32 @@ def main() -> int:
         allow_missing_env=args.allow_missing_env,
     )
     if args.all_presentbench:
-        if not (args.code_root / "judge_all.py").exists():
-            errors.append(f"missing upstream judge_all.py under {args.code_root}")
-        judge_all = args.code_root / "judge_all.py"
-        commands = [
-            build_judge_all_command(
-                python_executable=sys.executable,
-                judge_all=judge_all,
-                agent_name=mode,
-                data_root=args.data_root,
-                result_root=result_root,
-                api_type=args.api_type,
-                model=args.model,
-                max_workers=args.max_workers,
-                thinking_level=args.thinking_level,
-                min_timestamp=args.min_timestamp,
+        if args.api_type in CHAT_JUDGE_API_TYPES:
+            errors.append(
+                "--all-presentbench is not supported with --api-type "
+                f"{args.api_type!r}; only upstream gemini routes use judge_all.py. "
+                "Use the per-pack flow instead."
             )
-            for mode, result_root in mode_roots.items()
-        ]
+            commands = []
+        else:
+            if not (args.code_root / "judge_all.py").exists():
+                errors.append(f"missing upstream judge_all.py under {args.code_root}")
+            judge_all = args.code_root / "judge_all.py"
+            commands = [
+                build_judge_all_command(
+                    python_executable=sys.executable,
+                    judge_all=judge_all,
+                    agent_name=mode,
+                    data_root=args.data_root,
+                    result_root=result_root,
+                    api_type=args.api_type,
+                    model=args.model,
+                    max_workers=args.max_workers,
+                    thinking_level=args.thinking_level,
+                    min_timestamp=args.min_timestamp,
+                )
+                for mode, result_root in mode_roots.items()
+            ]
     else:
         commands, selection_errors = selected_judge_commands(
             packs_path=args.packs,

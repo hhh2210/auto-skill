@@ -93,6 +93,11 @@ Expected surfaces:
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.
+- PresentBench official judging has two routes: `--api-type gemini` uses upstream
+  `judge.py` with `GENAI_API_KEY`; `--api-type openai` uses the in-repo
+  chat-completions proxy wrapper with `GOOGLE_THIRD_API_URL` and
+  `GOOGLE_THIRD_API_KEY`. Do not add LiteLLM unless multiple non-OpenAI-compatible
+  judge backends become a real requirement.
 - For long sequential skill-induction runs, use `--stream` to consume Qwen responses
   incrementally. Add `--stream-log` only for debugging one sequential run; do not
   use stream logging in threaded batch cleaning because output will interleave.

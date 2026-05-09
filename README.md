@@ -98,6 +98,17 @@ GENAI_API_KEY=replace-with-gemini-key
 # Optional: GENAI_BASE_URL=replace-with-gemini-compatible-endpoint
 ```
 
+If you need to reach a Gemini-class judge through an OpenAI-compatible proxy,
+configure a separate third-party endpoint and run the wrapper with
+`--api-type openai`:
+
+```dotenv
+GOOGLE_THIRD_API_URL=https://replace-with-openai-compatible-endpoint/v1
+GOOGLE_THIRD_API_KEY=replace-with-proxy-key
+# Optional: GOOGLE_THIRD_API_TIMEOUT_SECONDS=600
+# Optional: GOOGLE_THIRD_API_MAX_RETRIES=0
+```
+
 The minimal test path uses only the Python standard library:
 
 ```bash
@@ -481,12 +492,28 @@ uv run python scripts/eval/run_presentbench_official_judge.py \
   --limit-heldout 2
 ```
 
-Use `--dry-run --allow-missing-env` to verify commands without `GENAI_API_KEY`.
+For an OpenAI-compatible Gemini proxy, keep the same wrapper and switch only the
+backend:
+
+```bash
+uv run python scripts/eval/run_presentbench_official_judge.py \
+  --code-root data/PresentBench_code \
+  --data-root data/PresentBench_repo \
+  --mode-result-root prompt_only=../PresentBench/results/prompt_only \
+  --mode-result-root auto_skill=../PresentBench/results/auto_skill \
+  --api-type openai \
+  --model gemini-3-flash-preview \
+  --limit-heldout 2
+```
+
+Use `--dry-run --allow-missing-env` to verify commands without judge credentials.
 Add `--commands-out runs/presentbench_official_judge_commands.json` to write a
 handoff manifest containing argv lists, shell-safe commands, and dry-run
-warnings such as a missing `GENAI_API_KEY`. Add `--expect-commands 16` for the
-current MVP official-score gap so the wrapper fails if the selected cell count
-drifts. Do not use `--allow-missing-env` for a real run.
+warnings such as a missing `GENAI_API_KEY` or `GOOGLE_THIRD_API_KEY`. Add
+`--expect-commands 16` for the current MVP official-score gap so the wrapper
+fails if the selected cell count drifts. Do not use `--allow-missing-env` for a
+real run. `--all-presentbench` remains available only for the upstream Gemini
+route; the OpenAI-compatible proxy route uses selected per-pack cells.
 
 After upstream score YAMLs exist, summarize official PresentBench scores and paired
 deltas with explicit mode roots:
