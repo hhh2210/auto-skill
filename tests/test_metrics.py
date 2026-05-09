@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from auto_skill.metrics import (
     build_abstract_signatures_prompt,
@@ -16,6 +17,25 @@ from auto_skill.metrics import (
     skill_induction_token_usage_summary,
     token_usage_summary,
 )
+from scripts.metrics.run_self_consistency_metric import (
+    generate_signatures_with_parse_retry,
+    judge_with_parse_retry,
+)
+
+
+class SequencedCompletionClient:
+    def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
+        self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
+
+    def complete(self, *_args, **_kwargs):
+        return SimpleNamespace(
+            text=self.texts.pop(0),
+            model="judge",
+            finish_reason=self.finish_reasons.pop(0),
+            usage={"total_tokens": 1},
+            request_id="req",
+        )
 
 
 class MetricsTests(unittest.TestCase):
@@ -175,6 +195,13 @@ class MetricsTests(unittest.TestCase):
             {
                 "mode": "auto_skill",
                 "status": "success",
+                "layout_plan": {
+                    "usage": {
+                        "prompt_tokens": 7,
+                        "completion_tokens": 3,
+                        "total_tokens": 10,
+                    }
+                },
                 "generation": {
                     "usage": {
                         "prompt_tokens": 10,
@@ -211,11 +238,12 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(mode["attempted_rows"], 2)
         self.assertEqual(mode["successful_rows"], 1)
         self.assertEqual(mode["status_counts"], {"model_error": 1, "success": 1})
+        self.assertEqual(mode["layout_plan"]["total_tokens"], 10)
         self.assertEqual(mode["generation"]["total_tokens"], 19)
         self.assertEqual(mode["judge"]["total_tokens"], 22)
-        self.assertEqual(mode["combined_model_calls"]["total_tokens"], 41)
-        self.assertEqual(mode["combined_model_calls_avg_per_success"]["total_tokens"], 41)
-        self.assertEqual(mode["combined_model_calls_avg_per_attempt"]["total_tokens"], 20.5)
+        self.assertEqual(mode["combined_model_calls"]["total_tokens"], 51)
+        self.assertEqual(mode["combined_model_calls_avg_per_success"]["total_tokens"], 51)
+        self.assertEqual(mode["combined_model_calls_avg_per_attempt"]["total_tokens"], 25.5)
         self.assertEqual(
             summary["comparison_to_examples_only_generation"]["modes"]["auto_skill"][
                 "input_tokens"
@@ -421,6 +449,80 @@ class MetricsTests(unittest.TestCase):
 
         self.assertIn("stable_feature_recall", prompt)
         self.assertIn("official benchmark scores", prompt)
+
+    def test_generate_signatures_with_parse_retry_recovers_from_bad_json(self) -> None:
+        generation, signatures, attempts = generate_signatures_with_parse_retry(
+            client=SequencedCompletionClient(
+                [
+                    "not json",
+                    '{"abstract_example_signatures":[{"task_family":"deck"}]}',
+                ]
+            ),
+            prompt="signatures",
+            n=1,
+            temperature=0.2,
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(generation.finish_reason, "stop")
+        self.assertEqual(signatures, [{"task_family": "deck"}])
+        self.assertEqual(
+            [attempt["status"] for attempt in attempts],
+            ["signature_parse_error", "success"],
+        )
+
+    def test_generate_signatures_with_parse_retry_does_not_retry_truncation(self) -> None:
+        generation, signatures, attempts = generate_signatures_with_parse_retry(
+            client=SequencedCompletionClient(
+                ["partial", '{"abstract_example_signatures":[{"task_family":"deck"}]}'],
+                finish_reasons=["length", "stop"],
+            ),
+            prompt="signatures",
+            n=1,
+            temperature=0.2,
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(generation.finish_reason, "length")
+        self.assertEqual(signatures, [])
+        self.assertEqual(
+            [attempt["status"] for attempt in attempts],
+            ["signature_generation_incomplete"],
+        )
+
+    def test_self_consistency_judge_with_parse_retry_recovers_from_bad_json(self) -> None:
+        judge, report, status, attempts = judge_with_parse_retry(
+            client=SequencedCompletionClient(
+                [
+                    "not json",
+                    """{
+                      "stable_feature_recall": 8,
+                      "constraint_recall": 7,
+                      "structure_recall": 6,
+                      "style_signature": 5,
+                      "leakage_penalty": 1,
+                      "unsupported_specificity_penalty": 2,
+                      "overall_self_consistency": 7,
+                      "matched_constraints": [],
+                      "missing_or_distorted_constraints": [],
+                      "rationale": "ok"
+                    }""",
+                ]
+            ),
+            prompt="judge",
+            max_tokens=128,
+            parse_max_attempts=2,
+        )
+
+        self.assertEqual(judge.finish_reason, "stop")
+        self.assertEqual(report["overall_self_consistency"], 7.0)
+        self.assertEqual(status, "success")
+        self.assertEqual(
+            [attempt["status"] for attempt in attempts],
+            ["judge_parse_error", "success"],
+        )
 
 
 if __name__ == "__main__":
