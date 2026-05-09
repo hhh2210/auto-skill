@@ -7,10 +7,13 @@ for handoff, but not research-confident for a paper claim.
 ## Current Stable Evidence
 
 - Data cleaning follows `notes/benchmark_flow.md` for both checked-in MVP data
-  and the expanded 30-WB / 20-PB local workspace:
+  and the expanded local workspaces:
   - `audit_benchmark_flow.py`: `status=ok`; expanded artifacts return no
     errors/warnings when job/generated-output provenance files are supplied.
   - Expanded workspace: 50 packs, 150 frozen train examples, 100 heldout tasks.
+  - Max-available Qwen workspace: 142 packs, 426 frozen train examples, 284
+    heldout tasks; `benchmark_flow_audit` is `status=ok` when using the
+    `*.latest_success.jsonl` generated-output view.
   - `report_expanded_cleaning_status.py --expect-status ready`: ready.
   - `report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready`:
     ready; the local MIMO subset covers 15 packs, 45 frozen train examples, 30
@@ -18,6 +21,8 @@ for handoff, but not research-confident for a paper claim.
     packs.
 - MVP readiness is green as an engineering handoff:
   - `report_experiment_readiness.py --profile mvp --expect-status ready`.
+  - GitHub CI checks the MVP readiness contract with committed fixture artifacts
+    so clean checkouts do not depend on ignored `runs/*`.
 - Full readiness is intentionally not green:
   - `report_experiment_readiness.py --profile full --expect-status not_ready`.
   - Blocker: 8 PresentBench heldout tasks x 2 official modes have
@@ -39,6 +44,7 @@ for handoff, but not research-confident for a paper claim.
 | Same-model smoke evidence remains in canonical readiness | MVP readiness warns model monoculture and old rows missing top-level model identity | Reviewers can reject Qwen-only solver/judge evidence | Use split solver/judge model artifacts for any reported result; avoid old rows without model identity |
 | MIMO may over-reward structure and rubric keywords | Background packet review found Qwen more credible for Academic/Education sign flips, while MIMO rewarded heading/rubric-term reuse | MIMO judge-swap can make weak outputs look improved | Treat MIMO as one calibration axis, not ground truth |
 | MIMO subset is not full MIMO cleaning | The audited subset is 15 packs / 45 train examples, while the canonical expanded split is 50 packs / 150 train examples | Overclaiming could make handoff look like a full dual-model dataset | Label it as an audited subset unless a full MIMO pass is frozen and audited |
+| Append-only generation logs contain historical failures | `generated_desired_outputs.max_available.qwen.jsonl` has 430 rows with 4 retained failed attempts, while the latest-success view has 426/426 success rows | A reviewer may accidentally run schema/readiness on the raw append-only log and see false blockers | Use `generated_desired_outputs.max_available.qwen.latest_success.jsonl` for benchmark-flow/readiness; keep raw append-only log only for traceability |
 | PresentBench examples-plus-skill is negative under surrogate | PresentBench surrogate examples-plus modes underperform prompt-only in current smoke | WritingBench augmentation result may not transfer cross-domain | Test slide-specific constrained composition without raw examples in final prompt |
 | Generic deliverable guardrail is insufficient | `notes/deliverable_guard_probe_2026-05-09.md` shows Education Consulting `examples_plus_feature_skill` improves to near prompt-only but `ours_no_validation` still scores 5.4 vs prompt-only 7.6 after adding final-deliverable priority; deterministic n-gram contamination evidence is mixed | The failure is deeper than "the model wrote an outline" | Target skill-only compression loss and task-specific constraint extraction before blaming example copying |
 | Skill compression is cheap but lossy | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes use about 21-29% of few-shot generation input tokens, but WritingBench negative transfer remains 37.5-75% depending on mode/judge. `notes/feature_signature_ablation_2026-05-09.md` shows compact-signature and task-first signature smokes still below prompt-only/few-shot. Sanitized `task_first_operational_anchors` reaches 6.0 on one hard cell, and its four-pack means are Qwen 6.05 / MIMO 7.05. | A cost-only win is not enough for the main method claim; shortening context and simple task-first ordering are insufficient. Operational/detail anchors recover some lost signal but still do not beat few-shot examples on the four-pack slice. | Redesign anchors with a grounding policy before expanding N |
@@ -91,8 +97,26 @@ uv run python scripts/data/audit_benchmark_flow.py \
   --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
   --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl \
   --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-packs 142 \
+  --expect-train-examples 426 \
+  --expect-heldout-tasks 284 \
+  --expect-generation-jobs 426 \
+  --skip-mimo-subset \
+  --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py \

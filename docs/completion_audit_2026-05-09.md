@@ -29,17 +29,17 @@ benchmark or paper-level claim.
 
 Remote CI:
 
-- Example post-fix GitHub Actions runs:
-  `https://github.com/hhh2210/auto-skill/actions/runs/25591714603`
-  completed with `success` for `bb511e8`, and
-  `https://github.com/hhh2210/auto-skill/actions/runs/25591797681`
-  completed with `success` for `c306671`.
-- The preceding CI failures were caused by two PresentBench official judge-runner
-  tests depending on the local ignored `data/PresentBench_code` checkout. The
-  fixture fix landed in `58b79fb`
-  (`test: make presentbench judge runner fixtures self-contained`): those tests
-  now create a minimal official-code fixture that still exercises the readiness
-  contract, so clean GitHub checkouts match local behavior.
+- Current post-fix GitHub Actions run:
+  `https://github.com/hhh2210/auto-skill/actions/runs/25592360328`
+  completed with `success` for `f0e1dc7`
+  (`test: label fixture readiness ci gate`).
+- CI intentionally checks the MVP readiness contract with committed fixture
+  artifacts, not ignored real `runs/*` artifacts. The real local MVP and
+  expanded artifact readiness gates are the explicit commands below.
+- Earlier CI failures came from two clean-checkout assumptions: PresentBench
+  judge-runner tests depended on ignored `data/PresentBench_code`, and an MVP
+  readiness CI command depended on ignored `runs/*`. Both are now fixture-based
+  contract checks so GitHub clean checkouts match local behavior.
 
 Green:
 
@@ -112,6 +112,13 @@ Canonical current readiness reports are:
 Do not use older ad hoc files such as `runs/experiment_readiness.current.json`
 as the source of truth; some were produced before the profile/path contract was
 updated.
+
+For max-available cleaning, use
+`runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl`
+in readiness and benchmark-flow checks. The raw append-only
+`runs/expanded/generated_desired_outputs.max_available.qwen.jsonl` intentionally
+keeps four historical failed attempts for traceability; latest status per
+`(job_id, prompt_sha256)` is 426/426 `success`.
 
 ## Score Evidence
 
