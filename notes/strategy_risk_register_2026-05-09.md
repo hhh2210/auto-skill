@@ -45,6 +45,7 @@ for handoff, but not research-confident for a paper claim.
 | Prompt-level evidence policy helps but is insufficient | `runs/expanded/grounding_eval.mimo_judge.operational_anchors_evidence_policy.sample4_wb.heldout1.summary.json` reports mean grounding 5.75, hallucination risk 6.0, and unsupported claim count 4.0; Qwen task mean is 6.25 and MIMO task mean is 6.85. | Admonitions reduce unsupported details without collapsing task score, but high-risk cells remain | Add a structured evidence-extraction stage before generation |
 | Hard evidence whitelist overcorrects | `runs/expanded/grounding_eval.mimo_judge.evidence_anchored_operational_anchors.sample4_wb.heldout1.summary.json` reports mean grounding 6.75 and hallucination risk 4.25, but Qwen task mean drops to 5.25 and MIMO task mean drops to 6.70. | Grounding can improve at the cost of output usefulness and benchmark task completion | Use a two-level policy: whitelist for specific claims, generic/common-knowledge allowance for non-factual scaffolding |
 | Two-level wording is still not enough | `runs/expanded/grounding_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.summary.json` reports mean grounding 5.5, hallucination risk 5.25, and unsupported claim count 5.5; Qwen task mean is 5.55 and MIMO task mean is 6.50. | More prompt wording can degrade both task score and grounding | Move to a separate evidence/scaffolding planning stage instead of adding more prompt rules |
+| Constraint-only staged planner underperforms | `runs/expanded/grounding_eval.mimo_judge.planned_operational_anchors.sample4_wb.heldout1.summary.json` reports mean grounding 5.5, hallucination risk 7.0, and unsupported claim count 6.0; Qwen task mean is 5.30 and MIMO task mean is 6.45. | Separating planning from generation is not sufficient if the plan is mostly constraints rather than usable content | Make the planner content-bearing: grounded fact citations, generic fill targets, and fallback text |
 
 ## Current Strategy Decision
 
@@ -73,8 +74,8 @@ loop is:
    evidence says standalone compression is cheap but unstable, while
    operational anchors partially recover output completeness. The prompt-level
    evidence policy cuts unsupported claims but still leaves high-risk cells, so
-   the next loop should use a staged evidence/scaffolding planner rather than
-   adding more prompt wording.
+   the next loop should use a content-bearing evidence/scaffolding planner
+   rather than adding more prompt wording or constraint-only plans.
 
 ## Handoff Commands
 

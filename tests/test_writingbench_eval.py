@@ -19,6 +19,7 @@ from auto_skill.writingbench_eval import (
 )
 from scripts.eval.run_heldout_eval import append_checkpoint_row
 from scripts.eval.run_writingbench_official_eval import (
+    build_generation_with_optional_plan,
     existing_rows_outside_expected_cells,
     has_non_success_rows,
     is_reusable_candidate_row,
@@ -38,8 +39,10 @@ class SequencedCompletionClient:
     def __init__(self, texts: list[str], finish_reasons: list[str] | None = None) -> None:
         self.texts = list(texts)
         self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
+        self.user_prompts: list[str] = []
 
-    def complete(self, *_args, **_kwargs):
+    def complete(self, messages, **_kwargs):
+        self.user_prompts.append(messages[-1]["content"])
         text = self.texts.pop(0)
         finish_reason = self.finish_reasons.pop(0)
         return type(
@@ -122,6 +125,11 @@ class WritingBenchEvalTests(unittest.TestCase):
             "Task-Grounded Operational Anchors",
             mode_skill("task_first_operational_anchors", skills, "pack-1") or "",
         )
+        self.assertIn(
+            "Task-Grounded Operational Anchors",
+            mode_skill("task_first_planned_operational_anchors", skills, "pack-1")
+            or "",
+        )
 
     def test_reused_candidate_bypasses_skill_requirement(self) -> None:
         reused = {"status": "success", "generation": {"text": "candidate"}}
@@ -133,6 +141,7 @@ class WritingBenchEvalTests(unittest.TestCase):
         self.assertTrue(mode_needs_skill("examples_plus_feature_signatures", None))
         self.assertTrue(mode_needs_skill("task_first_feature_signatures", None))
         self.assertTrue(mode_needs_skill("task_first_operational_anchors", None))
+        self.assertTrue(mode_needs_skill("task_first_planned_operational_anchors", None))
 
     def test_reused_candidate_requires_success_generation_text(self) -> None:
         self.assertFalse(is_reusable_candidate_row({"status": "success", "generation": {}}))
@@ -141,6 +150,42 @@ class WritingBenchEvalTests(unittest.TestCase):
                 {"status": "generation_incomplete", "generation": {"text": "x"}}
             )
         )
+
+    def test_planned_mode_retries_planner_parse_errors_before_generation(self) -> None:
+        client = SequencedCompletionClient(
+            [
+                "not json",
+                (
+                    '{"grounded_facts":["Visible fact"],'
+                    '"generic_scaffolding":["Use concise sections"],'
+                    '"missing_specifics":["exact budget"],'
+                    '"generation_constraints":["Do not invent missing values"]}'
+                ),
+                "final answer",
+            ]
+        )
+
+        generation, plan, plan_call = build_generation_with_optional_plan(
+            client=client,  # type: ignore[arg-type]
+            task={"task_id": "task-1", "task_input": "Write an answer.", "materials": []},
+            mode="task_first_planned_operational_anchors",
+            examples=[],
+            skill_md="# Task-Grounded Operational Anchors",
+            temperature=0.2,
+            max_tokens=1024,
+            max_material_chars=4000,
+            plan_parse_max_attempts=3,
+        )
+
+        self.assertEqual(generation.text, "final answer")
+        self.assertIsNotNone(plan_call)
+        self.assertIsInstance(plan, dict)
+        self.assertEqual(len(plan["planner_attempts"]), 2)
+        self.assertEqual(plan["planner_attempts"][0]["attempt"], 1)
+        self.assertIsNotNone(plan["planner_attempts"][0]["parse_error"])
+        self.assertEqual(plan["planner_attempts"][1]["attempt"], 2)
+        self.assertEqual(client.texts, [])
+        self.assertNotIn("planner_attempts", client.user_prompts[-1])
 
     def test_runtime_metadata_tracks_reuse_and_judge_thinking(self) -> None:
         solver = ChatCompletionConfig(

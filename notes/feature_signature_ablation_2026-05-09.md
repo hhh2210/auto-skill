@@ -479,6 +479,47 @@ Interpretation:
   first extract current evidence and generic scaffolding targets, then generate
   with explicit labels for "grounded fact" vs "generic guidance".
 
+## Staged Planner Variant
+
+The next ablation, `task_first_planned_operational_anchors`, performs a separate
+planner call before final generation. The planner returns JSON fields for:
+
+- `grounded_facts`;
+- `generic_scaffolding`;
+- `missing_specifics`;
+- `generation_constraints`.
+
+The final generation prompt receives that plan and the operational anchors.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.planned_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success. The first implementation attempt failed locally
+because the helper was called with a positional argument despite a keyword-only
+signature; the rerun after fixing that local bug produced the artifacts above.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors | Two-level anchors | Staged planner |
+|---|---:|---:|---:|---:|
+| Qwen WritingBench mean | 6.25 | 5.25 | 5.55 | 5.30 |
+| MIMO judge-swap mean | 6.85 | 6.70 | 6.50 | 6.45 |
+| MIMO grounding mean | 5.75 | 6.75 | 5.5 | 5.5 |
+| MIMO hallucination risk mean | 6.0 | 4.25 | 5.25 | 7.0 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 | 5.5 | 6.0 |
+
+Interpretation:
+
+- This staged planner is also a negative ablation. It made the model more
+  cautious and generic without improving grounding.
+- The planner correctly identifies many missing specifics, but the final answer
+  loses practical completion quality, especially on Education Consulting.
+- A useful planner cannot just produce constraints. It likely needs to produce
+  a content skeleton with grounded fact citations, generic fill targets, and
+  explicit fallback text for missing evidence.
+
 ## Interpretation
 
 This is not evidence for a new winning method. It is evidence that simply
@@ -497,4 +538,5 @@ many unsupported specifics. The evidence-policy fix reduces this risk but does
 not eliminate it. The evidence-inventory variant reduces risk further but loses
 too much task-completion quality to be the next benchmark candidate as-is. The
 two-level variant also underperforms, so additional prompt wording is not the
-right next lever.
+right next lever. The first staged planner also underperforms because its plan
+is constraint-heavy rather than content-bearing.

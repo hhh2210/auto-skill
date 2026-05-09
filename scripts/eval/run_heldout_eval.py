@@ -759,6 +759,14 @@ def main() -> int:
         limit=args.limit_packs,
     )
     modes = [mode.strip() for mode in args.modes.split(",") if mode.strip()]
+    unsupported_modes = sorted(set(modes) & {"task_first_planned_operational_anchors"})
+    if unsupported_modes:
+        print(
+            "error: task_first_planned_operational_anchors is WritingBench-runner only; "
+            "it requires a staged evidence/scaffolding planner.",
+            file=sys.stderr,
+        )
+        return 2
     if args.parse_max_attempts <= 0:
         print("error: --parse-max-attempts must be positive", file=sys.stderr)
         return 2

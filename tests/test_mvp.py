@@ -4,16 +4,19 @@ import unittest
 
 from auto_skill.mvp import (
     build_current_evidence_inventory,
+    build_evidence_scaffolding_plan_prompt,
     build_feature_signature_context,
     build_heldout_generation_prompt,
     build_judge_prompt,
     build_operational_anchor_context,
+    build_planned_operational_anchor_prompt,
     build_task_first_feature_signature_prompt,
     build_validation_aware_skill_merge_prompt,
     evaluation_criteria,
     extract_overall_score,
     parse_json_object,
     user_examples_from_pack,
+    validate_evidence_plan,
 )
 
 
@@ -303,6 +306,64 @@ class MVPTests(unittest.TestCase):
         self.assertIn("Generic scaffolding is allowed only when it stays generic", prompt)
         self.assertIn("950W", prompt)
         self.assertIn("Reusable operational anchors:", prompt)
+
+    def test_evidence_scaffolding_plan_prompt_requires_json_not_final_answer(self) -> None:
+        prompt = build_evidence_scaffolding_plan_prompt(
+            task={"task_id": "task-1", "task_input": "Write about SUPOR 950W.", "materials": []},
+            operational_anchors="# Task-Grounded Operational Anchors",
+        )
+
+        self.assertIn("Return strict JSON only", prompt)
+        self.assertIn("grounded_facts", prompt)
+        self.assertIn("generic_scaffolding", prompt)
+        self.assertIn("missing_specifics", prompt)
+        self.assertIn("SUPOR", prompt)
+        self.assertIn("950W", prompt)
+
+    def test_planned_operational_anchor_prompt_uses_plan_fields(self) -> None:
+        prompt = build_planned_operational_anchor_prompt(
+            task={"task_id": "task-1", "task_input": "Write about SUPOR 950W.", "materials": []},
+            operational_anchors="# Task-Grounded Operational Anchors",
+            evidence_plan={
+                "grounded_facts": ["SUPOR uses 950W"],
+                "generic_scaffolding": ["Compare use cases generically"],
+                "missing_specifics": ["exact extraction time"],
+                "generation_constraints": ["Do not invent missing specifics"],
+            },
+        )
+
+        self.assertIn("Mode: task_first_planned_operational_anchors", prompt)
+        self.assertIn("SUPOR uses 950W", prompt)
+        self.assertIn("Compare use cases generically", prompt)
+        self.assertIn("Do not invent missing_specifics", prompt)
+        self.assertIn("Reusable operational anchors:", prompt)
+
+    def test_validate_evidence_plan_requires_list_strings(self) -> None:
+        self.assertEqual(
+            validate_evidence_plan(
+                {
+                    "grounded_facts": ["SUPOR uses 950W"],
+                    "generic_scaffolding": ["Use a generic buying-guide structure"],
+                    "missing_specifics": ["exact extraction time"],
+                    "generation_constraints": ["Do not invent missing specifics"],
+                }
+            ),
+            [],
+        )
+        self.assertEqual(
+            validate_evidence_plan(
+                {
+                    "grounded_facts": [],
+                    "generic_scaffolding": "not a list",
+                    "missing_specifics": [""],
+                }
+            ),
+            [
+                "generic_scaffolding_not_list",
+                "missing_specifics_contains_non_string",
+                "generation_constraints_not_list",
+            ],
+        )
 
 
 if __name__ == "__main__":

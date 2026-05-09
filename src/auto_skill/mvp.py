@@ -457,6 +457,129 @@ def build_current_evidence_inventory(
     return "\n".join(sections).strip()
 
 
+def build_evidence_scaffolding_plan_prompt(
+    *,
+    task: dict[str, Any],
+    operational_anchors: str | None,
+    max_material_chars: int = 4000,
+) -> str:
+    """Build a planner prompt that separates grounded facts from generic scaffolding."""
+
+    task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
+    materials = material_context(task.get("materials", []), max_chars=max_material_chars)
+    anchors = operational_anchors or "(missing operational anchors)"
+    inventory = build_current_evidence_inventory(task, strict_whitelist=False)
+    return f"""Plan the evidence use for a heldout task before final generation.
+
+Return strict JSON only. Do not write the final answer.
+
+Task ID: {task_id}
+
+Heldout task input:
+{task["task_input"]}
+
+Material excerpts:
+{materials}
+
+Current evidence inventory:
+{inventory}
+
+Reusable operational anchors:
+{anchors}
+
+Rules:
+- grounded_facts must contain only concrete facts visible in the heldout task
+  input, material excerpts, or evidence inventory.
+- generic_scaffolding may contain common structure, generic advice, or
+  non-factual connective framing, but no task-specific names, numbers, outcomes,
+  citations, routes, costs, case details, compatibility claims, or dates.
+- missing_specifics should list requested concrete details that are not present
+  in current evidence and therefore must not be fabricated.
+- generation_constraints should state how the final answer should use facts and
+  generic scaffolding without inventing unsupported specifics.
+
+JSON schema:
+{{
+  "grounded_facts": ["specific fact from current evidence"],
+  "generic_scaffolding": ["generic non-factual structure or advice"],
+  "missing_specifics": ["specific detail type missing from current evidence"],
+  "generation_constraints": ["constraint for final generation"]
+}}
+"""
+
+
+EVIDENCE_PLAN_FIELDS = (
+    "grounded_facts",
+    "generic_scaffolding",
+    "missing_specifics",
+    "generation_constraints",
+)
+
+
+def validate_evidence_plan(plan: dict[str, Any]) -> list[str]:
+    """Return schema errors for a staged evidence/scaffolding plan."""
+
+    errors: list[str] = []
+    for field_name in EVIDENCE_PLAN_FIELDS:
+        value = plan.get(field_name)
+        if not isinstance(value, list):
+            errors.append(f"{field_name}_not_list")
+            continue
+        if any(not isinstance(item, str) or not item.strip() for item in value):
+            errors.append(f"{field_name}_contains_non_string")
+    return errors
+
+
+def build_planned_operational_anchor_prompt(
+    *,
+    task: dict[str, Any],
+    operational_anchors: str | None,
+    evidence_plan: dict[str, Any],
+    max_material_chars: int = 4000,
+) -> str:
+    """Build the final generation prompt for the staged planner ablation."""
+
+    task_id = task.get("task_id") or task.get("example_id") or task.get("source_task_id")
+    materials = material_context(task.get("materials", []), max_chars=max_material_chars)
+    anchors = operational_anchors or "(missing operational anchors)"
+    return f"""Complete the heldout task below.
+
+Mode: task_first_planned_operational_anchors
+Use the heldout task input and material excerpts as the source of truth.
+Return only the final answer.
+
+Current-task deliverable priority:
+- Produce the completed artifact requested by the heldout task input.
+- Do not answer with a plan, outline, checklist, analysis, rubric mapping, or
+  explanation of how to solve the task unless the heldout task explicitly asks
+  for that artifact type.
+
+Evidence/scaffolding plan:
+{json.dumps(evidence_plan, ensure_ascii=False, indent=2)}
+
+Final-generation rules:
+- You may use grounded_facts as task-specific facts.
+- You may use generic_scaffolding only as generic structure or common-sense
+  framing; do not turn it into task-specific facts.
+- Do not invent missing_specifics.
+- If a requested concrete value is missing, keep the treatment generic or state
+  that the current materials do not specify it.
+- Use reusable operational anchors only to decide what detail types to consider,
+  not to import training-example facts.
+
+Task ID: {task_id}
+
+Heldout task input:
+{task["task_input"]}
+
+Material excerpts:
+{materials}
+
+Reusable operational anchors:
+{anchors}
+"""
+
+
 def build_feature_signature_context(skill_row: dict[str, Any], *, max_items: int = 8) -> str | None:
     """Build a compact example-derived context from a feature-driven skill row.
 
