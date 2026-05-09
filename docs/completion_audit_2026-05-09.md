@@ -21,7 +21,7 @@ benchmark or paper-level claim.
 | Skill compression diagnostic | `notes/skill_compression_diagnostic_2026-05-09.md` shows skill-only modes cut heldout generation input to roughly 21-29% of few-shot input tokens, but negative transfer remains high; `examples_plus_feature_skill` is strongest on the MVP WritingBench Qwen run and competitive under MIMO, while expanded-sample judge sensitivity remains unresolved. | Done as strategy diagnostic, not proof of main claim |
 | Compact feature-signature / operational-anchor ablation | `notes/feature_signature_ablation_2026-05-09.md` records a WritingBench smoke using `cross_example_report`-derived abstract signatures and sanitized feature-report operational anchors. Compact signatures stayed below prompt-only/few-shot; sanitized `task_first_operational_anchors` reached 6.0 on the hard Academic cell, then completed a four-pack Qwen + MIMO judge-swap check. A grounding probe found mean grounding score 4.5 and hallucination risk 6.75. | Done as mechanism smoke; current version is too hallucination-prone |
 | PresentBench official evaluation | `check_presentbench_official_eval_ready.py` reports 16/16 `ready_for_official_judge`, but `runs/presentbench_official_scores.jsonl` has 16/16 `missing_score_artifact`. A live dry-run of `run_presentbench_official_judge.py` failed before API calls because `.env` has no `GENAI_API_KEY`; upstream `judge.py` currently accepts only `gemini` / `gemini_inline`, not OpenAI-compatible Qwen/Bailian. The wrapper now renders 16 selected `judge.py` commands for the current MVP cells instead of accidentally running `judge_all.py` over all 238 upstream cases. | Blocked: configure `GENAI_API_KEY` and run selected upstream `judge.py` cells to produce score YAMLs |
-| Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. Current MVP readiness has complete model identity and warns only that canonical artifacts are Qwen-only; full readiness still lacks model identity for the 16 unscored PresentBench official rows. | Partial |
+| Avoid model monoculture for research claims | `runs/mvp_metrics.heldout2.current.summary.json` sees Qwen and MIMO in eval model inventory. Current MVP readiness has complete model identity and warns only that canonical artifacts are Qwen-only. `summarize_presentbench_official_scores.py` now supports explicit `--solver-model` and `--judge-model` metadata, so full readiness can keep model identity complete even while the 16 PresentBench official score artifacts are missing. | Partial: contract fixed, official score rows still missing |
 | Use skeptical/background review | Background-agent review was performed in the Codex thread and summarized in `notes/background_review_2026-05-09.md`. The review identified PresentBench official scoring, heldout coverage, MIMO subset scope, and method evidence as blockers. | Done for this iteration, but repeat after official scoring / ablations |
 | Be factually confident in strategy | Current evidence shows auto-skill does not beat prompt-only/few-shot/one-shot reliably. | Not achieved |
 
@@ -49,6 +49,8 @@ Fail-closed readiness and fail-open official-judge command rendering:
 
 ```bash
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
+uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --solver-model qwen3.5-plus --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 2 --allow-partial --out /tmp/pb_scores_with_models.jsonl --summary-out /tmp/pb_scores_with_models.summary.json
+uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready --present-official-scores /tmp/pb_scores_with_models.jsonl
 uv run python scripts/eval/run_presentbench_official_judge.py --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --api-type gemini --model gemini-3-flash-preview --limit-heldout 2 --dry-run --allow-missing-env --expect-commands 16 --commands-out runs/presentbench_official_judge_commands.json
 ```
 
@@ -61,6 +63,11 @@ it intentionally renders exactly 16 selected `judge.py` commands for the current
 4 PresentBench packs x 2 heldout x 2 modes and writes them to a JSON command
 manifest with `--commands-out`. `--expect-commands 16` fails closed if the
 selected cell count drifts.
+
+As of commit `aa85fe5`, the official-score summarizer also records explicit
+`solver_model` / `judge_model` metadata when invoked with `--solver-model` and
+`--judge-model`. The full-profile gate still fails on missing score artifacts,
+but no longer emits missing-model-identity warnings for those placeholder rows.
 
 Canonical current readiness reports are:
 

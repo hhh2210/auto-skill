@@ -5,6 +5,13 @@ under ignored `runs/expanded/` because they include generated
 benchmark-derived content and private eval metadata. Do not force-add them to
 the public repo without an explicit data-release decision.
 
+2026-05-09 refresh: the artifact paths and coverage counts below were rechecked
+after commits `6212eff` and `aa85fe5`. `report_expanded_cleaning_status.py`
+still reports `status=ready` for the 30WB/20PB Qwen snapshot and for the MIMO
+subset. The max-available Qwen snapshot still passes `audit_benchmark_flow.py`
+with `status=ok`, no errors, and no warnings when the job/generated-output
+provenance files are supplied.
+
 ## Scope
 
 ### Max-Available Qwen Snapshot
@@ -407,6 +414,10 @@ Final latest status: 150/150 success.
 ## Remaining Gaps
 
 - This is cleaned-data evidence, not a paper-level result.
+- Full experiment readiness remains blocked on missing PresentBench official
+  score YAMLs. The score summarizer now accepts `--solver-model` and
+  `--judge-model` so placeholder rows can still carry complete model identity,
+  but it does not replace the official judge run.
 - PresentBench train-example quality audit is implemented only as a
   material-aware generic checklist surrogate; it is not a replacement for the
   official visual/PPT evaluator and has only been sampled on 2 examples in this
