@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from auto_skill.example_packs import generation_prompt
+from scripts.ops.report_expanded_cleaning_status import coverage_summary
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "ops" / "report_expanded_cleaning_status.py"
@@ -185,6 +186,33 @@ def audit_row(pack_id: str, source: str, status: str = "success") -> dict:
 
 
 class ExpandedCleaningStatusCliTests(unittest.TestCase):
+    def test_coverage_summary_handles_dict_string_and_missing_domains(self) -> None:
+        self.assertEqual(
+            coverage_summary(
+                [
+                    {
+                        "source": "WritingBench",
+                        "domain": {
+                            "primary": "Finance & Business",
+                            "secondary": "Tender Document",
+                            "language": "zh",
+                        },
+                    },
+                    {"source": "LegacyBench", "domain": "General"},
+                    {"source": "UnknownBench"},
+                ]
+            ),
+            {
+                "LegacyBench": {"primary_domains": {"General": 1}},
+                "UnknownBench": {},
+                "WritingBench": {
+                    "languages": {"zh": 1},
+                    "primary_domains": {"Finance & Business": 1},
+                    "secondary_domains": {"Tender Document": 1},
+                },
+            },
+        )
+
     def test_reports_ready_for_complete_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -254,7 +282,20 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-            self.assertEqual(json.loads(result.stdout)["status"], "ready")
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(
+                report["artifacts"]["packs"]["coverage"]["WritingBench"][
+                    "primary_domains"
+                ],
+                {"WritingBench": 1},
+            )
+            self.assertEqual(
+                report["artifacts"]["splits"]["coverage"]["PresentBench"][
+                    "primary_domains"
+                ],
+                {"PresentBench": 1},
+            )
 
     def test_reports_optional_mimo_subset_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -347,6 +388,12 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
             self.assertEqual(report["status"], "ready")
             self.assertEqual(report["artifacts"]["mimo_subset"]["status"], "ok")
             self.assertEqual(report["artifacts"]["mimo_subset"]["packs"]["packs"], 2)
+            self.assertEqual(
+                report["artifacts"]["mimo_subset"]["packs"]["coverage"]["WritingBench"][
+                    "primary_domains"
+                ],
+                {"WritingBench": 1},
+            )
             self.assertEqual(
                 report["artifacts"]["mimo_subset"]["generated_outputs"]["latest_status_counts"],
                 {"success": 2},

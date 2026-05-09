@@ -73,6 +73,51 @@ def source_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     return dict(sorted(Counter(str(row.get("source") or "unknown") for row in rows).items()))
 
 
+def domain_value(row: dict[str, Any], key: str) -> str | None:
+    """Return a normalized domain metadata value from a split or pack row."""
+
+    domain = row.get("domain")
+    if isinstance(domain, dict):
+        value = domain.get(key)
+        return str(value) if value else None
+    if key == "primary" and domain:
+        return str(domain)
+    return None
+
+
+def coverage_summary(rows: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, int]]]:
+    """Summarize source/domain/language coverage for handoff reports."""
+
+    by_source: dict[str, dict[str, Counter[str]]] = {}
+    for row in rows:
+        source = str(row.get("source") or "unknown")
+        bucket = by_source.setdefault(
+            source,
+            {
+                "primary_domains": Counter(),
+                "secondary_domains": Counter(),
+                "languages": Counter(),
+            },
+        )
+        primary = domain_value(row, "primary")
+        secondary = domain_value(row, "secondary")
+        language = domain_value(row, "language")
+        if primary:
+            bucket["primary_domains"][primary] += 1
+        if secondary:
+            bucket["secondary_domains"][secondary] += 1
+        if language:
+            bucket["languages"][language] += 1
+    return {
+        source: {
+            name: dict(sorted(counter.items()))
+            for name, counter in sorted(counters.items())
+            if counter
+        }
+        for source, counters in sorted(by_source.items())
+    }
+
+
 def frozen_pack_summary(packs: list[dict[str, Any]]) -> dict[str, Any]:
     train_examples = 0
     heldout_tasks = 0
@@ -93,6 +138,7 @@ def frozen_pack_summary(packs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "packs": len(packs),
         "sources": source_counts(packs),
+        "coverage": coverage_summary(packs),
         "train_examples": train_examples,
         "heldout_tasks": heldout_tasks,
         "frozen_train_examples": frozen_examples,
@@ -378,6 +424,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "path": str(args.splits),
             "rows": len(splits),
             "sources": source_counts(splits),
+            "coverage": coverage_summary(splits),
         },
         "packs": {"path": str(args.packs), **pack_summary},
         "private_eval": {
