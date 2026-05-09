@@ -472,24 +472,35 @@ There is an important low-resource trade-off in the current PresentBench path.
 `export_presentbench_official_artifacts.py` is a repo-local bridge, not a
 competitive slide-generation agent: it renders text generations into simple
 PDFs so the upstream evaluator can run over the same artifact contract. This
-keeps the example-driven skill pipeline testable without requiring a
-multimodal slide-generation model. The official PresentBench materials are not
-text-only, though: most cases provide `material*.pdf`, and the checklists can
-ask whether specific figures, tables, charts, and slide-level visual layouts are
-present and consistent with the source. The official rubric is also explicitly
+keeps the example-driven skill pipeline testable, but it is not a pure-text
+version of the official task. The official PresentBench solver input is not
+text-only: most cases provide `material*.pdf`, and the local checkout has 241
+PDF materials versus 31 Markdown materials. A full-setting solver therefore
+needs PDF/page/figure/table/chart perception, even if it does not need to be a
+direct image-generation model.
+
+The evaluation contract is visual as well. The official rubric is explicitly
 five-dimensional, with each dimension worth 20%: Presentation Fundamentals,
 Visual Design and Layout, Content Completeness, Content Correctness, and
-Content Fidelity. A pure text-output path cannot satisfy this contract because
-it has no stable way to control or inspect slide layout, visual hierarchy,
-figure/table reconstruction, localized visual evidence, or source-grounded
-fidelity at the slide/page level. The bridge therefore under-serves
-PresentBench's visual and layout requirements: no real PPTX layout engine, no
-chart or figure reconstruction, no image extraction from source materials, and
-no multimodal planning. Treat those scores as text-to-PDF MVP evidence and
-evaluator plumbing, not as a paper-facing claim that the current agent solves
-PresentBench. A stronger low-resource route should use a renderer-backed
-intermediate representation instead: examples/materials -> structured slide
-spec -> HTML or PPTX renderer -> PDF -> official judge.
+Content Fidelity. The common judge prompt checks design consistency,
+text/visual balance, layout reasonableness, text and visual overlap, image
+quality, appropriate visuals, and chart/table/diagram clarity. Case-specific
+checklists also ask whether figures, tables, charts, and slide-level visual
+layouts are present and consistent with the source. A pure text-output path
+cannot satisfy this contract because it has no stable way to perceive source
+figures/tables or to control and inspect rendered slide layout, visual
+hierarchy, figure/table reconstruction, localized visual evidence, or
+source-grounded fidelity at the slide/page level.
+
+The bridge therefore under-serves PresentBench's official requirements: no real
+PPTX layout engine, no chart or figure reconstruction, no image extraction from
+source materials, and no multimodal material parsing. Treat those scores as
+text-to-PDF MVP evidence and evaluator plumbing, not as a paper-facing claim
+that the current agent solves PresentBench. A stronger low-resource route
+should use a renderer-backed intermediate representation with explicit
+multimodal material parsing: PDF pages/materials -> structured evidence
+digest -> examples/materials -> structured slide spec -> HTML or PPTX renderer
+-> PDF -> official judge.
 
 Readiness statuses are intentionally separated:
 
