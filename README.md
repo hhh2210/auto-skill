@@ -80,6 +80,24 @@ BAILIAN_MODEL=qwen3.5-plus
 # Optional: BAILIAN_STREAM=true
 ```
 
+For MIMO judge-swap or targeted MIMO example cleaning, add the corresponding
+OpenAI-compatible MIMO variables:
+
+```dotenv
+MIMO_BASE_URL=replace-with-mimo-compatible-endpoint
+MIMO_API_KEY=replace-with-mimo-key
+MIMO_MODEL=replace-with-mimo-model
+```
+
+For the upstream PresentBench official judge, add a Gemini key. This is separate
+from Bailian/MIMO because the official PresentBench `judge.py` currently accepts
+only `gemini` / `gemini_inline` API types:
+
+```dotenv
+GENAI_API_KEY=replace-with-gemini-key
+# Optional: GENAI_BASE_URL=replace-with-gemini-compatible-endpoint
+```
+
 The minimal test path uses only the Python standard library:
 
 ```bash
