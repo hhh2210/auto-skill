@@ -33,6 +33,8 @@ from auto_skill.pattern_similarity import (  # noqa: E402
 )
 from scripts.eval.run_heldout_eval import select_packs, skill_index  # noqa: E402
 
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+
 
 @dataclass(frozen=True)
 class PatternJob:
@@ -152,6 +154,7 @@ def evaluate_job(
     config: ChatCompletionConfig,
     max_tokens: int,
     skill_aware: bool,
+    parse_max_attempts: int,
 ) -> tuple[ScoreCell, dict[str, Any]]:
     pack = job.pack
     task = job.task
@@ -174,11 +177,11 @@ def evaluate_job(
             candidate_output=candidate_output,
             skill_md=job.skill_md if skill_aware else None,
         )
-        judge = call_model(client, user_prompt=prompt, max_tokens=max_tokens)
-        report = parse_pattern_similarity_report(judge.text)
-        status = pattern_similarity_status(
-            finish_reason=judge.finish_reason,
-            report=report,
+        judge, report, status, parse_attempts = judge_with_parse_retry(
+            client=client,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            parse_max_attempts=parse_max_attempts,
         )
         score = report.get("pattern_similarity_score") if status == "success" else None
         row = {
@@ -193,6 +196,7 @@ def evaluate_job(
             "status": status,
             "candidate_eval_status": job.candidate_row.get("status"),
             "judge": judge.to_json(),
+            "judge_parse_attempts": parse_attempts,
             "pattern_report": report,
             "overall_score": score,
             "solver_model": candidate_solver_model,
@@ -218,6 +222,48 @@ def evaluate_job(
             "judge_model": judge_model_id,
             "error": f"{type(exc).__name__}: {exc}",
         }
+
+
+def judge_with_parse_retry(
+    *,
+    client: ChatCompletionClient,
+    prompt: str,
+    max_tokens: int,
+    parse_max_attempts: int,
+) -> tuple[PromptRunResult, dict[str, Any], str, list[dict[str, Any]]]:
+    attempts = max(1, parse_max_attempts)
+    parse_attempts: list[dict[str, Any]] = []
+    last_judge: PromptRunResult | None = None
+    last_report: dict[str, Any] = {"parse_error": "judge_not_called"}
+    last_status = "judge_parse_error"
+
+    for attempt in range(1, attempts + 1):
+        judge = call_model(client, user_prompt=prompt, max_tokens=max_tokens)
+        report = parse_pattern_similarity_report(judge.text)
+        status = pattern_similarity_status(
+            finish_reason=judge.finish_reason,
+            report=report,
+        )
+        parse_attempts.append(
+            {
+                "attempt": attempt,
+                "status": status,
+                "finish_reason": judge.finish_reason,
+                "model": judge.model,
+                "request_id": judge.request_id,
+                "usage": judge.usage,
+                "parse_error": report.get("parse_error"),
+                "pattern_similarity_score": report.get("pattern_similarity_score"),
+            }
+        )
+        last_judge = judge
+        last_report = report
+        last_status = status
+        if status != "judge_parse_error":
+            break
+
+    assert last_judge is not None
+    return last_judge, last_report, last_status, parse_attempts
 
 
 def _candidate_generation_model(candidate_row: dict[str, Any]) -> str | None:
@@ -268,6 +314,15 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=2048)
     parser.add_argument("--timeout-seconds", type=float)
     parser.add_argument("--max-retries", type=int)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
+        help=(
+            "Retry judge calls when the provider returns complete but unparseable "
+            "JSON. Provider/network retries remain controlled by --max-retries."
+        ),
+    )
     parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--stream", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--num-threads", type=int)
@@ -280,6 +335,10 @@ def main() -> int:
     parser.add_argument("--allow-partial", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.parse_max_attempts <= 0:
+        print("error: --parse-max-attempts must be positive", file=sys.stderr)
+        return 2
 
     packs = load_jsonl(args.packs)
     selected = select_packs(
@@ -390,6 +449,7 @@ def main() -> int:
                 config=config,
                 max_tokens=args.max_tokens,
                 skill_aware=args.skill_aware,
+                parse_max_attempts=args.parse_max_attempts,
             )
             append_row(args.out, rows, row)
             print(f"  {cell[1]} {cell[2]}: {row['status']} {row.get('overall_score')}", flush=True)
@@ -402,6 +462,7 @@ def main() -> int:
                     config=config,
                     max_tokens=args.max_tokens,
                     skill_aware=args.skill_aware,
+                    parse_max_attempts=args.parse_max_attempts,
                 )
                 for job in jobs
             ]

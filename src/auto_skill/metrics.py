@@ -324,6 +324,7 @@ def token_usage_summary(
                 "attempted_rows": 0,
                 "successful_rows": 0,
                 "status_counts": {},
+                "layout_plan": _empty_usage_tokens(),
                 "generation": _empty_usage_tokens(),
                 "judge": _empty_usage_tokens(),
             },
@@ -334,6 +335,9 @@ def token_usage_summary(
         generation = row.get("generation")
         if isinstance(generation, dict):
             _add_usage(item["generation"], generation.get("usage"))
+        layout_plan = row.get("layout_plan")
+        if isinstance(layout_plan, dict):
+            _add_usage(item["layout_plan"], layout_plan.get("usage"))
         judge = row.get("judge")
         if isinstance(judge, dict):
             _add_usage(item["judge"], judge.get("usage"))
@@ -346,9 +350,12 @@ def token_usage_summary(
     for item in by_mode.values():
         count = item["successful_rows"]
         attempted = item["attempted_rows"]
-        item["combined_model_calls"] = _sum_usage_tokens(item["generation"], item["judge"])
+        item["combined_model_calls"] = _sum_usage_tokens(
+            _sum_usage_tokens(item["layout_plan"], item["generation"]),
+            item["judge"],
+        )
         item["status_counts"] = dict(sorted(item["status_counts"].items()))
-        for bucket in ("generation", "judge"):
+        for bucket in ("layout_plan", "generation", "judge"):
             totals = item[bucket]
             item[f"{bucket}_avg_per_success"] = {
                 key: value / count if count else None for key, value in totals.items()
