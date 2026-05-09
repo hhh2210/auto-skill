@@ -68,6 +68,9 @@ As of commit `aa85fe5`, the official-score summarizer also records explicit
 `solver_model` / `judge_model` metadata when invoked with `--solver-model` and
 `--judge-model`. The full-profile gate still fails on missing score artifacts,
 but no longer emits missing-model-identity warnings for those placeholder rows.
+As of commit `d357f60`, the full-profile gate also emits an explicit warning
+when `GENAI_API_KEY` is absent from the process environment and local `.env`,
+because upstream PresentBench `judge.py` cannot be run without it.
 
 Canonical current readiness reports are:
 
@@ -447,9 +450,12 @@ prove the auto-skill method.
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
    the canonical cleaner until a full MIMO pass is frozen and audited.
 4. Readiness now infers legacy model identity from nested `model_calls`,
-   `generation`, and `judge_calls` fields. The remaining missing model identity
-   in full readiness comes from unscored PresentBench official rows, not from the
-   reusable skill artifacts.
+   `generation`, and `judge_calls` fields. `summarize_presentbench_official_scores.py`
+   can also write explicit `solver_model` / `judge_model` metadata for unscored
+   PresentBench official placeholder rows, so current full readiness has
+   complete model identity. The remaining full-readiness blockers are missing
+   official score artifacts, plus the local warning that `GENAI_API_KEY` is not
+   configured for running upstream `judge.py`.
 
 ## Next Concrete Steps
 
