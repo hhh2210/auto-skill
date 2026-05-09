@@ -206,6 +206,24 @@ def audit_benchmark_flow(
         if isinstance(job.get("job_id"), str)
     }
     latest_rows = _latest_generation_rows(generated_rows or [])
+    has_frozen_generation_refs = any(
+        isinstance(example.get("desired_output"), dict)
+        and (
+            example["desired_output"].get("generation_job_id")
+            or example["desired_output"].get("prompt_sha256")
+        )
+        for pack in packs
+        for example in pack.get("train_examples", [])
+    )
+    if has_frozen_generation_refs and generation_jobs is None:
+        warnings.append(
+            "generation job provenance not checked; pass --jobs to audit prompt identity"
+        )
+    if has_frozen_generation_refs and generated_rows is None:
+        warnings.append(
+            "generated output provenance not checked; pass --generated-outputs to audit "
+            "frozen output identity"
+        )
 
     for pack in packs:
         pack_id = str(pack.get("pack_id") or "<unknown>")

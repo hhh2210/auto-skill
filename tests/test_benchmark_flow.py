@@ -178,6 +178,7 @@ class BenchmarkFlowTests(unittest.TestCase):
         )
 
         self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.warnings, ())
 
     def test_audit_rejects_private_fields_in_visible_pack(self) -> None:
         pack = pack_row()
@@ -202,6 +203,20 @@ class BenchmarkFlowTests(unittest.TestCase):
         )
 
         self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.warnings, ())
+
+    def test_audit_warns_when_frozen_generation_provenance_files_are_omitted(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+        )
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(any("pass --jobs" in warning for warning in result.warnings))
+        self.assertTrue(
+            any("pass --generated-outputs" in warning for warning in result.warnings)
+        )
 
     def test_audit_rejects_missing_generation_job(self) -> None:
         result = audit_benchmark_flow(

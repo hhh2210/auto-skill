@@ -8,7 +8,8 @@ for handoff, but not research-confident for a paper claim.
 
 - Data cleaning follows `notes/benchmark_flow.md` for both checked-in MVP data
   and the expanded 30-WB / 20-PB local workspace:
-  - `audit_benchmark_flow.py`: `status=ok`, no errors/warnings.
+  - `audit_benchmark_flow.py`: `status=ok`; expanded artifacts return no
+    errors/warnings when job/generated-output provenance files are supplied.
   - Expanded workspace: 50 packs, 150 frozen train examples, 100 heldout tasks.
   - `report_expanded_cleaning_status.py --expect-status ready`: ready.
   - `report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready`:
