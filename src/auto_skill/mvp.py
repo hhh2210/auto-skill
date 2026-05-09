@@ -222,6 +222,7 @@ def build_heldout_generation_prompt(
         "task_first_feature_signatures",
         "task_first_operational_anchors",
         "task_first_evidence_anchored_operational_anchors",
+        "task_first_two_level_operational_anchors",
     }:
         return build_task_first_feature_signature_prompt(
             task=task,
@@ -321,6 +322,7 @@ def build_task_first_feature_signature_prompt(
     anchor_modes = {
         "task_first_operational_anchors",
         "task_first_evidence_anchored_operational_anchors",
+        "task_first_two_level_operational_anchors",
     }
     signature_label = "Reusable feature signatures"
     if mode in anchor_modes:
@@ -346,6 +348,22 @@ Evidence policy for operational anchors:
             "\nCurrent evidence inventory for concrete facts:\n"
             f"{build_current_evidence_inventory(task)}\n"
         )
+    if mode == "task_first_two_level_operational_anchors":
+        evidence_inventory = (
+            "\nCurrent evidence inventory for specific factual claims:\n"
+            f"{build_current_evidence_inventory(task, strict_whitelist=False)}\n"
+        )
+        evidence_policy += """
+Two-level evidence policy:
+- Level 1 specific facts: names, numbers, citations, routes, costs, methods,
+  datasets, tools, cases, outcomes, dates, standards, and compatibility claims
+  must be grounded in the current evidence or the evidence inventory.
+- Level 2 generic scaffolding: common advice, generic section framing, and
+  broadly known background can be used when useful, but it must stay generic and
+  must not be presented as a task-specific fact.
+- If the task asks for a specific value that current evidence lacks, provide a
+  generic decision rule or state that the materials do not specify the value.
+"""
     return f"""Complete the heldout task below.
 
 Mode: {mode}
@@ -384,6 +402,7 @@ def build_current_evidence_inventory(
     *,
     max_items: int = 40,
     max_text_chars: int = 20000,
+    strict_whitelist: bool = True,
 ) -> str:
     """Build a deterministic whitelist-style inventory from current task evidence."""
 
@@ -414,10 +433,17 @@ def build_current_evidence_inventory(
         if any("\u4e00" <= char <= "\u9fff" for char in match)
     )
 
-    sections = [
-        "Use this inventory as a whitelist for concrete facts. If a concrete fact is "
-        "not present here or in the current evidence above, keep it generic.",
-    ]
+    if strict_whitelist:
+        sections = [
+            "Use this inventory as a whitelist for concrete facts. If a concrete fact is "
+            "not present here or in the current evidence above, keep it generic.",
+        ]
+    else:
+        sections = [
+            "Use this inventory as the specific-fact bank. Concrete task-specific "
+            "claims should come from this bank or the current evidence above. Generic "
+            "scaffolding is allowed only when it stays generic.",
+        ]
     _append_bullets(
         sections,
         "Numbers and dated values found in current evidence",

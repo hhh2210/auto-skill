@@ -62,6 +62,7 @@ SKILL_REQUIRED_MODES = {
     "task_first_feature_signatures",
     "task_first_operational_anchors",
     "task_first_evidence_anchored_operational_anchors",
+    "task_first_two_level_operational_anchors",
     "slide_constrained_examples_plus_feature_skill",
 }
 
@@ -113,6 +114,7 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         "task_first_feature_signatures",
         "task_first_operational_anchors",
         "task_first_evidence_anchored_operational_anchors",
+        "task_first_two_level_operational_anchors",
         "slide_constrained_examples_plus_feature_skill",
     }:
         if mode in {
@@ -126,6 +128,7 @@ def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> s
         if mode in {
             "task_first_operational_anchors",
             "task_first_evidence_anchored_operational_anchors",
+            "task_first_two_level_operational_anchors",
         }:
             return skills.get(
                 (pack_id, "auto_skill_feature_driven_no_validation::operational_anchors")

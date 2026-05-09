@@ -285,6 +285,25 @@ class MVPTests(unittest.TestCase):
             prompt.index("Current evidence inventory for concrete facts"),
         )
 
+    def test_two_level_operational_anchor_mode_allows_generic_scaffolding(self) -> None:
+        prompt = build_heldout_generation_prompt(
+            task={
+                "task_id": "task-1",
+                "task_input": "Write about SUPOR SW-CFB301 using 950W.",
+                "materials": [],
+            },
+            mode="task_first_two_level_operational_anchors",
+            examples=[],
+            skill_md="# Task-Grounded Operational Anchors",
+        )
+
+        self.assertIn("Mode: task_first_two_level_operational_anchors", prompt)
+        self.assertIn("Current evidence inventory for specific factual claims", prompt)
+        self.assertIn("Two-level evidence policy", prompt)
+        self.assertIn("Generic scaffolding is allowed only when it stays generic", prompt)
+        self.assertIn("950W", prompt)
+        self.assertIn("Reusable operational anchors:", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

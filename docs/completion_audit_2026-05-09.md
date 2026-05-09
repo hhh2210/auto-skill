@@ -274,6 +274,34 @@ but it hurts task completion too much. Treat it as a negative/diagnostic
 ablation: a hard whitelist is safer, but the method needs a softer distinction
 between current-evidence facts and clearly generic/common-knowledge scaffolding.
 
+### WritingBench, Two-Level Operational Anchors
+
+`task_first_two_level_operational_anchors` relaxes the hard whitelist into a
+two-level policy: specific facts must come from current evidence, while generic
+scaffolding is allowed if it remains generic.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors | Two-level anchors |
+| --- | ---: | ---: | ---: |
+| Qwen WritingBench mean | 6.25 | 5.25 | 5.55 |
+| MIMO judge-swap mean | 6.85 | 6.70 | 6.50 |
+| MIMO grounding mean | 5.75 | 6.75 | 5.5 |
+| MIMO hallucination risk mean | 6.0 | 4.25 | 5.25 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 | 5.5 |
+
+Interpretation: two-level wording is a negative ablation. It does not recover
+the task-score loss from hard inventory and also weakens grounding. More prompt
+wording is likely the wrong lever; the next useful direction is a separate
+evidence/scaffolding planning stage.
+
 ### PresentBench Surrogate
 
 Artifacts:
@@ -363,7 +391,8 @@ prove the auto-skill method.
    evidence-policy patch slightly beats few-shot under Qwen but remains below
    few-shot under MIMO, reduces unsupported claims, and still does not solve
    grounding. A stricter evidence-inventory variant improves grounding further
-   but loses too much task score.
+   but loses too much task score. A two-level wording variant also
+   underperforms, so further prompt-only wording is not the next lever.
 3. MIMO judge-swap is now complete on the current 4-pack WritingBench smoke
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
@@ -385,9 +414,8 @@ prove the auto-skill method.
    the current examples-plus-skill ablation.
 4. After evaluator calibration, decide whether to expand the WritingBench
    examples-plus-skill ablation or redesign the skill induction mechanism.
-5. Redesign operational anchors with a two-level evidence policy before
-   expanding N. The prompt-level evidence policy helps, and the hard
-   evidence-inventory whitelist improves grounding, but the latter suppresses
-   task completion. The next version should separate current-evidence facts
-   from generic/common-knowledge scaffolding instead of using a single hard
-   whitelist.
+5. Redesign operational anchors as a staged planner before expanding N. The
+   prompt-level evidence policy helps, the hard evidence-inventory whitelist
+   improves grounding but suppresses task completion, and the two-level wording
+   variant underperforms both. The next version should explicitly plan grounded
+   facts and generic scaffolding in separate fields before generation.

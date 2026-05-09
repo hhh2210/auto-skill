@@ -435,9 +435,49 @@ Interpretation:
   improves and hallucination risk drops.
 - It hurts task completion, especially under Qwen. A deterministic whitelist is
   too restrictive and can suppress useful but common-sense completion details.
-- This suggests the next version needs a two-level evidence policy rather than
-  a hard whitelist: current-evidence facts for specific claims, plus explicitly
-  marked generic/common-knowledge scaffolding when task evidence is incomplete.
+- This motivated the two-level evidence variant below, but that follow-up also
+  underperformed. The remaining next step is a staged planner that separates
+  grounded facts from generic scaffolding before final generation.
+
+## Two-Level Evidence Variant
+
+The follow-up mode `task_first_two_level_operational_anchors` keeps the current
+evidence inventory, but relaxes it from a hard whitelist into a two-level
+policy:
+
+- specific task facts must come from current evidence or the evidence inventory;
+- generic/common-knowledge scaffolding is allowed only if it stays generic and
+  is not presented as a task-specific fact.
+
+Artifacts:
+
+- `runs/expanded/writingbench_official_eval.qwen.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/writingbench_official_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+- `runs/expanded/grounding_eval.mimo_judge.two_level_operational_anchors.sample4_wb.heldout1.jsonl`
+
+Coverage: 4/4 Qwen task-score success, 4/4 MIMO judge-swap success, and 4/4
+MIMO grounding-probe success. The first Qwen task run had one
+`judge_incomplete` cell; rerunning with a larger judge token budget completed
+the set.
+
+| Metric | Evidence-policy anchors | Evidence-inventory anchors | Two-level anchors |
+|---|---:|---:|---:|
+| Qwen WritingBench mean | 6.25 | 5.25 | 5.55 |
+| MIMO judge-swap mean | 6.85 | 6.70 | 6.50 |
+| MIMO grounding mean | 5.75 | 6.75 | 5.5 |
+| MIMO hallucination risk mean | 6.0 | 4.25 | 5.25 |
+| MIMO unsupported claim count mean | 4.0 | 4.0 | 5.5 |
+
+Interpretation:
+
+- The two-level wording did not recover task quality enough and weakened the
+  grounding gains from the hard inventory.
+- The best current tradeoff remains the prompt-level evidence-policy variant:
+  it preserves more task score while cutting unsupported claims relative to the
+  original operational anchors.
+- The next method loop should not add more wording. It should separate stages:
+  first extract current evidence and generic scaffolding targets, then generate
+  with explicit labels for "grounded fact" vs "generic guidance".
 
 ## Interpretation
 
@@ -455,4 +495,6 @@ evidence density, and how to instantiate task-specific empirical material. The
 signal, but the grounding probe shows the current version still fabricates too
 many unsupported specifics. The evidence-policy fix reduces this risk but does
 not eliminate it. The evidence-inventory variant reduces risk further but loses
-too much task-completion quality to be the next benchmark candidate as-is.
+too much task-completion quality to be the next benchmark candidate as-is. The
+two-level variant also underperforms, so additional prompt wording is not the
+right next lever.

@@ -121,6 +121,11 @@ class HeldoutEvalTests(unittest.TestCase):
             )
             or "",
         )
+        self.assertIn(
+            "Task-Grounded Operational Anchors",
+            mode_skill("task_first_two_level_operational_anchors", skills, "pack-1")
+            or "",
+        )
 
     def test_feature_signature_modes_require_context(self) -> None:
         self.assertTrue(mode_needs_skill("feature_signatures_only"))
@@ -128,6 +133,7 @@ class HeldoutEvalTests(unittest.TestCase):
         self.assertTrue(mode_needs_skill("task_first_feature_signatures"))
         self.assertTrue(mode_needs_skill("task_first_operational_anchors"))
         self.assertTrue(mode_needs_skill("task_first_evidence_anchored_operational_anchors"))
+        self.assertTrue(mode_needs_skill("task_first_two_level_operational_anchors"))
         self.assertFalse(mode_needs_skill("prompt_only"))
         self.assertFalse(mode_needs_skill("few_shot_examples_only"))
 
