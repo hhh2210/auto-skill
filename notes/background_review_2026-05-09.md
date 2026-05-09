@@ -34,7 +34,9 @@ uv run python scripts/data/audit_benchmark_flow.py
 uv run python -m unittest discover -s tests
 ```
 
-Current expanded artifacts also pass:
+Current expanded artifacts also pass. The audit now checks strict
+`input_boundary` allow-list fields and, when generation job rows are supplied,
+reconstructs each generation prompt from the visible source task/materials.
 
 ```bash
 uv run python scripts/data/audit_benchmark_flow.py \
@@ -92,3 +94,7 @@ Reviewers agreed the current repository can be handed off as:
 - a research state with explicit blockers and no paper-level overclaim.
 
 They did not consider the active research objective complete.
+
+Remaining caveat: this is still an artifact-level flow/provenance audit, not a
+mathematical guarantee that generated example text contains no semantic
+influence from benchmark-private concepts learned through model priors.

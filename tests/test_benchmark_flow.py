@@ -4,9 +4,9 @@ import hashlib
 import unittest
 
 from auto_skill.benchmark_flow import audit_benchmark_flow
+from auto_skill.example_packs import generation_prompt
 
-GENERATION_PROMPT = "Create a final output from the visible task input only."
-GENERATION_PROMPT_SHA = hashlib.sha256(GENERATION_PROMPT.encode("utf-8")).hexdigest()
+GENERATION_EXAMPLE_ID = "pack-1::train::0"
 
 
 def split_row() -> dict:
@@ -47,6 +47,14 @@ def all_source_splits() -> list[dict]:
         for task in present[role]:
             task["source"] = "PresentBench"
     return [writing, present]
+
+
+def generation_prompt_fixture() -> str:
+    return generation_prompt(split_row()["train_examples"][0], example_id=GENERATION_EXAMPLE_ID)
+
+
+GENERATION_PROMPT = generation_prompt_fixture()
+GENERATION_PROMPT_SHA = hashlib.sha256(GENERATION_PROMPT.encode("utf-8")).hexdigest()
 
 
 def pack_row() -> dict:
@@ -121,9 +129,9 @@ def private_row() -> dict:
 def generation_job() -> dict:
     return {
         "schema_version": "example-generation-job/v1",
-        "job_id": "pack-1::train::0::generate_desired_output",
+        "job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
         "pack_id": "pack-1",
-        "example_id": "pack-1::train::0",
+        "example_id": GENERATION_EXAMPLE_ID,
         "source": "WritingBench",
         "source_task_id": "train-1",
         "prompt_sha256": GENERATION_PROMPT_SHA,
@@ -136,9 +144,9 @@ def generated_output_row() -> dict:
     return {
         "schema_version": "generated-desired-output/v1",
         "status": "success",
-        "job_id": "pack-1::train::0::generate_desired_output",
+        "job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
         "pack_id": "pack-1",
-        "example_id": "pack-1::train::0",
+        "example_id": GENERATION_EXAMPLE_ID,
         "source": "WritingBench",
         "source_task_id": "train-1",
         "prompt_sha256": GENERATION_PROMPT_SHA,
@@ -153,7 +161,7 @@ def pack_row_with_generation_provenance() -> dict:
     pack = pack_row()
     pack["train_examples"][0]["desired_output"].update(
         {
-            "generation_job_id": "pack-1::train::0::generate_desired_output",
+            "generation_job_id": f"{GENERATION_EXAMPLE_ID}::generate_desired_output",
             "prompt_sha256": GENERATION_PROMPT_SHA,
             "prompt_template_version": "desired-output/user-visible-only/v2",
         }
@@ -238,6 +246,27 @@ class BenchmarkFlowTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(
             any("prompt_sha256 does not match prompt" in error for error in result.errors)
+        )
+
+    def test_audit_rejects_generation_prompt_not_rebuilt_from_visible_task(self) -> None:
+        job = generation_job()
+        job["prompt"] = GENERATION_PROMPT + "\nUse one extra hidden hint."
+        job["prompt_sha256"] = hashlib.sha256(job["prompt"].encode("utf-8")).hexdigest()
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[job],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any(
+                "prompt does not match visible source task/materials" in error
+                for error in result.errors
+            )
         )
 
     def test_audit_rejects_generated_output_identity_mismatch(self) -> None:
@@ -402,6 +431,19 @@ class BenchmarkFlowTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(any("private keys" in error for error in result.errors))
+
+    def test_audit_rejects_noncanonical_input_boundary_allowed_fields(self) -> None:
+        pack = pack_row()
+        pack["input_boundary"]["auto_skill_module_can_use"].append("train_examples.supervision")
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack],
+            private_rows=[private_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("non-canonical fields" in error for error in result.errors))
 
 
 if __name__ == "__main__":

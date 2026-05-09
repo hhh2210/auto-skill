@@ -8,10 +8,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from auto_skill.example_packs import generation_prompt
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "ops" / "report_expanded_cleaning_status.py"
-GENERATION_PROMPT = "Create a final output from the visible task input only."
-GENERATION_PROMPT_SHA = hashlib.sha256(GENERATION_PROMPT.encode("utf-8")).hexdigest()
 
 
 def write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -55,8 +55,21 @@ def job_id_for_pack(pack_id: str) -> str:
     return f"{pack_id}::train::0::generate_desired_output"
 
 
+def generation_prompt_for(source: str, pack_id: str) -> str:
+    return generation_prompt(
+        split_row(source, f"{source.lower()}::demo")["train_examples"][0],
+        example_id=f"{pack_id}::train::0",
+    )
+
+
+def generation_prompt_sha_for(source: str, pack_id: str) -> str:
+    prompt = generation_prompt_for(source, pack_id)
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
 def pack_row(source: str, split_id: str, pack_id: str, *, job_id: str | None = None) -> dict:
     generation_job_id = job_id or job_id_for_pack(pack_id)
+    prompt_sha = generation_prompt_sha_for(source, pack_id)
     return {
         "schema_version": "example-pack/v1",
         "pack_id": pack_id,
@@ -82,7 +95,7 @@ def pack_row(source: str, split_id: str, pack_id: str, *, job_id: str | None = N
                     "status": "generated",
                     "text": "Output",
                     "generation_job_id": generation_job_id,
-                    "prompt_sha256": GENERATION_PROMPT_SHA,
+                    "prompt_sha256": prompt_sha,
                     "prompt_template_version": "desired-output/user-visible-only/v2",
                 },
             }
@@ -129,15 +142,16 @@ def private_row(source: str, split_id: str, pack_id: str) -> dict:
 
 
 def generation_job_row(source: str, pack_id: str, *, job_id: str | None = None) -> dict:
+    prompt = generation_prompt_for(source, pack_id)
     return {
         "job_id": job_id or job_id_for_pack(pack_id),
         "pack_id": pack_id,
         "example_id": f"{pack_id}::train::0",
         "source": source,
         "source_task_id": f"{source}-train",
-        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         "prompt_template_version": "desired-output/user-visible-only/v2",
-        "prompt": GENERATION_PROMPT,
+        "prompt": prompt,
     }
 
 
@@ -150,7 +164,7 @@ def generation_row(job_id: str, pack_id: str, source: str = "WritingBench") -> d
         "example_id": f"{pack_id}::train::0",
         "source": source,
         "source_task_id": f"{source}-train",
-        "prompt_sha256": GENERATION_PROMPT_SHA,
+        "prompt_sha256": generation_prompt_sha_for(source, pack_id),
         "prompt_template_version": "desired-output/user-visible-only/v2",
         "desired_output": "Output",
         "finish_reason": "stop",

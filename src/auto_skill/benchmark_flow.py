@@ -7,11 +7,19 @@ from dataclasses import dataclass
 from typing import Any
 
 from auto_skill.data_cleaning import ValidationError, validate_splits
+from auto_skill.example_packs import generation_prompt
 from auto_skill.generated_outputs import private_leak_matches
 from auto_skill.schemas import SchemaValidationError, validate_artifact_rows
 
 PRIVATE_KEYS = {"supervision", "judge", "statistics"}
 PRIVATE_KEY_PREFIXES = ("private_",)
+ALLOWED_INDUCTION_FIELDS = {
+    "train_examples.task_input",
+    "train_examples.materials",
+    "train_examples.desired_output.text",
+    "optional user notes if added later",
+}
+REQUIRED_INDUCTION_FIELDS = {"train_examples.desired_output.text"}
 
 
 @dataclass(frozen=True)
@@ -59,6 +67,21 @@ def _split_task_map(
         if source is not None and source_id is not None:
             values.add((str(source), str(source_id)))
     return values
+
+
+def _split_task_by_source(
+    split: dict[str, Any] | None,
+    role: str,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    if split is None:
+        return {}
+    mapping: dict[tuple[str, str], dict[str, Any]] = {}
+    for task in split.get(role, []):
+        source = task.get("source")
+        source_id = task.get("source_id")
+        if source is not None and source_id is not None:
+            mapping[(str(source), str(source_id))] = task
+    return mapping
 
 
 def _find_private_keys(value: Any, *, path: str = "$") -> list[str]:
@@ -207,11 +230,16 @@ def audit_benchmark_flow(
             if not isinstance(forbidden, list) or not forbidden:
                 errors.append(f"{pack_id}: input_boundary lacks must_not_use_for_induction")
             allowed = boundary.get("auto_skill_module_can_use")
-            if not isinstance(allowed, list) or "train_examples.desired_output.text" not in {
-                str(item) for item in allowed
-            }:
+            allowed_set = {str(item) for item in allowed} if isinstance(allowed, list) else set()
+            if not isinstance(allowed, list) or not REQUIRED_INDUCTION_FIELDS <= allowed_set:
                 errors.append(
                     f"{pack_id}: input_boundary must expose only desired_output.text"
+                )
+            extra_allowed = allowed_set - ALLOWED_INDUCTION_FIELDS
+            if extra_allowed:
+                errors.append(
+                    f"{pack_id}: input_boundary exposes non-canonical fields "
+                    f"{sorted(extra_allowed)}"
                 )
 
         train_examples = pack.get("train_examples", [])
@@ -235,6 +263,7 @@ def audit_benchmark_flow(
                 errors.append(f"{pack_id}: train source tasks do not match split {split_id}")
             if set(heldout_source_tasks.values()) != split_heldout_sources:
                 errors.append(f"{pack_id}: heldout source tasks do not match split {split_id}")
+        split_train_by_source = _split_task_by_source(split, "train_examples")
 
         if pack_id not in private_pack_ids:
             errors.append(f"{pack_id}: missing private eval row")
@@ -306,6 +335,19 @@ def audit_benchmark_flow(
                     if not isinstance(prompt, str) or not prompt.strip():
                         errors.append(f"{label}: generation job prompt is empty")
                     else:
+                        source_task = split_train_by_source.get(
+                            (str(example.get("source")), str(example.get("source_task_id")))
+                        )
+                        if source_task is not None:
+                            expected_prompt = generation_prompt(
+                                source_task,
+                                example_id=str(example.get("example_id")),
+                            )
+                            if prompt != expected_prompt:
+                                errors.append(
+                                    f"{label}: generation job prompt does not match "
+                                    "visible source task/materials"
+                                )
                         actual_prompt_sha = _sha256_text(prompt)
                         if job.get("prompt_sha256") != actual_prompt_sha:
                             errors.append(
