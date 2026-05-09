@@ -18,6 +18,10 @@ if str(SRC_ROOT) not in sys.path:
 
 from auto_skill.benchmark_flow import audit_benchmark_flow  # noqa: E402
 from auto_skill.example_packs import load_jsonl  # noqa: E402
+from auto_skill.generated_outputs import (  # noqa: E402
+    latest_generation_rows,
+    require_object_rows,
+)
 from auto_skill.schemas import SchemaValidationError, validate_artifact_rows  # noqa: E402
 
 
@@ -47,16 +51,6 @@ def parse_audit_spec(raw: str) -> AuditSpec:
     if min_success < 1:
         raise argparse.ArgumentTypeError(f"audit spec min success must be positive: {raw!r}")
     return AuditSpec(path=Path(path), source=source or None, min_success=min_success)
-
-
-def latest_generation_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
-    latest: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in rows:
-        job_id = str(row.get("job_id") or "")
-        prompt_sha = str(row.get("prompt_sha256") or "")
-        if job_id and prompt_sha:
-            latest[(job_id, prompt_sha)] = row
-    return latest
 
 
 def generation_job_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
@@ -159,14 +153,6 @@ def audit_file_summary(spec: AuditSpec) -> dict[str, Any]:
     }
 
 
-def require_dict_rows(rows: list[Any], *, label: str) -> None:
-    """Raise a structured error when a JSONL artifact contains non-object rows."""
-
-    for index, row in enumerate(rows):
-        if not isinstance(row, dict):
-            raise TypeError(f"{label}: row {index + 1} must be an object, got {type(row).__name__}")
-
-
 def maybe_mimo_subset_summary(
     *,
     args: argparse.Namespace,
@@ -199,11 +185,11 @@ def maybe_mimo_subset_summary(
         private_rows = load_jsonl(args.mimo_subset_private_eval)
         jobs = load_jsonl(args.mimo_subset_jobs)
         generated_rows = load_jsonl(args.mimo_subset_generated_outputs)
-        require_dict_rows(packs, label=str(args.mimo_subset_packs))
-        require_dict_rows(private_rows, label=str(args.mimo_subset_private_eval))
-        require_dict_rows(jobs, label=str(args.mimo_subset_jobs))
-        require_dict_rows(generated_rows, label=str(args.mimo_subset_generated_outputs))
-    except (OSError, json.JSONDecodeError, TypeError) as exc:
+        require_object_rows(packs, label=str(args.mimo_subset_packs))
+        require_object_rows(private_rows, label=str(args.mimo_subset_private_eval))
+        require_object_rows(jobs, label=str(args.mimo_subset_jobs))
+        require_object_rows(generated_rows, label=str(args.mimo_subset_generated_outputs))
+    except (OSError, json.JSONDecodeError, SchemaValidationError) as exc:
         errors.append(f"MIMO subset artifacts invalid: {exc}")
         return None, errors, warnings
 
@@ -222,12 +208,13 @@ def maybe_mimo_subset_summary(
         pack_summary = frozen_pack_summary(packs)
         latest_rows = latest_generation_rows(generated_rows)
         latest_status_counts = Counter(str(row.get("status")) for row in latest_rows.values())
+        expected_status_counts = {"success": len(jobs)} if jobs else {}
         if len(latest_rows) != len(jobs):
             errors.append(
                 f"MIMO subset latest generation rows {len(latest_rows)} "
                 f"do not match jobs {len(jobs)}"
             )
-        if latest_status_counts != {"success": len(jobs)}:
+        if latest_status_counts != expected_status_counts:
             errors.append(
                 "MIMO subset latest generation rows are not all success: "
                 f"{dict(latest_status_counts)}"
@@ -306,7 +293,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     jobs = load_jsonl(args.jobs)
     generated_rows = load_jsonl(args.generated_outputs)
 
+    jobs_valid = True
+    generated_rows_valid = True
     try:
+        require_object_rows(jobs, label=str(args.jobs))
+    except SchemaValidationError as exc:
+        errors.append(f"generation jobs invalid: {exc}")
+        jobs_valid = False
+    try:
+        require_object_rows(generated_rows, label=str(args.generated_outputs))
         validate_artifact_rows(
             generated_rows,
             kind="generated_outputs",
@@ -314,6 +309,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         )
     except SchemaValidationError as exc:
         errors.append(f"generated outputs schema invalid: {exc}")
+        generated_rows_valid = False
 
     flow = audit_benchmark_flow(
         splits=splits,
@@ -344,10 +340,11 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             f"{pack_summary['frozen_train_examples']}/{pack_summary['train_examples']}"
         )
 
-    expected_job_keys = generation_job_keys(jobs)
-    latest_rows = latest_generation_rows(generated_rows)
+    expected_job_keys = generation_job_keys(jobs) if jobs_valid else set()
+    latest_rows = latest_generation_rows(generated_rows) if generated_rows_valid else {}
     latest_keys = set(latest_rows)
     latest_status_counts = Counter(str(row.get("status")) for row in latest_rows.values())
+    expected_status_counts = {"success": len(jobs)} if jobs else {}
     if len(jobs) != args.expect_generation_jobs:
         errors.append(f"expected {args.expect_generation_jobs} generation jobs, got {len(jobs)}")
     if len(latest_rows) != len(jobs):
@@ -359,7 +356,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             "latest generation row keys do not match jobs: "
             f"missing={missing}, extra={extra}"
         )
-    if latest_status_counts != {"success": len(jobs)}:
+    if latest_status_counts != expected_status_counts:
         errors.append(f"latest generation rows are not all success: {dict(latest_status_counts)}")
 
     required_audits = []

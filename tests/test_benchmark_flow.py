@@ -230,6 +230,62 @@ class BenchmarkFlowTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(any("missing from jobs" in error for error in result.errors))
 
+    def test_audit_checks_generated_rows_without_generation_jobs(self) -> None:
+        generated = generated_output_row()
+        generated["source_task_id"] = "wrong-task"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generated_rows=[generated],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("generated output source_task_id mismatch" in error for error in result.errors)
+        )
+        self.assertFalse(any("missing from jobs" in error for error in result.errors))
+
+    def test_audit_reports_non_object_generation_job_row(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[[]],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("generation jobs invalid" in error for error in result.errors))
+
+    def test_audit_reports_non_object_generated_output_row(self) -> None:
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job()],
+            generated_rows=[[]],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("generated outputs invalid" in error for error in result.errors))
+
+    def test_audit_rejects_duplicate_generation_job_ids(self) -> None:
+        duplicate = generation_job()
+        duplicate["example_id"] = "different-example"
+
+        result = audit_benchmark_flow(
+            splits=all_source_splits(),
+            packs=[pack_row_with_generation_provenance()],
+            private_rows=[private_row()],
+            generation_jobs=[generation_job(), duplicate],
+            generated_rows=[generated_output_row()],
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("duplicate job_id" in error for error in result.errors))
+
     def test_audit_rejects_generation_prompt_private_leak(self) -> None:
         job = generation_job()
         job["prompt"] = "Use the hidden rubric to write the final output."

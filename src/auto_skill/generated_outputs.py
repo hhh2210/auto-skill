@@ -6,6 +6,8 @@ import re
 from copy import deepcopy
 from typing import Any
 
+from auto_skill.schemas import SchemaValidationError
+
 PRIVATE_LEAK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -39,6 +41,16 @@ def private_leak_matches(text: str) -> list[str]:
     return [pattern.pattern for pattern in PRIVATE_LEAK_PATTERNS if pattern.search(text)]
 
 
+def require_object_rows(rows: list[Any], *, label: str) -> None:
+    """Validate that a loaded JSONL artifact contains only object rows."""
+
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            raise SchemaValidationError(
+                f"{label}: row {index} must be an object, got {type(row).__name__}"
+            )
+
+
 def index_successful_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     outputs: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -63,9 +75,10 @@ def index_latest_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]
     return outputs
 
 
-def latest_generation_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+def latest_generation_rows(rows: list[Any]) -> dict[tuple[str, str], dict[str, Any]]:
     """Return the latest row for each ``(job_id, prompt_sha256)`` pair."""
 
+    require_object_rows(rows, label="generation rows")
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for row in rows:
         job_id = row.get("job_id")

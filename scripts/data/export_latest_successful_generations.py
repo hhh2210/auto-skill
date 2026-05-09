@@ -14,7 +14,11 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
-from auto_skill.generated_outputs import latest_successful_generation_rows  # noqa: E402
+from auto_skill.generated_outputs import (  # noqa: E402
+    latest_successful_generation_rows,
+    require_object_rows,
+)
+from auto_skill.schemas import SchemaValidationError  # noqa: E402
 
 
 def main() -> int:
@@ -52,6 +56,11 @@ def main() -> int:
     args = parser.parse_args()
 
     rows = load_jsonl(args.generations)
+    try:
+        require_object_rows(rows, label=str(args.generations))
+    except SchemaValidationError as exc:
+        print(f"error: invalid generation log: {exc}", file=sys.stderr)
+        return 2
     successful, latest_status_counts = latest_successful_generation_rows(rows)
     latest_rows = sum(latest_status_counts.values())
     summary = {

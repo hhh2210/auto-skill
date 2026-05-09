@@ -157,6 +157,27 @@ class ExportLatestSuccessfulGenerationsTests(unittest.TestCase):
                 self.assertEqual(export_latest_successful_generations.main(), 3)
             self.assertFalse(out.exists())
 
+    def test_cli_fails_with_controlled_error_for_non_object_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            generations = root / "generations.jsonl"
+            out = root / "latest_success.jsonl"
+            generations.write_text("[]\n", encoding="utf-8")
+
+            with patch.object(
+                export_latest_successful_generations.sys,
+                "argv",
+                [
+                    "export_latest_successful_generations.py",
+                    "--generations",
+                    str(generations),
+                    "--out",
+                    str(out),
+                ],
+            ):
+                self.assertEqual(export_latest_successful_generations.main(), 2)
+            self.assertFalse(out.exists())
+
     def test_cli_writes_partial_when_explicitly_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
