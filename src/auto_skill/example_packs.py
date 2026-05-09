@@ -311,7 +311,6 @@ def build_pack(
                 "train_examples.task_input",
                 "train_examples.materials",
                 "train_examples.desired_output.text",
-                "optional user notes if added later",
             ],
             "must_not_use_for_induction": [
                 "private rubrics",
