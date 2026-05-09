@@ -4,6 +4,7 @@ import unittest
 
 from auto_skill.generated_outputs import (
     apply_outputs_to_pack,
+    index_latest_outputs,
     index_successful_outputs,
     latest_generation_rows,
     latest_successful_generation_rows,
@@ -44,6 +45,23 @@ class GeneratedOutputsTests(unittest.TestCase):
 
         self.assertEqual(set(latest), {("job-1", "sha-1"), ("job-1", "sha-2")})
         self.assertEqual(latest[("job-1", "sha-1")]["status"], "success")
+
+    def test_index_latest_outputs_keeps_rejected_latest_rows(self) -> None:
+        rows = [
+            {"status": "success", "job_id": "job-1", "prompt_sha256": "sha-1"},
+            {
+                "status": "rejected_incomplete_generation",
+                "job_id": "job-1",
+                "prompt_sha256": "sha-1",
+                "finish_reason": "length",
+            },
+            {"status": "error", "job_id": "job-2"},
+        ]
+
+        latest = index_latest_outputs(rows)
+
+        self.assertEqual(latest["job-1"]["status"], "rejected_incomplete_generation")
+        self.assertEqual(latest["job-2"]["status"], "error")
 
     def test_latest_successful_generation_rows_filters_historical_failures(self) -> None:
         rows = [

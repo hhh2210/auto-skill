@@ -51,6 +51,18 @@ def index_successful_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, 
     return outputs
 
 
+def index_latest_outputs(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Return the latest generation row for each ``job_id`` in append order."""
+
+    outputs: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        job_id = row.get("job_id")
+        if not job_id:
+            continue
+        outputs[str(job_id)] = row
+    return outputs
+
+
 def latest_generation_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
     """Return the latest row for each ``(job_id, prompt_sha256)`` pair."""
 
