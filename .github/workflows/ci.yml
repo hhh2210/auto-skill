@@ -23,5 +23,5 @@ jobs:
       - run: uv run python scripts/data/audit_benchmark_flow.py
       - run: uv run python scripts/ops/validate_run_artifacts.py --generated-outputs tests/fixtures/generated_outputs.valid.jsonl --skills tests/fixtures/skill_rows.valid.jsonl --eval tests/fixtures/eval_rows.valid.jsonl
       - run: uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --judge-model gemini-3-flash-preview --limit-heldout 1 --allow-missing --allow-empty
-      - run: uv run python scripts/ops/report_experiment_readiness.py --profile mvp --limit-heldout 1 --expect-status ready
+      - run: uv run python scripts/ops/report_experiment_readiness.py --profile mvp --packs tests/fixtures/readiness_mvp_packs.jsonl --skills tests/fixtures/readiness_mvp_skill_rows.jsonl --writing-eval tests/fixtures/readiness_mvp_eval_rows.jsonl --present-surrogate-eval tests/fixtures/readiness_mvp_eval_rows.jsonl --limit-heldout 1 --expect-status ready
       - run: uv run python scripts/ops/report_experiment_readiness.py --profile full --limit-heldout 1 --expect-status not_ready
