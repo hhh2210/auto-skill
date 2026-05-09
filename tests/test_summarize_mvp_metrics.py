@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.metrics.summarize_mvp_metrics import (
     expected_cells_for_eval,
+    metrics_model_inventories,
     row_judge_model,
     summarize_cross_eval_groups,
 )
@@ -103,6 +104,44 @@ class SummarizeMvpMetricsTests(unittest.TestCase):
         self.assertEqual(paired["count"], 1)
         self.assertEqual(paired["expected_pairs"], 1)
         self.assertEqual(paired["mean_delta"], 2)
+
+    def test_model_inventory_keeps_diagnostics_out_of_paper_facing_inventory(
+        self,
+    ) -> None:
+        inventories = metrics_model_inventories(
+            skill_rows=[{"solver_model": "qwen3.5-plus"}],
+            eval_rows=[
+                {
+                    "status": "success",
+                    "solver_model": "qwen3.5-plus",
+                    "judge_model": "mimo-v2.5-pro",
+                }
+            ],
+            diagnostic_rows=[
+                {
+                    "status": "success",
+                    "signature_generation": {"model": "qwen3.5-plus"},
+                    "judge": {"model": "qwen3.5-plus"},
+                }
+            ],
+        )
+
+        self.assertEqual(
+            inventories["heldout_eval"]["scored"]["eval_judge_models"],
+            ["mimo-v2.5-pro"],
+        )
+        self.assertEqual(
+            inventories["with_diagnostics"]["scored"]["eval_judge_models"],
+            ["mimo-v2.5-pro", "qwen3.5-plus"],
+        )
+        self.assertEqual(
+            inventories["heldout_eval"]["scored"]["successful_eval_rows"],
+            1,
+        )
+        self.assertEqual(
+            inventories["with_diagnostics"]["scored"]["successful_eval_rows"],
+            2,
+        )
 
 
 if __name__ == "__main__":

@@ -157,10 +157,10 @@ Current MVP readiness is green across both checked-in heldout tasks:
 - The metrics summary does include the completed Qwen + MIMO judge-swap rows.
   After `c45ac1b`, legacy self-consistency rows expose solver identity through
   `signature_generation.model`, so
-  `runs/mvp_metrics.heldout2.current.summary.json` has complete all-row and
-  scored-row model identity. Keep this distinction clear: metrics summary shows
-  judge-swap evidence; full readiness still blocks on missing official
-  PresentBench scores.
+  `runs/mvp_metrics.heldout2.current.summary.json` has complete model identity.
+  Keep this distinction clear: metrics `model_inventory` is heldout-eval only,
+  `diagnostic_model_inventory` includes self-consistency diagnostics, and full
+  readiness still blocks on missing official PresentBench scores.
 
 Full experiment readiness is intentionally not green yet:
 

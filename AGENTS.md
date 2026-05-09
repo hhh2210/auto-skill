@@ -154,6 +154,8 @@ Expected surfaces:
   `model_inventory.scored`: it excludes non-success eval rows such as
   `missing_score_artifact`, so placeholder official rows cannot falsely break a
   Qwen-only scored run. In that case the gate emits `scored_model_monoculture`.
+  Metrics summaries keep `model_inventory` focused on heldout eval rows and put
+  self-consistency or other diagnostic rows in `diagnostic_model_inventory`.
 - Before pushing code, run `uv run python -m unittest discover -s tests`,
   `uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl`,
   and the readiness gate below. A not-ready report is acceptable during

@@ -268,6 +268,23 @@ def summarize_cross_eval_groups(
     return summaries
 
 
+def metrics_model_inventories(
+    *,
+    skill_rows: list[dict[str, Any]],
+    eval_rows: list[dict[str, Any]],
+    diagnostic_rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build separate paper-facing and diagnostic-inclusive model inventories."""
+
+    return {
+        "heldout_eval": model_inventory(skill_rows=skill_rows, eval_rows=eval_rows),
+        "with_diagnostics": model_inventory(
+            skill_rows=skill_rows,
+            eval_rows=eval_rows + diagnostic_rows,
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -358,9 +375,10 @@ def main() -> int:
     aggregated_eval_rows: list[dict[str, Any]] = []
     for _path, rows in eval_inputs:
         aggregated_eval_rows.extend(rows)
-    inventory = model_inventory(
+    model_inventories = metrics_model_inventories(
         skill_rows=skill_rows,
-        eval_rows=aggregated_eval_rows + self_consistency_rows,
+        eval_rows=aggregated_eval_rows,
+        diagnostic_rows=self_consistency_rows,
     )
 
     score_buckets = {
@@ -425,7 +443,8 @@ def main() -> int:
         "self_consistency_metric": self_consistency_summary(self_consistency_rows)
         if self_consistency_rows
         else None,
-        "model_inventory": inventory,
+        "model_inventory": model_inventories["heldout_eval"],
+        "diagnostic_model_inventory": model_inventories["with_diagnostics"],
     }
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

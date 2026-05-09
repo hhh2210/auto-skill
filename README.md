@@ -394,7 +394,9 @@ when every visible row collapses to a single model, and also exposes
 `model_inventory.scored` for paper-facing claims. The `scored` block excludes
 non-success eval rows such as `missing_score_artifact`, so placeholder
 PresentBench official rows cannot falsely break a Qwen-only scored run; in that
-case the gate emits `scored_model_monoculture`.
+case the gate emits `scored_model_monoculture`. Metrics summaries keep
+`model_inventory` focused on heldout eval rows and put self-consistency or other
+diagnostic rows in `diagnostic_model_inventory`.
 
 For WritingBench, use the source benchmark's evaluator prompt and per-criterion
 scoring shape:
