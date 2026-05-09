@@ -151,18 +151,30 @@ audit with acceptable failure rate.
 Current expanded-run evidence is summarized in
 `notes/expanded_cleaning_strategy_2026-05-08.md`; artifact hashes and handoff
 commands are in `docs/expanded_cleaning_manifest_2026-05-08.md`. The short
-version: Qwen3.5-Plus completed the local 30WB/20PB clean with 150/150 latest
-generation success and a passing benchmark-flow audit. MIMO has a local audited
-subset pack with 15 packs / 45 frozen train examples
+version: Qwen3.5-Plus completed both the local 30WB/20PB clean and the
+max-available clean. The max-available snapshot has 142 packs, 426 frozen train
+examples, 284 heldout tasks, 426/426 latest generation success, and a passing
+benchmark-flow audit. MIMO has a local audited subset pack with 15 packs / 45 frozen train examples
 (`runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`,
-`benchmark-flow status=ok`), but the canonical expanded dataset is still the
-Qwen 50-pack artifact because full MIMO cleaning is not frozen.
+`benchmark-flow status=ok`), but it is not a full MIMO-cleaned alternative.
 
 To re-check the local expanded-cleaning handoff state:
 
 ```bash
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-packs 142 \
+  --expect-train-examples 426 \
+  --expect-heldout-tasks 284 \
+  --expect-generation-jobs 426 \
+  --skip-mimo-subset \
+  --expect-status ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py \
   --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
   --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
@@ -315,6 +327,13 @@ uv run python scripts/data/audit_benchmark_flow.py \
   --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl \
   --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl \
   --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
 ```
 
 ## Baselines

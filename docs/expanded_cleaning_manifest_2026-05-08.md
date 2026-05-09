@@ -1,11 +1,29 @@
 # Expanded Cleaning Manifest 2026-05-08
 
-This manifest records the local 30 WritingBench / 20 PresentBench expanded
-cleaning pass. The artifacts live under ignored `runs/expanded/` because they
-include generated benchmark-derived content and private eval metadata. Do not
-force-add them to the public repo without an explicit data-release decision.
+This manifest records the local expanded cleaning passes. The artifacts live
+under ignored `runs/expanded/` because they include generated
+benchmark-derived content and private eval metadata. Do not force-add them to
+the public repo without an explicit data-release decision.
 
 ## Scope
+
+### Max-Available Qwen Snapshot
+
+- Packs: 142 total, 114 WritingBench and 28 PresentBench.
+- Train examples: 426 total, 3 per pack.
+- Heldout tasks: 284 total, 2 per pack.
+- Primary cleaner: `qwen3.5-plus`.
+- Status: frozen locally and benchmark-flow audited.
+
+Coverage:
+
+| Surface | Coverage |
+| --- | --- |
+| WritingBench languages | English 69; Chinese 45 |
+| WritingBench domains | Academic & Engineering 18; Advertising & Marketing 15; Education 12; Finance & Business 23; Literature & Arts 20; Politics & Law 26 |
+| PresentBench categories | academia 13; advertising 1; economics 6; education 5; talk 3 |
+
+### 30 WritingBench / 20 PresentBench Snapshot
 
 - Packs: 50 total, 30 WritingBench and 20 PresentBench.
 - Train examples: 150 total, 3 per pack.
@@ -24,6 +42,27 @@ Coverage:
 | PresentBench categories | academia 8; economics 4; education 5; talk 3 |
 
 ## Local Artifacts
+
+### Max-Available Qwen Snapshot
+
+| Artifact | Rows / status |
+| --- | ---: |
+| `runs/expanded/fewshot_splits.max_available.jsonl` | 142 splits |
+| `runs/expanded/fewshot_split_summary.max_available.json` | 114 eligible WritingBench groups; 28 eligible PresentBench groups |
+| `runs/expanded/example_generation_jobs.max_available.jsonl` | 426 jobs |
+| `runs/expanded/example_packs.max_available.needs_generation.jsonl` | 142 packs before generated outputs |
+| `runs/expanded/example_private_eval.max_available.jsonl` | 142 private-eval rows |
+| `runs/expanded/generated_desired_outputs.max_available.qwen.jsonl` | 430 append-only rows, including 4 retained failed attempts |
+| `runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl` | 426 latest successful rows |
+| `runs/expanded/example_packs.max_available.qwen.v1.jsonl` | 142 frozen packs |
+| `runs/expanded/benchmark_flow_audit.max_available.qwen.json` | `status=ok` |
+| `runs/expanded/expanded_cleaning_status.max_available.qwen.json` | `status=ready` |
+
+The max-available generated-output file is append-only. Use the
+`*.latest_success.jsonl` view for benchmark-flow validation, because the raw
+append-only log intentionally keeps old failed rows for traceability.
+
+### 30 WritingBench / 20 PresentBench Snapshot
 
 | Artifact | Rows | Size bytes | SHA256 |
 | --- | ---: | ---: | --- |
@@ -52,6 +91,113 @@ kept for traceability. The latest row per `(job_id, prompt_sha256)` is 150/150
 `success`.
 
 ## Reproduction Commands
+
+### Max-Available Qwen Snapshot
+
+Build the max-available split:
+
+```bash
+uv run python scripts/data/build_fewshot_splits.py \
+  --writingbench-root ../WritingBench \
+  --presentbench-root data/PresentBench_repo \
+  --train-size 3 \
+  --heldout-size 2 \
+  --max-writing-groups 999 \
+  --max-present-groups 999 \
+  --out runs/expanded/fewshot_splits.max_available.jsonl \
+  --summary-out runs/expanded/fewshot_split_summary.max_available.json
+```
+
+Build packs/jobs/private eval:
+
+```bash
+uv run python scripts/data/build_example_packs.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs-out runs/expanded/example_packs.max_available.needs_generation.jsonl \
+  --private-out runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs-out runs/expanded/example_generation_jobs.max_available.jsonl \
+  --summary-out runs/expanded/example_pack_summary.max_available.md
+```
+
+Generate desired outputs with Qwen. The completed run seeded 102 prior
+successes from the 30WB/20PB snapshot, then generated the remaining 324 jobs:
+
+```bash
+uv run python scripts/data/run_generation_jobs.py \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --out runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --resume \
+  --num-threads 32 \
+  --temperature 0.2 \
+  --timeout-seconds 900 \
+  --max-retries 0 \
+  --max-tokens 8192 \
+  --allow-partial
+```
+
+The first max-available pass finished 320/324 new jobs successfully in 1216.9s
+and left 4 `rejected_incomplete_generation` rows. Inspection showed
+`finish_reason=length` or a thinking runaway, not JSON parsing failure. The
+successful cleanup was a targeted retry with thinking disabled and a larger
+completion budget:
+
+```bash
+uv run python scripts/data/run_generation_jobs.py \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --out runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --retry-existing-failures-only \
+  --resume \
+  --num-threads 4 \
+  --temperature 0.2 \
+  --timeout-seconds 900 \
+  --max-retries 0 \
+  --max-tokens 20000 \
+  --no-enable-thinking \
+  --allow-partial
+```
+
+Apply successful generations:
+
+```bash
+uv run python scripts/data/apply_generated_outputs.py \
+  --packs runs/expanded/example_packs.max_available.needs_generation.jsonl \
+  --generations runs/expanded/generated_desired_outputs.max_available.qwen.jsonl \
+  --out runs/expanded/example_packs.max_available.qwen.v1.jsonl
+```
+
+Audit benchmark-flow compliance using the latest-success view:
+
+```bash
+uv run python scripts/data/audit_benchmark_flow.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --out runs/expanded/benchmark_flow_audit.max_available.qwen.json
+```
+
+Run the max-available cleaning gate:
+
+```bash
+uv run python scripts/ops/report_expanded_cleaning_status.py \
+  --splits runs/expanded/fewshot_splits.max_available.jsonl \
+  --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl \
+  --private-eval runs/expanded/example_private_eval.max_available.jsonl \
+  --jobs runs/expanded/example_generation_jobs.max_available.jsonl \
+  --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl \
+  --expect-packs 142 \
+  --expect-train-examples 426 \
+  --expect-heldout-tasks 284 \
+  --expect-generation-jobs 426 \
+  --skip-mimo-subset \
+  --expect-status ready \
+  --out runs/expanded/expanded_cleaning_status.max_available.qwen.json
+```
+
+Observed result: `status=ready`, with no errors or warnings.
+
+### 30 WritingBench / 20 PresentBench Snapshot
 
 Build the expanded split:
 

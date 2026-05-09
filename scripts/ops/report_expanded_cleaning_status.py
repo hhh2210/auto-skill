@@ -128,6 +128,9 @@ def maybe_mimo_subset_summary(
 ) -> tuple[dict[str, Any] | None, list[str], list[str]]:
     """Validate and summarize an optional local MIMO frozen subset."""
 
+    if args.skip_mimo_subset:
+        return None, [], []
+
     errors: list[str] = []
     warnings: list[str] = []
     paths = [
@@ -473,6 +476,15 @@ def main() -> int:
         "--require-mimo-subset",
         action="store_true",
         help="Fail when the optional local MIMO frozen subset is missing or invalid.",
+    )
+    parser.add_argument(
+        "--skip-mimo-subset",
+        action="store_true",
+        help=(
+            "Do not inspect the local MIMO frozen subset. Use this when reporting "
+            "a different split whose source-task selection is not aligned with "
+            "the 30WB/20PB MIMO sample."
+        ),
     )
     parser.add_argument("--expect-mimo-subset-packs", type=int, default=15)
     parser.add_argument("--expect-mimo-subset-train-examples", type=int, default=45)

@@ -83,10 +83,13 @@ Expected surfaces:
 - Current expanded-cleaning evidence lives in
   `notes/expanded_cleaning_strategy_2026-05-08.md`, with local artifact hashes in
   `docs/expanded_cleaning_manifest_2026-05-08.md`: Qwen3.5-Plus completed the
-  30WB/20PB local pass. MIMO has an audited local subset pack
+  30WB/20PB local pass and the max-available Qwen pass
+  (`runs/expanded/example_packs.max_available.qwen.v1.jsonl`: 142 packs, 426
+  frozen train examples, 284 heldout tasks, benchmark-flow `status=ok`). MIMO
+  has an audited local subset pack
   (`runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`: 15 packs, 45
   frozen train examples, benchmark-flow `status=ok`), but it is not the
-  canonical expanded dataset because the full 50-pack MIMO pass is not frozen.
+  canonical expanded dataset because full MIMO cleaning is not frozen.
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.
@@ -173,6 +176,7 @@ uv run python -c "import google.genai, PIL, pptx, requests, tqdm"
 uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
+uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
 uv run python scripts/ops/validate_run_artifacts.py --generated-outputs tests/fixtures/generated_outputs.valid.jsonl --skills tests/fixtures/skill_rows.valid.jsonl --eval tests/fixtures/eval_rows.valid.jsonl
 uv run python scripts/data/inspect_benchmarks.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --limit 2 --out-dir artifacts
 uv run python scripts/data/build_fewshot_splits.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --train-size 3 --heldout-size 2 --max-groups 4 --out artifacts/splits/fewshot_splits.jsonl --summary-out artifacts/splits/fewshot_split_summary.json
@@ -191,6 +195,7 @@ uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-
 uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
+uv run python scripts/ops/report_expanded_cleaning_status.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl --expect-packs 142 --expect-train-examples 426 --expect-heldout-tasks 284 --expect-generation-jobs 426 --skip-mimo-subset --expect-status ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
 uv run ruff check .
 ```

@@ -245,6 +245,8 @@ def build_output_row(
     config: ChatCompletionConfig,
     temperature: float | None,
     max_tokens: int,
+    enable_thinking: bool | None,
+    thinking_budget: int | None,
     print_lock: threading.Lock,
     index: int,
     total: int,
@@ -263,6 +265,8 @@ def build_output_row(
             build_messages(job),
             temperature=temperature,
             max_tokens=max_tokens,
+            enable_thinking=enable_thinking,
+            thinking_budget=thinking_budget,
         )
         leak_matches = private_leak_matches(result.text)
         if leak_matches:
@@ -302,6 +306,8 @@ def build_output_row(
                 "generation_params": {
                     "temperature": temperature,
                     "max_tokens": max_tokens,
+                    "enable_thinking": enable_thinking,
+                    "thinking_budget": thinking_budget,
                     "configured_model": config.model,
                     "base_url": config.base_url,
                 },
@@ -322,6 +328,8 @@ def build_output_row(
             "generation_params": {
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "enable_thinking": enable_thinking,
+                "thinking_budget": thinking_budget,
                 "configured_model": config.model,
                 "base_url": config.base_url,
             },
@@ -388,6 +396,8 @@ def main() -> int:
         ),
     )
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--thinking-budget", type=positive_int)
     parser.add_argument(
         "--timeout-seconds",
         type=positive_float,
@@ -478,11 +488,18 @@ def main() -> int:
     temperature = args.temperature
     if temperature is None:
         temperature = config.temperature
+    enable_thinking = args.enable_thinking
+    if enable_thinking is None:
+        enable_thinking = config.enable_thinking
+    thinking_budget = args.thinking_budget
+    if thinking_budget is None:
+        thinking_budget = config.thinking_budget
 
     print(
         f"Running {len(selected)} jobs with model={config.model} "
         f"base_url={config.base_url} num_threads={num_threads} "
-        f"timeout_seconds={config.timeout_seconds} max_retries={config.max_retries}"
+        f"timeout_seconds={config.timeout_seconds} max_retries={config.max_retries} "
+        f"enable_thinking={enable_thinking} thinking_budget={thinking_budget}"
     )
     started_all = time.monotonic()
     print_lock = threading.Lock()
@@ -495,6 +512,8 @@ def main() -> int:
                 config=config,
                 temperature=temperature,
                 max_tokens=args.max_tokens,
+                enable_thinking=enable_thinking,
+                thinking_budget=thinking_budget,
                 print_lock=print_lock,
                 index=index,
                 total=len(selected),

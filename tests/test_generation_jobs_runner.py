@@ -160,6 +160,45 @@ class GenerationJobsRunnerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("MIMO_MODEL", result.stderr)
 
+    def test_dry_run_accepts_thinking_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            jobs = tmp / "jobs.jsonl"
+            jobs.write_text(
+                json.dumps(
+                    {
+                        "job_id": "job-1",
+                        "pack_id": "pack-1",
+                        "example_id": "ex-1",
+                        "prompt": "Write output.",
+                        "prompt_sha256": "sha-1",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--jobs",
+                    str(jobs),
+                    "--out",
+                    str(tmp / "out.jsonl"),
+                    "--no-enable-thinking",
+                    "--thinking-budget",
+                    "128",
+                    "--dry-run",
+                ],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("Selected 1 jobs", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

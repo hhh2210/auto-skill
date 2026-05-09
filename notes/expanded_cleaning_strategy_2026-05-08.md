@@ -112,6 +112,30 @@ Latest local result:
   15 packs / 45 train examples and benchmark-flow `status=ok`. See
   `notes/mimo_generation_retry_2026-05-09.md`.
 
+## Completed Max-Available Qwen Cleaning Pass
+
+After the 30WB/20PB medium expansion passed, the split builder was run with
+`--max-writing-groups 999 --max-present-groups 999`. This found all eligible
+clusters with at least 3 train + 2 heldout tasks:
+
+- WritingBench: 114 eligible packs out of 199 groups; 85 groups were too small.
+- PresentBench: 28 eligible packs out of 33 groups; 5 groups were too small,
+  and `education/CSAPP-Lectures_2015Fall/Lecture15` remains excluded as a known
+  source-data mismatch.
+- Frozen Qwen snapshot:
+  `runs/expanded/example_packs.max_available.qwen.v1.jsonl`.
+- Size: 142 packs, 426 frozen train examples, 284 heldout tasks.
+- `runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl`:
+  426/426 latest rows are `success`.
+- `runs/expanded/benchmark_flow_audit.max_available.qwen.json`: `status=ok`, no
+  errors or warnings.
+
+The first 324 new generation jobs ran with `--num-threads 32` and completed in
+1216.9s (15.97 jobs/min): 320 success and 4 length/incomplete failures. The four
+failures were fixed by retrying only failed rows with `--no-enable-thinking` and
+`--max-tokens 20000`, confirming the failure mode was Qwen reasoning/length
+runaway rather than parsing or concurrency.
+
 ## Reproduction Commands
 
 Run the 30WB/20PB expanded clean with Qwen first:

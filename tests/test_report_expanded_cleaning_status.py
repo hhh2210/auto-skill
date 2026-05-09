@@ -546,6 +546,83 @@ class ExpandedCleaningStatusCliTests(unittest.TestCase):
                 any("MIMO subset artifacts invalid" in item for item in report["warnings"])
             )
 
+    def test_skip_mimo_subset_ignores_misaligned_subset_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            splits = [
+                split_row("WritingBench", "writing::demo"),
+                split_row("PresentBench", "present::demo"),
+            ]
+            packs = [
+                pack_row("WritingBench", "writing::demo", "pack-writing"),
+                pack_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            private_rows = [
+                private_row("WritingBench", "writing::demo", "pack-writing"),
+                private_row("PresentBench", "present::demo", "pack-present"),
+            ]
+            jobs = [
+                generation_job_row("WritingBench", "pack-writing"),
+                generation_job_row("PresentBench", "pack-present"),
+            ]
+            generated = [
+                generation_row(job_id_for_pack("pack-writing"), "pack-writing"),
+                generation_row(job_id_for_pack("pack-present"), "pack-present", "PresentBench"),
+            ]
+            write_jsonl(tmp / "splits.jsonl", splits)
+            write_jsonl(tmp / "packs.jsonl", packs)
+            write_jsonl(tmp / "private.jsonl", private_rows)
+            write_jsonl(tmp / "jobs.jsonl", jobs)
+            write_jsonl(tmp / "generated.jsonl", generated)
+            write_jsonl(tmp / "audit-writing.jsonl", [audit_row("pack-writing", "WritingBench")])
+            write_jsonl(tmp / "audit-present.jsonl", [audit_row("pack-present", "PresentBench")])
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--splits",
+                    "splits.jsonl",
+                    "--packs",
+                    "packs.jsonl",
+                    "--private-eval",
+                    "private.jsonl",
+                    "--jobs",
+                    "jobs.jsonl",
+                    "--generated-outputs",
+                    "generated.jsonl",
+                    "--required-audit",
+                    "audit-writing.jsonl",
+                    "--required-audit",
+                    "audit-present.jsonl",
+                    "--optional-audit",
+                    "audit-present.jsonl",
+                    "--mimo-subset-packs",
+                    "does-not-exist.jsonl",
+                    "--skip-mimo-subset",
+                    "--expect-packs",
+                    "2",
+                    "--expect-train-examples",
+                    "2",
+                    "--expect-heldout-tasks",
+                    "2",
+                    "--expect-generation-jobs",
+                    "2",
+                    "--expect-status",
+                    "ready",
+                ],
+                cwd=tmp,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(report["warnings"], [])
+            self.assertNotIn("mimo_subset", report["artifacts"])
+
     def test_optional_mimo_subset_bad_row_shape_is_structured_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
