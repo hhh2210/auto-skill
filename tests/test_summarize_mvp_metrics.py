@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
+import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from scripts.metrics.summarize_mvp_metrics import (
     expected_cells_for_eval,
+    main,
     metrics_model_inventories,
     row_judge_model,
     summarize_cross_eval_groups,
@@ -12,6 +19,12 @@ from scripts.metrics.summarize_mvp_metrics import (
 
 
 class SummarizeMvpMetricsTests(unittest.TestCase):
+    def write_jsonl(self, path: Path, rows: list[dict]) -> None:
+        path.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
     def test_row_judge_model_falls_back_to_nested_judge_model(self) -> None:
         row = {"judge": {"model": "qwen3.5-plus"}}
 
@@ -142,6 +155,115 @@ class SummarizeMvpMetricsTests(unittest.TestCase):
             inventories["with_diagnostics"]["scored"]["successful_eval_rows"],
             2,
         )
+
+    def test_cli_writes_separate_eval_and_diagnostic_model_inventories(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packs_path = root / "packs.jsonl"
+            skills_path = root / "skills.jsonl"
+            eval_path = root / "eval.jsonl"
+            self_consistency_path = root / "self_consistency.jsonl"
+            out_path = root / "summary.json"
+
+            self.write_jsonl(
+                packs_path,
+                [
+                    {
+                        "pack_id": "pack-1",
+                        "source": "WritingBench",
+                        "train_examples": [
+                            {
+                                "example_id": "e1",
+                                "task_input": "task",
+                                "desired_output": {"status": "generated", "text": "out"},
+                            }
+                        ],
+                        "heldout_tasks": [{"task_id": "task-1", "task_input": "heldout"}],
+                    }
+                ],
+            )
+            self.write_jsonl(
+                skills_path,
+                [
+                    {
+                        "schema_version": "skill-induction/v1",
+                        "status": "success",
+                        "pack_id": "pack-1",
+                        "mode": "one_shot_skill_from_examples",
+                        "skill_md": "# Skill",
+                        "solver_model": "qwen3.5-plus",
+                        "model_calls": [],
+                    },
+                    {
+                        "schema_version": "skill-induction/v1",
+                        "status": "success",
+                        "pack_id": "pack-1",
+                        "mode": "auto_skill_feature_driven_no_validation",
+                        "skill_md": "# Skill",
+                        "solver_model": "qwen3.5-plus",
+                        "model_calls": [],
+                    },
+                ],
+            )
+            self.write_jsonl(
+                eval_path,
+                [
+                    {
+                        "schema_version": "heldout-eval/v1",
+                        "status": "success",
+                        "pack_id": "pack-1",
+                        "task_id": "task-1",
+                        "mode": "prompt_only",
+                        "evaluator_kind": "writingbench_official_prompt_qwen_judge",
+                        "overall_score": 7,
+                        "solver_model": "qwen3.5-plus",
+                        "judge_model": "mimo-v2.5-pro",
+                    }
+                ],
+            )
+            self.write_jsonl(
+                self_consistency_path,
+                [
+                    {
+                        "schema_version": "skill-self-consistency/v1",
+                        "diagnostic_kind": "skill_encoding_self_consistency",
+                        "status": "success",
+                        "pack_id": "pack-1",
+                        "mode": "one_shot_skill_from_examples",
+                        "signature_generation": {"model": "qwen3.5-plus"},
+                        "judge": {"model": "qwen3.5-plus"},
+                    }
+                ],
+            )
+
+            argv = [
+                "summarize_mvp_metrics.py",
+                "--skills",
+                str(skills_path),
+                "--packs",
+                str(packs_path),
+                "--modes",
+                "prompt_only",
+                "--eval",
+                str(eval_path),
+                "--self-consistency",
+                str(self_consistency_path),
+                "--out",
+                str(out_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(main(), 0)
+
+            summary = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                summary["model_inventory"]["scored"]["eval_judge_models"],
+                ["mimo-v2.5-pro"],
+            )
+            self.assertEqual(
+                summary["diagnostic_model_inventory"]["scored"]["eval_judge_models"],
+                ["mimo-v2.5-pro", "qwen3.5-plus"],
+            )
 
 
 if __name__ == "__main__":
