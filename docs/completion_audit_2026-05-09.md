@@ -399,8 +399,8 @@ prove the auto-skill method.
 ## Remaining Blockers
 
 1. PresentBench official scoring is missing. Need `GENAI_API_KEY` /
-   `GENAI_BASE_URL` or equivalent upstream `judge_all.py` configuration, then
-   run official scoring for `prompt_only` and `auto_skill`.
+   `GENAI_BASE_URL` or equivalent upstream Gemini configuration, then run the
+   selected official `judge.py` cells for `prompt_only` and `auto_skill`.
 2. Current skill-only auto-skill design is not winning on WritingBench and is
    only surrogate-positive on PresentBench. The new examples-plus-skill ablation
    is positive on WritingBench, so treat feature-driven extraction as a
@@ -435,9 +435,10 @@ prove the auto-skill method.
    slice. A local MIMO cleaned subset is frozen and flow-audited, but it covers
    only 15 packs rather than the full 50-pack expanded split. Do not call MIMO
    the canonical cleaner until a full MIMO pass is frozen and audited.
-4. Some old skill/eval rows lack top-level `solver_model` / `judge_model`.
-   New runners record model identity, but old artifacts should not be used as
-   paper-facing evidence without this caveat.
+4. Readiness now infers legacy model identity from nested `model_calls`,
+   `generation`, and `judge_calls` fields. The remaining missing model identity
+   in full readiness comes from unscored PresentBench official rows, not from the
+   reusable skill artifacts.
 
 ## Next Concrete Steps
 
