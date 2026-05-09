@@ -38,6 +38,7 @@ from scripts.eval.run_writingbench_official_eval import (  # noqa: E402
 AUDIT_SCHEMA_VERSION = "train-example-quality-audit/v1"
 AUDIT_MODE = "desired_output"
 AUDIT_KIND = "private_train_example_quality_audit"
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
 GENERIC_AUDIT_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
 
@@ -216,7 +217,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry judge calls when a complete audit response cannot be parsed "
             "or does not contain a valid numeric score. Provider/network retries "

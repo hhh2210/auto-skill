@@ -44,6 +44,7 @@ Use only user-visible examples, reusable skills, task input, and visible materia
 JUDGE_SYSTEM_PROMPT = """You are a strict benchmark evaluator.
 Use the provided rubric/checklist only for scoring. Return strict JSON."""
 REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
 SKILL_REQUIRED_MODES = {
     "one_shot_skill_from_examples",
     "ours_no_validation",
@@ -462,7 +463,7 @@ def evaluate_heldout_job(
     max_material_chars: int,
     metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
-    parse_max_attempts: int = 1,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -614,7 +615,7 @@ def run_eval_jobs(
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
-    parse_max_attempts: int = 1,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
 ) -> None:
     def run_one(job: HeldoutEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_heldout_job(
@@ -708,7 +709,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry judge calls when a complete response cannot be parsed into "
             "a valid numeric score. Provider/network retries remain controlled "

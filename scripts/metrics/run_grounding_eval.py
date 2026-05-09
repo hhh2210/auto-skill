@@ -30,6 +30,8 @@ from auto_skill.grounding import (  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import PromptRunResult  # noqa: E402
 
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+
 
 @dataclass(frozen=True)
 class GroundingJob:
@@ -280,7 +282,11 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--num-threads", type=int, default=1)
     parser.add_argument("--max-tokens", type=int, default=2048)
-    parser.add_argument("--parse-max-attempts", type=int, default=3)
+    parser.add_argument(
+        "--parse-max-attempts",
+        type=int,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
+    )
     parser.add_argument("--max-evidence-chars", type=int, default=60000)
     parser.add_argument("--max-candidate-chars", type=int, default=60000)
     parser.add_argument("--allow-partial", action="store_true")

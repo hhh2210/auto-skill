@@ -33,6 +33,8 @@ from auto_skill.pattern_similarity import (  # noqa: E402
 )
 from scripts.eval.run_heldout_eval import select_packs, skill_index  # noqa: E402
 
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+
 
 @dataclass(frozen=True)
 class PatternJob:
@@ -315,7 +317,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry judge calls when the provider returns complete but unparseable "
             "JSON. Provider/network retries remain controlled by --max-retries."

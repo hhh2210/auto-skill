@@ -30,6 +30,7 @@ from auto_skill.mvp import PromptRunResult, user_examples_from_pack  # noqa: E40
 SYSTEM_PROMPT = """You are evaluating skill encoding quality.
 Use only user-visible examples and the generated skill. Never use private rubrics,
 checklists, heldout feedback, official scores, or benchmark judge traces."""
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
 
 
 def call_model(
@@ -346,7 +347,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry signature/judge calls when the provider returns complete but "
             "unparseable JSON. Provider/network retries remain controlled by "

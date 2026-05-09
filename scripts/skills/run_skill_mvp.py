@@ -39,6 +39,7 @@ Follow the project boundary exactly: skill induction may use only user-visible e
 their visible outputs, visible materials, and explicit user emphasis.
 Never use hidden benchmark rubrics, judge prompts, critique traces, or heldout feedback
 as skill-induction input."""
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
 
 
 class InductionError(RuntimeError):
@@ -56,7 +57,7 @@ class StageCallConfig:
     thinking_budget: int | None
     stream: bool
     max_attempts: int = 1
-    parse_max_attempts: int = 1
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS
     retry_base_seconds: float = 2.0
 
     def to_json(self) -> dict[str, Any]:
@@ -696,7 +697,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry JSON-producing stages when the provider returns complete but "
             "unparseable JSON. Provider/network retries remain controlled by "

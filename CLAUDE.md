@@ -107,10 +107,11 @@ Expected surfaces:
   closed if a filtered resume would prune rows outside the selected cells; use a
   new output path for one-cell probes.
 - Provider retries and parse retries are separate. `--max-retries` handles SDK
-  transport/rate-limit/server errors; use `--parse-max-attempts 3` only when a
-  complete model response is occasionally malformed JSON or an invalid judge
-  score. This is supported by `run_skill_mvp.py`, `run_writingbench_official_eval.py`,
-  `run_heldout_eval.py`, `audit_train_examples.py`,
+  transport/rate-limit/server errors; `--parse-max-attempts` handles complete
+  model responses that are malformed JSON or invalid judge scores. The default
+  parse retry budget is 3 for `run_skill_mvp.py`,
+  `run_writingbench_official_eval.py`, `run_heldout_eval.py`,
+  `audit_train_examples.py`, `run_grounding_eval.py`,
   `run_pattern_similarity_eval.py`, and `run_self_consistency_metric.py`.
 - Do not globally enable Qwen thinking for skill induction. Default to
   `--no-enable-thinking`; only use `--thinking-stages ... --thinking-budget N`

@@ -289,12 +289,12 @@ uv run python scripts/skills/run_skill_mvp.py \
 ```
 
 Provider retries and parse retries are intentionally separate. `--max-retries`
-covers SDK transport/rate-limit/server failures; add `--parse-max-attempts 3`
-to `run_skill_mvp.py`, `run_writingbench_official_eval.py`, or
-`run_heldout_eval.py` only when complete model responses intermittently return
-malformed JSON or invalid judge scores. `audit_train_examples.py`,
-`run_pattern_similarity_eval.py`, and `run_self_consistency_metric.py` support
-the same flag for train-example quality audits and diagnostic metrics.
+covers SDK transport/rate-limit/server failures. `--parse-max-attempts` covers
+complete model responses that intermittently return malformed JSON or invalid
+judge scores. The default parse retry budget is 3 for `run_skill_mvp.py`,
+`run_writingbench_official_eval.py`, `run_heldout_eval.py`,
+`audit_train_examples.py`, `run_grounding_eval.py`,
+`run_pattern_similarity_eval.py`, and `run_self_consistency_metric.py`.
 
 Use `--dry-run` before spending API calls:
 

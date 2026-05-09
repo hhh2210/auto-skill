@@ -55,6 +55,8 @@ from scripts.eval.run_heldout_eval import (  # noqa: E402
 
 JUDGE_KIND = "writingbench_official_prompt_qwen_judge"
 REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
+DEFAULT_PARSE_MAX_ATTEMPTS = 3
+DEFAULT_PLAN_PARSE_MAX_ATTEMPTS = 3
 SKILL_REQUIRED_MODES = {
     "one_shot_skill_from_examples",
     "ours_no_validation",
@@ -510,8 +512,8 @@ def evaluate_writingbench_job(
     max_material_chars: int,
     metadata: dict[str, Any],
     judge_config: ChatCompletionConfig | None = None,
-    parse_max_attempts: int = 1,
-    plan_parse_max_attempts: int = 3,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
+    plan_parse_max_attempts: int = DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
 ) -> tuple[ScoreCell, dict[str, Any], str]:
     pack = job.pack
     task = job.task
@@ -666,8 +668,8 @@ def run_eval_jobs(
     rows: list[dict[str, Any]],
     completed_cells: set[ScoreCell],
     judge_config: ChatCompletionConfig | None = None,
-    parse_max_attempts: int = 1,
-    plan_parse_max_attempts: int = 3,
+    parse_max_attempts: int = DEFAULT_PARSE_MAX_ATTEMPTS,
+    plan_parse_max_attempts: int = DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
 ) -> None:
     def run_one(job: WritingBenchEvalJob) -> tuple[ScoreCell, dict[str, Any], str]:
         return evaluate_writingbench_job(
@@ -790,7 +792,7 @@ def main() -> int:
     parser.add_argument(
         "--parse-max-attempts",
         type=int,
-        default=1,
+        default=DEFAULT_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry each WritingBench judge criterion when a complete response "
             "cannot be parsed as a valid score. Provider/network retries remain "
@@ -800,7 +802,7 @@ def main() -> int:
     parser.add_argument(
         "--plan-parse-max-attempts",
         type=int,
-        default=3,
+        default=DEFAULT_PLAN_PARSE_MAX_ATTEMPTS,
         help=(
             "Retry the staged evidence planner when its complete response is not "
             "valid planner JSON or fails the planner schema. Provider/network "
