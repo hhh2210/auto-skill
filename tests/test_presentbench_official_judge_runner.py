@@ -177,6 +177,63 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
         self.assertIn("--slides", commands[0])
         self.assertIn(str(result_dir / "slides.pdf"), commands[0])
 
+    def test_selected_judge_commands_all_scored_is_noop_success(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_root = root / "data"
+            case_dir = data_root / "education" / "case1"
+            result_root = root / "results" / "prompt"
+            result_dir = result_root / "education" / "case1" / "generation_task" / "results"
+            case_dir.mkdir(parents=True)
+            result_dir.mkdir(parents=True)
+            (data_root / "education" / "common_judge_prompt.json").write_text(
+                "{}", encoding="utf-8"
+            )
+            (data_root / "education" / "judge_weights.yaml").write_text(
+                "total: 1\n", encoding="utf-8"
+            )
+            (case_dir / "generation_task").mkdir()
+            (case_dir / "generation_task" / "instructions.md").write_text(
+                "instructions", encoding="utf-8"
+            )
+            (case_dir / "generation_task" / "judge_prompt.json").write_text(
+                "{}", encoding="utf-8"
+            )
+            (case_dir / "material.md").write_text("material", encoding="utf-8")
+            (result_dir / "slides.pdf").write_text("%PDF-1.4\n", encoding="utf-8")
+            (result_dir / "gemini-3-flash-preview_2026-05-09_00-00-00_score.yaml").write_text(
+                "total:\n  weighted_arithmetic_mean_percent: 100\n",
+                encoding="utf-8",
+            )
+            packs_path = root / "packs.jsonl"
+            packs_path.write_text(
+                (
+                    '{"pack_id":"pack-present","source":"PresentBench",'
+                    '"train_examples":[{"example_id":"e","task_input":"make slides",'
+                    '"desired_output":{"status":"generated","text":"slides"},'
+                    '"materials":[]}],'
+                    '"heldout_tasks":[{"task_id":"heldout-1",'
+                    '"source_task_id":"education/case1"}]}\n'
+                ),
+                encoding="utf-8",
+            )
+
+            commands, errors = selected_judge_commands(
+                packs_path=packs_path,
+                code_root=Path(__file__).resolve().parents[1] / "data/PresentBench_code",
+                data_root=data_root,
+                mode_roots={"prompt_only": result_root},
+                python_executable="/python",
+                api_type="gemini",
+                model="gemini-3-flash-preview",
+                retry=5,
+                thinking_level=None,
+                min_timestamp=None,
+            )
+
+        self.assertEqual(commands, [])
+        self.assertEqual(errors, [])
+
     def test_subprocess_env_prepends_presentbench_code_root_to_pythonpath(self) -> None:
         with TemporaryDirectory() as tmp:
             code_root = Path(tmp) / "PresentBench_code"

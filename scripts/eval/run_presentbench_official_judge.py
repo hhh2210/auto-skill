@@ -178,6 +178,7 @@ def selected_judge_commands(
     )
     commands: list[list[str]] = []
     errors: list[str] = []
+    selected_cells = 0
     judge = code_root / "judge.py"
     runnable_statuses = {"ready_for_official_judge", "ready_for_zero_score"}
     for pack in selected:
@@ -186,6 +187,7 @@ def selected_judge_commands(
             heldout_tasks = heldout_tasks[:limit_heldout]
         for task in heldout_tasks:
             for mode, result_root in mode_roots.items():
+                selected_cells += 1
                 readiness = check_presentbench_official_eval_readiness(
                     task=task,
                     data_root=data_root,
@@ -213,8 +215,8 @@ def selected_judge_commands(
                         min_timestamp=min_timestamp,
                     )
                 )
-    if not commands and not errors:
-        errors.append("no unscored selected PresentBench official judge cells")
+    if selected_cells == 0:
+        errors.append("no selected PresentBench official judge cells")
     return commands, errors
 
 
@@ -324,6 +326,8 @@ def main() -> int:
 
     for command in commands:
         print(" ".join(command))
+    if not commands and not errors:
+        print("No unscored selected PresentBench official judge cells.")
 
     if errors:
         for error in errors:
