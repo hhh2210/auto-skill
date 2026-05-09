@@ -7,9 +7,7 @@ import argparse
 import json
 import os
 import shlex
-import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,6 +20,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from auto_skill.example_packs import load_jsonl  # noqa: E402
+from auto_skill.longrun import run_subprocesses  # noqa: E402
 from auto_skill.presentbench_eval import (  # noqa: E402
     check_presentbench_official_eval_readiness,
     parse_mode_path_mappings,
@@ -222,93 +221,10 @@ def subprocess_env_with_code_root(code_root: Path) -> dict[str, str]:
     return env
 
 
-def command_log_path(log_dir: Path, index: int) -> Path:
-    return log_dir / f"presentbench_judge_{index:03d}.log"
-
-
-def run_one_command(
-    index: int,
-    command: list[str],
-    *,
-    env: dict[str, str],
-    log_dir: Path | None,
-    stream_output: bool,
-) -> tuple[int, Path | None]:
-    if stream_output:
-        completed = subprocess.run(command, check=False, env=env)
-        return completed.returncode, None
-    if log_dir is None:
-        completed = subprocess.run(
-            command,
-            check=False,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return completed.returncode, None
-
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = command_log_path(log_dir, index)
-    with log_path.open("w", encoding="utf-8") as handle:
-        handle.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n\n")
-        handle.flush()
-        completed = subprocess.run(
-            command,
-            check=False,
-            env=env,
-            stdout=handle,
-            stderr=subprocess.STDOUT,
-        )
-    return completed.returncode, log_path
-
-
-def run_commands(
-    commands: list[list[str]],
-    *,
-    env: dict[str, str],
-    max_workers: int,
-    log_dir: Path | None,
-    stream_output: bool = False,
-) -> int:
-    if max_workers < 1:
-        raise ValueError("--max-workers must be >= 1")
-    if max_workers == 1 or len(commands) <= 1:
-        for index, command in enumerate(commands, start=1):
-            returncode, log_path = run_one_command(
-                index,
-                command,
-                env=env,
-                log_dir=log_dir,
-                stream_output=stream_output,
-            )
-            if returncode != 0:
-                if log_path is not None:
-                    print(f"error: command {index} failed; see {log_path}", file=sys.stderr)
-                return returncode
-        return 0
-
-    first_failure: int | None = None
-    first_failure_log: Path | None = None
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_command = {
-            executor.submit(
-                run_one_command,
-                index,
-                command,
-                env=env,
-                log_dir=log_dir,
-                stream_output=stream_output,
-            ): index
-            for index, command in enumerate(commands, start=1)
-        }
-        for future in as_completed(future_to_command):
-            returncode, log_path = future.result()
-            if returncode != 0 and first_failure is None:
-                first_failure = returncode
-                first_failure_log = log_path
-    if first_failure is not None and first_failure_log is not None:
-        print(f"error: a command failed; see {first_failure_log}", file=sys.stderr)
-    return first_failure or 0
+def outer_subprocess_workers(*, all_presentbench: bool, max_workers: int) -> int:
+    if all_presentbench:
+        return 1
+    return max_workers
 
 
 def preflight_warnings(*, api_type: str, allow_missing_env: bool) -> list[str]:
@@ -513,12 +429,16 @@ def main() -> int:
         return 0
 
     env = subprocess_env_with_code_root(args.code_root)
-    return run_commands(
+    return run_subprocesses(
         commands,
         env=env,
-        max_workers=args.max_workers,
+        max_workers=outer_subprocess_workers(
+            all_presentbench=args.all_presentbench,
+            max_workers=args.max_workers,
+        ),
         log_dir=args.subprocess_log_dir,
         stream_output=args.stream_subprocess_output,
+        log_prefix="presentbench_judge",
     )
 
 

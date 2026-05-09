@@ -12,11 +12,10 @@ from unittest.mock import patch
 from scripts.eval.run_presentbench_official_judge import (
     build_judge_all_command,
     build_judge_command,
-    command_log_path,
     command_manifest,
+    outer_subprocess_workers,
     parse_mode_result_roots,
     preflight_warnings,
-    run_commands,
     selected_judge_commands,
     subprocess_env_with_code_root,
     validate_preflight,
@@ -292,57 +291,9 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
             f"{code_root.resolve()}{os.pathsep}/existing",
         )
 
-    def test_run_commands_uses_worker_pool_and_returns_first_failure(self) -> None:
-        calls: list[list[str]] = []
-
-        def fake_run(
-            command: list[str],
-            *,
-            check: bool,
-            env: dict[str, str],
-            **kwargs: object,
-        ) -> subprocess.CompletedProcess:
-            calls.append(command)
-            return subprocess.CompletedProcess(command, 7 if command[-1] == "bad" else 0)
-
-        with patch("scripts.eval.run_presentbench_official_judge.subprocess.run", fake_run):
-            returncode = run_commands(
-                [["/python", "ok1"], ["/python", "bad"], ["/python", "ok2"]],
-                env={"PYTHONPATH": "/code"},
-                max_workers=2,
-                log_dir=None,
-            )
-
-        self.assertEqual(returncode, 7)
-        self.assertCountEqual(
-            calls,
-            [["/python", "ok1"], ["/python", "bad"], ["/python", "ok2"]],
-        )
-
-    def test_run_commands_rejects_invalid_worker_count(self) -> None:
-        with self.assertRaisesRegex(ValueError, "max-workers"):
-            run_commands([["/python", "judge.py"]], env={}, max_workers=0, log_dir=None)
-
-    def test_run_commands_captures_output_to_per_command_log(self) -> None:
-        with TemporaryDirectory() as tmp:
-            log_dir = Path(tmp) / "logs"
-            returncode = run_commands(
-                [
-                    [
-                        sys.executable,
-                        "-c",
-                        "import sys; print('stdout text'); print('stderr text', file=sys.stderr)",
-                    ]
-                ],
-                env=os.environ.copy(),
-                max_workers=1,
-                log_dir=log_dir,
-            )
-
-            self.assertEqual(returncode, 0)
-            log_text = command_log_path(log_dir, 1).read_text(encoding="utf-8")
-            self.assertIn("stdout text", log_text)
-            self.assertIn("stderr text", log_text)
+    def test_outer_subprocess_workers_keeps_all_presentbench_outer_serial(self) -> None:
+        self.assertEqual(outer_subprocess_workers(all_presentbench=True, max_workers=8), 1)
+        self.assertEqual(outer_subprocess_workers(all_presentbench=False, max_workers=8), 8)
 
     def test_command_manifest_records_argv_and_shell_command(self) -> None:
         manifest = command_manifest(
