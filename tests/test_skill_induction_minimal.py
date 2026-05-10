@@ -27,14 +27,25 @@ class MockResult:
 
 
 class MockClient:
-    def __init__(self, model: str, texts: list[str]):
+    def __init__(
+        self,
+        model: str,
+        texts: list[str],
+        finish_reasons: list[str | None] | None = None,
+    ):
         self.model = model
         self.texts = list(texts)
+        self.finish_reasons = list(finish_reasons or ["stop"] * len(texts))
         self.prompts: list[list[dict[str, str]]] = []
 
     def complete(self, messages: list[dict[str, str]], **_: Any) -> MockResult:
         self.prompts.append(messages)
-        return MockResult(self.texts.pop(0), self.model, usage={"total_tokens": 1})
+        return MockResult(
+            self.texts.pop(0),
+            self.model,
+            finish_reason=self.finish_reasons.pop(0),
+            usage={"total_tokens": 1},
+        )
 
 
 class MinimalInductionTests(unittest.TestCase):
@@ -66,6 +77,16 @@ class MinimalInductionTests(unittest.TestCase):
         cross = build_extraction_prompt(examples, entries, "cross_pack")
 
         self.assertIn("Match tone.", within)
+        self.assertNotIn("Use headings.", within)
+        self.assertIn("Use headings.", cross)
+
+    def test_extraction_prompt_fails_closed_when_within_pack_has_no_pack_id(self) -> None:
+        examples = [self.example("ex-1", pack_id="")]
+        entries = [self.memory("m1", "pack-b", "candidate_rule", "Use headings.", "positive")]
+
+        within = build_extraction_prompt(examples, entries, "within_pack")
+        cross = build_extraction_prompt(examples, entries, "cross_pack")
+
         self.assertNotIn("Use headings.", within)
         self.assertIn("Use headings.", cross)
 
@@ -115,6 +136,23 @@ class MinimalInductionTests(unittest.TestCase):
             "minimal_supervisor",
             "minimal_revision",
         ])
+
+    def test_induce_minimal_rejects_truncated_model_response(self) -> None:
+        supervisor_report = {
+            "artifact_critique": {"too_generic": [], "over_specific": [], "missing": []},
+            "rule_grounding": [],
+        }
+        solver = MockClient("solver-model", ["# Candidate"], finish_reasons=["length"])
+        supervisor = MockClient("mimo-model", [json.dumps(supervisor_report)])
+
+        with self.assertRaisesRegex(MinimalInductionError, "minimal_extraction"):
+            induce_minimal(
+                self.pack(),
+                solver_client=solver,
+                supervisor_client=supervisor,
+                memory=[],
+                scope="within_pack",
+            )
 
     def test_supervisor_report_validation_fails_closed(self) -> None:
         with self.assertRaises(MinimalInductionError):

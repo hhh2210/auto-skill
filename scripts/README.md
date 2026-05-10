@@ -31,6 +31,7 @@ stable.
 | Script | Purpose | Status |
 | --- | --- | --- |
 | `skills/run_skill_mvp.py` | Run one-shot and feature-driven skill induction; supports JSON-stage `--parse-max-attempts`. | core/API |
+| `skills/run_skill_minimal.py` | Run the minimal extraction -> MIMO supervisor -> revision auto-skill induction prototype with optional extraction-memory read-back. | prototype/API |
 | `skills/update_extraction_memory.py` | Extract public lessons from successful skill rows. | optional core |
 
 ### Heldout Evaluation

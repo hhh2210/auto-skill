@@ -40,7 +40,7 @@ def _scope_entries(
         return entries
     pack_id = _pack_id_from_examples(examples)
     if pack_id is None:
-        return entries
+        return []
     return [entry for entry in entries if entry.pack_id == pack_id]
 
 
@@ -131,7 +131,7 @@ def _call(client: Any, prompt: str, *, stage: str) -> PromptRunResult:
     )
     if not run.text.strip():
         raise MinimalInductionError(f"{stage} returned empty text")
-    if run.finish_reason not in {None, "stop", "length"}:
+    if run.finish_reason != "stop":
         raise MinimalInductionError(f"{stage} did not finish cleanly: {run.finish_reason}")
     return run
 

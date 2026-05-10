@@ -89,6 +89,8 @@ class ParseRetrySupervisor:
         last = None
         for _ in range(self.max_attempts):
             last = self.client.complete(messages, **kwargs)
+            if getattr(last, "finish_reason", None) != "stop":
+                continue
             parsed = parse_json_object(last.text)
             if "parse_error" in parsed:
                 continue
@@ -102,14 +104,20 @@ class ParseRetrySupervisor:
 
 
 def existing_successes(rows: list[dict[str, Any]]) -> set[str]:
-    return {
-        str(row["pack_id"])
-        for row in rows
-        if row.get("status") == "success"
-        and row.get("mode") == "auto_skill_minimal"
-        and isinstance(row.get("skill_md"), str)
-        and row["skill_md"].strip()
-    }
+    successes = set()
+    for row in rows:
+        pack_id = row.get("pack_id")
+        skill_md = row.get("skill_md")
+        if (
+            row.get("status") == "success"
+            and row.get("mode") == "auto_skill_minimal"
+            and isinstance(pack_id, str)
+            and pack_id
+            and isinstance(skill_md, str)
+            and skill_md.strip()
+        ):
+            successes.add(pack_id)
+    return successes
 
 
 def error_row(pack_id: str, exc: Exception) -> dict[str, Any]:
@@ -150,6 +158,9 @@ def build_clients(args: argparse.Namespace) -> tuple[Any, Any]:
 
 def run(args: argparse.Namespace) -> int:
     packs = [pack for pack in load_jsonl(args.packs) if user_examples_from_pack(pack)]
+    if not packs:
+        print("error: no usable packs selected for minimal skill induction", file=sys.stderr)
+        return 3
     rows = load_jsonl(args.out) if args.resume and args.out.exists() else []
     successes = existing_successes(rows)
     solver, supervisor = build_clients(args)
