@@ -343,6 +343,7 @@ class PresentBenchOfficialJudgeRunnerTests(unittest.TestCase):
                 ],
                 check=False,
                 cwd=Path(__file__).resolve().parents[1],
+                env={**os.environ, "GENAI_API_KEY": ""},
                 text=True,
                 capture_output=True,
             )
