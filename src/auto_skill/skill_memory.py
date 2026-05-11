@@ -7,10 +7,15 @@ from pathlib import Path
 from typing import Literal
 
 from auto_skill.example_packs import load_jsonl
-from auto_skill.extraction_memory import EVIDENCE_SOURCE, SCHEMA_VERSION, ExtractionMemoryEntry
+from auto_skill.extraction_memory import (
+    DERIVATION_FEATURE_REPORTS,
+    EVIDENCE_SOURCE,
+    SCHEMA_VERSION,
+    ExtractionMemoryEntry,
+)
 
 MemoryPolarity = Literal["positive", "negative"]
-MemoryScope = Literal["within_pack", "cross_pack"]
+MemoryScope = Literal["within_pack", "cross_pack", "cross_pack_holdout"]
 
 POSITIVE_KINDS = {"stable_feature", "candidate_rule", "optional_feature"}
 NEGATIVE_KINDS = {"do_not_generalize", "outlier", "conflict"}
@@ -53,6 +58,7 @@ def _entry_from_row(row: dict[str, object]) -> SkillMemoryEntry | None:
         lesson_kind=lesson_kind,
         lesson=str(row.get("lesson") or ""),
         evidence_examples=tuple(str(item) for item in row.get("evidence_examples") or []),
+        derivation=str(row.get("derivation") or DERIVATION_FEATURE_REPORTS),
         evidence_source=str(row.get("evidence_source") or EVIDENCE_SOURCE),
         polarity=polarity,
     )
@@ -64,7 +70,26 @@ def load_memory_for_pack(path: Path, pack_id: str, scope: MemoryScope) -> list[S
     entries = [entry for row in load_jsonl(path) if (entry := _entry_from_row(row)) is not None]
     if scope == "within_pack":
         entries = [entry for entry in entries if entry.pack_id == pack_id]
+    elif scope == "cross_pack_holdout":
+        entries = [entry for entry in entries if entry.pack_id != pack_id]
     return entries
+
+
+def select_memory_entries(
+    entries: list[SkillMemoryEntry], max_entries: int | None
+) -> list[SkillMemoryEntry]:
+    if max_entries is None or max_entries <= 0 or len(entries) <= max_entries:
+        return entries
+    return sorted(
+        entries,
+        key=lambda entry: (
+            -len(entry.evidence_examples),
+            entry.polarity != "positive",
+            entry.pack_id,
+            entry.lesson_kind,
+            entry.memory_id,
+        ),
+    )[:max_entries]
 
 
 def _format_memory_block(

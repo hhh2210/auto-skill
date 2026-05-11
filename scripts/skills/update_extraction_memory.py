@@ -15,6 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from auto_skill.example_packs import load_jsonl  # noqa: E402
 from auto_skill.extraction_memory import (  # noqa: E402
+    VALID_DERIVATIONS,
     entries_from_skill_rows,
     load_memory_entries,
     summarize_memory_entries,
@@ -28,7 +29,7 @@ def main() -> int:
         "--skills",
         type=Path,
         action="append",
-        default=[Path("runs/skill_mvp.qwen.mvp.jsonl")],
+        default=None,
         help="Skill induction JSONL. Can be passed multiple times.",
     )
     parser.add_argument(
@@ -41,14 +42,34 @@ def main() -> int:
         action="store_true",
         help="Merge with existing --out entries instead of replacing the file.",
     )
+    parser.add_argument(
+        "--require-derivation",
+        action="append",
+        choices=sorted(VALID_DERIVATIONS),
+        help=(
+            "Fail unless every output entry has one of these derivation values. "
+            "Pass multiple times to allow multiple derivations."
+        ),
+    )
     args = parser.parse_args()
 
     rows = []
-    for path in args.skills:
+    skill_paths = args.skills or [Path("runs/skill_mvp.qwen.mvp.jsonl")]
+    for path in skill_paths:
         rows.extend(load_jsonl(path))
     entries = entries_from_skill_rows(rows)
     if args.append and args.out.exists():
         entries = load_memory_entries(args.out) + entries
+    if args.require_derivation:
+        allowed = set(args.require_derivation)
+        bad = [entry for entry in entries if entry.derivation not in allowed]
+        if bad:
+            print(
+                "error: memory derivation mismatch: "
+                f"allowed={sorted(allowed)} bad_count={len(bad)}",
+                file=sys.stderr,
+            )
+            return 3
     write_memory_entries(args.out, entries)
     summary = summarize_memory_entries(entries)
     print(json.dumps(summary, ensure_ascii=False, indent=2))

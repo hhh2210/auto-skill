@@ -23,7 +23,7 @@ from auto_skill.skill_induction_minimal import (  # noqa: E402
     induce_minimal,
     validate_supervisor_report,
 )
-from auto_skill.skill_memory import load_memory_for_pack  # noqa: E402
+from auto_skill.skill_memory import load_memory_for_pack, select_memory_entries  # noqa: E402
 
 
 @dataclass
@@ -120,8 +120,10 @@ def existing_successes(rows: list[dict[str, Any]]) -> set[str]:
     return successes
 
 
-def error_row(pack_id: str, exc: Exception) -> dict[str, Any]:
-    return {
+def error_row(
+    pack_id: str, exc: Exception, memory_report: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    row = {
         "schema_version": "skill-induction/v1",
         "status": "induction_error",
         "pack_id": pack_id,
@@ -131,6 +133,29 @@ def error_row(pack_id: str, exc: Exception) -> dict[str, Any]:
         "solver_model": None,
         "error": f"{type(exc).__name__}: {exc}",
     }
+    if memory_report is not None:
+        row["memory_report"] = memory_report
+    return row
+
+
+def memory_report_for_cli(
+    *,
+    path: Path | None,
+    scope: str,
+    entries: list[Any],
+    selected_from_count: int | None = None,
+) -> dict[str, Any]:
+    report = {
+        "path": str(path) if path is not None else None,
+        "scope": scope,
+        "entry_count": len(entries),
+        "positive_count": sum(1 for entry in entries if entry.polarity == "positive"),
+        "negative_count": sum(1 for entry in entries if entry.polarity == "negative"),
+        "memory_ids": [entry.memory_id for entry in entries],
+    }
+    if selected_from_count is not None:
+        report["selected_from_count"] = selected_from_count
+    return report
 
 
 def build_clients(args: argparse.Namespace) -> tuple[Any, Any]:
@@ -157,6 +182,10 @@ def build_clients(args: argparse.Namespace) -> tuple[Any, Any]:
 
 
 def run(args: argparse.Namespace) -> int:
+    no_memory = getattr(args, "no_memory", False)
+    if no_memory and args.memory is not None:
+        print("error: --no-memory cannot be combined with --memory", file=sys.stderr)
+        return 2
     packs = [pack for pack in load_jsonl(args.packs) if user_examples_from_pack(pack)]
     if not packs:
         print("error: no usable packs selected for minimal skill induction", file=sys.stderr)
@@ -164,29 +193,47 @@ def run(args: argparse.Namespace) -> int:
     rows = load_jsonl(args.out) if args.resume and args.out.exists() else []
     successes = existing_successes(rows)
     solver, supervisor = build_clients(args)
+    if args.memory is not None and args.memory_scope == "cross_pack" and not no_memory:
+        print(
+            "warning: cross_pack scope includes the current pack's own entries; "
+            "use cross_pack_holdout for paper-facing claims",
+            file=sys.stderr,
+        )
 
     for pack in packs:
         pack_id = str(pack.get("pack_id") or "")
         if args.resume and pack_id in successes:
             continue
+        memory_report = None
         try:
             memory = (
                 load_memory_for_pack(args.memory, pack_id, args.memory_scope)
-                if args.memory is not None
+                if args.memory is not None and not no_memory
                 else []
             )
-            rows.append(
-                induce_minimal(
-                    pack,
-                    solver_client=solver,
-                    supervisor_client=supervisor,
-                    memory=memory,
-                    scope=args.memory_scope,
-                )
+            loaded_memory_count = len(memory)
+            memory = select_memory_entries(memory, args.memory_top_k)
+            memory_report = memory_report_for_cli(
+                path=args.memory,
+                scope=args.memory_scope,
+                entries=memory,
+                selected_from_count=loaded_memory_count if args.memory_top_k else None,
             )
+            row = induce_minimal(
+                pack,
+                solver_client=solver,
+                supervisor_client=supervisor,
+                memory=memory,
+                scope=args.memory_scope,
+            )
+            if isinstance(row.get("memory_report"), dict):
+                row["memory_report"] = {**row["memory_report"], "path": memory_report["path"]}
+            else:
+                row["memory_report"] = memory_report
+            rows.append(row)
             write_jsonl(args.out, rows)
         except Exception as exc:  # noqa: BLE001
-            rows.append(error_row(pack_id, exc))
+            rows.append(error_row(pack_id, exc, memory_report=memory_report))
             write_jsonl(args.out, rows)
             if not args.allow_partial:
                 raise
@@ -199,9 +246,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--memory", type=Path)
     parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Run the clean minimal baseline without reading an extraction-memory file.",
+    )
+    parser.add_argument(
         "--memory-scope",
-        choices=("within_pack", "cross_pack"),
+        choices=("within_pack", "cross_pack", "cross_pack_holdout"),
         default="within_pack",
+    )
+    parser.add_argument(
+        "--memory-top-k",
+        type=int,
+        help="Deterministically keep only the top K memory entries after scope filtering.",
     )
     parser.add_argument("--solver-config-prefix", default="BAILIAN")
     parser.add_argument("--supervisor-config-prefix", default="MIMO")

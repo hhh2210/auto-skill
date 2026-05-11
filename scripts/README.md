@@ -56,6 +56,11 @@ stable.
 | `ops/validate_run_artifacts.py` | Validate generated-output, skill, and eval artifacts. | CI/core |
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic; supports signature/judge parse retries. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge; supports judge parse retries. | debug-only metric |
+| `metrics/run_pairwise_likeness.py` | Anchor pairwise example-likeness win-rate over existing heldout outputs; supports swapped A/B order and judge parse retries. | diagnostic/API |
+| `metrics/run_skill_quality_eval.py` | Ctx2Skill-style five-dimension skill artifact quality judge over public train examples and `skill_md`; summarizes deterministic 0-100 averages. | diagnostic/API |
+| `metrics/summarize_per_criterion_delta.py` | Post-process WritingBench eval rows into per-criterion deltas + keyword-bucket roll-up between two modes (no extra LLM calls). | diagnostic |
+| `metrics/extract_judge_reasons.py` | Join paired baseline/candidate WritingBench judge scores and reasons for losing tasks (no extra LLM calls). | diagnostic |
+| `metrics/aggregate_failure_modes.py` | Single-call MIMO aggregation of extracted judge rationales into operational failure-mode categories. | diagnostic/API |
 | `metrics/run_grounding_eval.py` | Eval-only grounding/hallucination probe for heldout outputs against current task/material evidence; supports judge parse retries. | diagnostic metric |
 | `metrics/export_judge_disagreements.py` | Export judge delta sign-disagreement packets with output stats and optional skill context for evaluator calibration review. | diagnostic |
 | `metrics/validate_disagreement_taxonomy.py` | Validate per-packet calibration labels against judge-disagreement packet hashes. | diagnostic |
@@ -66,6 +71,10 @@ stable.
 | Script | Purpose | Status |
 | --- | --- | --- |
 | `ops/run_mvp_pipeline.sh` | Thin shell wrapper for long local MVP runs. | convenience only |
+| `ops/run_minimal_memory_ablation.sh` | Repeatable runner for minimal auto-skill memory ablations plus optional feature-driven LOO comparison: shard induction, merge successful skill rows, write eval aliases, run MIMO WritingBench task-quality eval, run pairwise example-likeness eval, run skill-quality eval, and write the combined three-metric report. | convenience/prototype |
+| `ops/prepare_three_metric_ablation.py` | Helper for `run_minimal_memory_ablation.sh`; writes eval aliases, pairwise inputs, skill-quality inputs, and the final markdown report. | helper |
+| `ops/shard_jsonl.py` | Deterministically split JSONL rows into modulo shards for resumable local batch runs. | helper |
+| `ops/combine_skill_shards.py` | Merge successful per-pack skill rows from shard outputs in original pack order. | helper |
 
 ## Removed One-Off Scripts
 

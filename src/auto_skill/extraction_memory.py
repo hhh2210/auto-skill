@@ -12,6 +12,12 @@ from auto_skill.example_packs import load_jsonl, write_jsonl
 
 SCHEMA_VERSION = "skill-extraction-memory/v1"
 EVIDENCE_SOURCE = "user_examples"
+DERIVATION_FEATURE_REPORTS = "feature_reports"
+DERIVATION_MINIMAL_SUPERVISOR_REPORT = "minimal_supervisor_report"
+VALID_DERIVATIONS = {
+    DERIVATION_FEATURE_REPORTS,
+    DERIVATION_MINIMAL_SUPERVISOR_REPORT,
+}
 
 
 @dataclass(frozen=True)
@@ -22,6 +28,7 @@ class ExtractionMemoryEntry:
     lesson_kind: str
     lesson: str
     evidence_examples: tuple[str, ...]
+    derivation: str = DERIVATION_FEATURE_REPORTS
     evidence_source: str = EVIDENCE_SOURCE
     schema_version: str = SCHEMA_VERSION
 
@@ -34,6 +41,7 @@ class ExtractionMemoryEntry:
             "lesson_kind": self.lesson_kind,
             "lesson": self.lesson,
             "evidence_examples": list(self.evidence_examples),
+            "derivation": self.derivation,
             "evidence_source": self.evidence_source,
         }
 
@@ -45,6 +53,7 @@ def memory_id_for(
     lesson_kind: str,
     lesson: str,
     evidence_examples: tuple[str, ...],
+    derivation: str = DERIVATION_FEATURE_REPORTS,
 ) -> str:
     payload = json.dumps(
         {
@@ -53,6 +62,7 @@ def memory_id_for(
             "lesson_kind": lesson_kind,
             "lesson": lesson,
             "evidence_examples": sorted(evidence_examples),
+            "derivation": derivation,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -96,6 +106,7 @@ def _entry(
     lesson_kind: str,
     lesson: str,
     evidence_examples: tuple[str, ...],
+    derivation: str = DERIVATION_FEATURE_REPORTS,
 ) -> ExtractionMemoryEntry | None:
     lesson = lesson.strip()
     if not pack_id or not mode or not lesson:
@@ -107,6 +118,7 @@ def _entry(
         lesson_kind=lesson_kind,
         lesson=lesson,
         evidence_examples=evidence_examples,
+        derivation=derivation,
     )
     return ExtractionMemoryEntry(
         memory_id=memory_id,
@@ -115,11 +127,108 @@ def _entry(
         lesson_kind=lesson_kind,
         lesson=lesson,
         evidence_examples=evidence_examples,
+        derivation=derivation,
     )
 
 
+def _as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _minimal_supervisor_report(row: dict[str, Any]) -> dict[str, Any] | None:
+    report = row.get("supervisor_report")
+    if isinstance(report, dict):
+        return report
+    if isinstance(report, str):
+        try:
+            parsed = json.loads(report)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _example_ids_from_grounding(item: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = item.get(key)
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(example_id) for example_id in raw if str(example_id))
+
+
+def entries_from_minimal_skill_row(row: dict[str, Any]) -> list[ExtractionMemoryEntry]:
+    """Extract memory from the minimal MIMO supervisor report.
+
+    The report is produced from the candidate skill and user-visible examples
+    only, so these entries remain public extraction memory rather than eval
+    feedback.
+    """
+
+    pack_id = str(row.get("pack_id") or "")
+    mode = str(row.get("mode") or "")
+    report = _minimal_supervisor_report(row)
+    if report is None:
+        return []
+
+    entries: list[ExtractionMemoryEntry] = []
+    critique = report.get("artifact_critique")
+    if isinstance(critique, dict):
+        for item in _as_list(critique.get("over_specific")):
+            entry = _entry(
+                pack_id=pack_id,
+                mode=mode,
+                lesson_kind="do_not_generalize",
+                lesson=_clean_text(item),
+                evidence_examples=(),
+                derivation=DERIVATION_MINIMAL_SUPERVISOR_REPORT,
+            )
+            if entry is not None:
+                entries.append(entry)
+
+    for item in _as_list(report.get("rule_grounding")):
+        if not isinstance(item, dict):
+            continue
+        rule = _clean_text(item.get("rule"))
+        supported_by = _example_ids_from_grounding(item, "supported_by")
+        contradicted_by = _example_ids_from_grounding(item, "contradicted_by")
+        out_of_scope = _example_ids_from_grounding(item, "out_of_scope")
+        if supported_by:
+            entry = _entry(
+                pack_id=pack_id,
+                mode=mode,
+                lesson_kind="candidate_rule",
+                lesson=rule,
+                evidence_examples=supported_by,
+                derivation=DERIVATION_MINIMAL_SUPERVISOR_REPORT,
+            )
+            if entry is not None:
+                entries.append(entry)
+        if contradicted_by:
+            entry = _entry(
+                pack_id=pack_id,
+                mode=mode,
+                lesson_kind="conflict",
+                lesson=rule,
+                evidence_examples=contradicted_by,
+                derivation=DERIVATION_MINIMAL_SUPERVISOR_REPORT,
+            )
+            if entry is not None:
+                entries.append(entry)
+        if out_of_scope:
+            entry = _entry(
+                pack_id=pack_id,
+                mode=mode,
+                lesson_kind="outlier",
+                lesson=rule,
+                evidence_examples=out_of_scope,
+                derivation=DERIVATION_MINIMAL_SUPERVISOR_REPORT,
+            )
+            if entry is not None:
+                entries.append(entry)
+    return dedupe_memory_entries(entries)
+
+
 def entries_from_skill_row(row: dict[str, Any]) -> list[ExtractionMemoryEntry]:
-    """Extract memory entries from one successful feature-driven skill row.
+    """Extract memory entries from one successful skill row.
 
     This intentionally consumes only artifacts produced from user examples. It
     does not read private heldout rubrics, evaluator feedback, or scores.
@@ -127,6 +236,8 @@ def entries_from_skill_row(row: dict[str, Any]) -> list[ExtractionMemoryEntry]:
 
     if row.get("status") != "success":
         return []
+    if row.get("mode") == "auto_skill_minimal":
+        return entries_from_minimal_skill_row(row)
     pack_id = str(row.get("pack_id") or "")
     mode = str(row.get("mode") or "")
     report = row.get("cross_example_report")
@@ -202,6 +313,7 @@ def load_memory_entries(path: Path) -> list[ExtractionMemoryEntry]:
                 lesson_kind=str(row.get("lesson_kind") or ""),
                 lesson=str(row.get("lesson") or ""),
                 evidence_examples=tuple(str(item) for item in row.get("evidence_examples") or []),
+                derivation=str(row.get("derivation") or DERIVATION_FEATURE_REPORTS),
                 evidence_source=str(row.get("evidence_source") or EVIDENCE_SOURCE),
             )
         )

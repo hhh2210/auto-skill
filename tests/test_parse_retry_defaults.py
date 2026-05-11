@@ -5,6 +5,7 @@ from scripts.metrics import (
     run_grounding_eval,
     run_pattern_similarity_eval,
     run_self_consistency_metric,
+    run_skill_quality_eval,
 )
 from scripts.skills import run_skill_mvp
 
@@ -17,6 +18,7 @@ class ParseRetryDefaultsTests(unittest.TestCase):
             run_heldout_eval,
             run_pattern_similarity_eval,
             run_self_consistency_metric,
+            run_skill_quality_eval,
             run_skill_mvp,
             run_writingbench_official_eval,
         ]

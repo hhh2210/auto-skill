@@ -41,6 +41,8 @@ def _scope_entries(
     pack_id = _pack_id_from_examples(examples)
     if pack_id is None:
         return []
+    if scope == "cross_pack_holdout":
+        return [entry for entry in entries if entry.pack_id != pack_id]
     return [entry for entry in entries if entry.pack_id == pack_id]
 
 
@@ -67,6 +69,19 @@ names or facts as general rules.
 {joined}
 
 Return only the candidate SKILL.md markdown."""
+
+
+def memory_report_for_entries(
+    entries: list[SkillMemoryEntry], examples: list[UserExample], scope: MemoryScope
+) -> dict[str, Any]:
+    scoped_entries = _scope_entries(entries, examples, scope)
+    return {
+        "scope": scope,
+        "entry_count": len(scoped_entries),
+        "positive_count": sum(1 for entry in scoped_entries if entry.polarity == "positive"),
+        "negative_count": sum(1 for entry in scoped_entries if entry.polarity == "negative"),
+        "memory_ids": [entry.memory_id for entry in scoped_entries],
+    }
 
 
 def build_supervisor_prompt(candidate_skill_md: str, examples: list[UserExample]) -> str:
@@ -144,6 +159,19 @@ def _parse_supervisor(text: str) -> dict[str, Any]:
     return parsed
 
 
+def _prompt_tokens(usage: dict[str, Any] | None) -> int | None:
+    if not isinstance(usage, dict):
+        return None
+    value = usage.get("prompt_tokens", usage.get("input_tokens"))
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
+
+
 def _require_list(value: Any, path: str) -> None:
     if not isinstance(value, list):
         raise MinimalInductionError(f"supervisor report {path} must be a list")
@@ -189,11 +217,13 @@ def induce_minimal(
         )
         for example in examples
     ]
+    memory_report = memory_report_for_entries(memory, examples, scope)
     extraction = _call(
         solver_client,
         build_extraction_prompt(examples, memory, scope),
         stage="minimal_extraction",
     )
+    extraction_prompt_tokens = _prompt_tokens(extraction.usage)
     supervisor = _call(
         supervisor_client,
         build_supervisor_prompt(extraction.text, examples),
@@ -223,4 +253,9 @@ def induce_minimal(
         "solver_model": extraction.model or revision.model,
         "supervisor_model": supervisor.model,
         "supervisor_report": supervisor_report,
+        "memory_report": {
+            **memory_report,
+            "extraction_prompt_tokens": extraction_prompt_tokens,
+        },
+        "extraction_prompt_tokens": extraction_prompt_tokens,
     }
