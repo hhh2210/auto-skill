@@ -1,0 +1,40 @@
+# === GitHub 配置 ===
+github:
+  token: ""  # <- 填你的 Token
+  per_page: 100
+
+# === 目标仓库 ===
+repos:
+  # - name: "huggingface/transformers"
+  #   priority: "P0"
+  #   language: "python"
+  - name: "vllm-project/vllm"
+    priority: "P0"
+    language: "python"
+
+# === 时间范围 ===
+time_range:
+  start: "2026-01-09"
+  end: "2026-05-09"
+
+# === 切分：在此之前为 Train，之后为 Heldout ===
+train_cutoff: "2026-03-09"
+
+# === 配额 ===
+quotas:
+  transformers_candidates: 100
+  vllm_candidates: 30
+
+# === LLM 配置（用于 Step 4 辅助分类，可选） ===
+llm:
+  enabled: true
+  api_key: ""  # <- 你的 LLM API Key
+  base_url: ""
+  model: ""
+
+# === 输出路径 ===
+paths:
+  raw_prs: "./raw_prs"
+  raw_threads: "./raw_threads"
+  cleaned: "./cleaned"
+  packs: "./packs/code_example_packs.v1.jsonl"
