@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from auto_skill.eval.modes import SKILL_REQUIRED_MODES  # noqa: E402
 from auto_skill.eval_summary import (  # noqa: E402
     ScoreCell,
     expected_score_cells,
@@ -57,23 +58,6 @@ JUDGE_KIND = "writingbench_official_prompt_qwen_judge"
 REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
 DEFAULT_PARSE_MAX_ATTEMPTS = 3
 DEFAULT_PLAN_PARSE_MAX_ATTEMPTS = 3
-SKILL_REQUIRED_MODES = {
-    "one_shot_skill_from_examples",
-    "ours_no_validation",
-    "auto_skill",
-    "examples_plus_one_shot_skill",
-    "examples_plus_feature_skill",
-    "feature_signatures_only",
-    "examples_plus_feature_signatures",
-    "task_first_feature_signatures",
-    "task_first_operational_anchors",
-    "task_first_evidence_anchored_operational_anchors",
-    "task_first_two_level_operational_anchors",
-    "task_first_planned_operational_anchors",
-    "slide_constrained_examples_plus_feature_skill",
-}
-
-
 @dataclass(frozen=True)
 class WritingBenchEvalJob:
     pack: dict[str, Any]

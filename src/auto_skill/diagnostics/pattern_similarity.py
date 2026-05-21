@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from auto_skill.eval_summary import summarize_score_rows
+from auto_skill.metrics.eval_summary import summarize_score_rows
 from auto_skill.mvp import format_user_example, parse_json_object
 from auto_skill.schemas import UserExample
 
