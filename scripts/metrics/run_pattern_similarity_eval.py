@@ -18,6 +18,11 @@ if str(REPO_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from auto_skill.baselines import (  # noqa: E402
+    FEATURE_SKILL_MODE,
+    FULL_SKILL_MODE,
+    ONE_SHOT_SKILL_MODE,
+)
 from auto_skill.eval_summary import ScoreCell, expected_score_cells  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
@@ -34,6 +39,11 @@ from auto_skill.pattern_similarity import (  # noqa: E402
 from scripts.eval.run_heldout_eval import select_packs, skill_index  # noqa: E402
 
 DEFAULT_PARSE_MAX_ATTEMPTS = 3
+PATTERN_SIMILARITY_SKILL_LOOKUP_BY_MODE = {
+    ONE_SHOT_SKILL_MODE: ONE_SHOT_SKILL_MODE,
+    "ours_no_validation": FEATURE_SKILL_MODE,
+    "auto_skill": FULL_SKILL_MODE,
+}
 
 
 @dataclass(frozen=True)
@@ -93,13 +103,10 @@ def candidate_index(rows: list[dict[str, Any]]) -> dict[ScoreCell, dict[str, Any
 
 
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
-    if mode == "one_shot_skill_from_examples":
-        return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode == "ours_no_validation":
-        return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
-    if mode == "auto_skill":
-        return skills.get((pack_id, "auto_skill_ours_full"))
-    return None
+    skill_mode = PATTERN_SIMILARITY_SKILL_LOOKUP_BY_MODE.get(mode)
+    if skill_mode is None:
+        return None
+    return skills.get((pack_id, skill_mode))
 
 
 def row_score_cell(row: dict[str, Any]) -> ScoreCell:

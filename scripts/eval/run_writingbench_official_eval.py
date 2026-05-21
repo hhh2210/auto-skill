@@ -18,7 +18,11 @@ if str(REPO_ROOT) not in sys.path:
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from auto_skill.eval.modes import SKILL_REQUIRED_MODES  # noqa: E402
+from auto_skill.baselines import (  # noqa: E402
+    baseline_for_mode,
+    mode_requires_skill,
+    skill_for_mode,
+)
 from auto_skill.eval_summary import (  # noqa: E402
     ScoreCell,
     expected_score_cells,
@@ -31,7 +35,6 @@ from auto_skill.mvp import (  # noqa: E402
     PromptRunResult,
     build_evidence_scaffolding_plan_prompt,
     build_feature_signature_context,
-    build_heldout_generation_prompt,
     build_operational_anchor_context,
     build_planned_operational_anchor_prompt,
     parse_json_object,
@@ -58,6 +61,12 @@ JUDGE_KIND = "writingbench_official_prompt_qwen_judge"
 REFUSAL_FINISH_REASONS = {"content_filter", "safety", "refusal"}
 DEFAULT_PARSE_MAX_ATTEMPTS = 3
 DEFAULT_PLAN_PARSE_MAX_ATTEMPTS = 3
+MISSING_SKILL_STATUS_BY_MODE = {
+    "auto_skill": "missing_ours_full_skill",
+    "ours_no_validation": "missing_no_validation_skill",
+}
+
+
 @dataclass(frozen=True)
 class WritingBenchEvalJob:
     pack: dict[str, Any]
@@ -95,41 +104,10 @@ def call_model(
 
 
 def mode_skill(mode: str, skills: dict[tuple[str, str], str], pack_id: str) -> str | None:
-    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
-        return skills.get((pack_id, "one_shot_skill_from_examples"))
-    if mode in {
-        "ours_no_validation",
-        "examples_plus_feature_skill",
-        "feature_signatures_only",
-        "examples_plus_feature_signatures",
-        "task_first_feature_signatures",
-        "task_first_operational_anchors",
-        "task_first_evidence_anchored_operational_anchors",
-        "task_first_two_level_operational_anchors",
-        "task_first_planned_operational_anchors",
-        "slide_constrained_examples_plus_feature_skill",
-    }:
-        if mode in {
-            "feature_signatures_only",
-            "examples_plus_feature_signatures",
-            "task_first_feature_signatures",
-        }:
-            return skills.get(
-                (pack_id, "auto_skill_feature_driven_no_validation::feature_signatures")
-            )
-        if mode in {
-            "task_first_operational_anchors",
-            "task_first_evidence_anchored_operational_anchors",
-            "task_first_two_level_operational_anchors",
-            "task_first_planned_operational_anchors",
-        }:
-            return skills.get(
-                (pack_id, "auto_skill_feature_driven_no_validation::operational_anchors")
-            )
-        return skills.get((pack_id, "auto_skill_feature_driven_no_validation"))
-    if mode == "auto_skill":
-        return skills.get((pack_id, "auto_skill_ours_full"))
-    return None
+    baseline = baseline_for_mode(mode)
+    if "writingbench" not in baseline.spec.benchmark_scope:
+        return None
+    return skill_for_mode(mode, skills, pack_id)
 
 
 def skill_index_with_feature_signatures(rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
@@ -154,7 +132,7 @@ def is_reusable_candidate_row(row: dict[str, Any] | None) -> bool:
 
 
 def mode_needs_skill(mode: str, reused_row: dict[str, Any] | None) -> bool:
-    return mode in SKILL_REQUIRED_MODES and reused_row is None
+    return mode_requires_skill(mode) and reused_row is None
 
 
 def row_score_cell(row: dict[str, Any]) -> ScoreCell:
@@ -358,10 +336,10 @@ def build_generation_with_optional_plan(
 ) -> tuple[PromptRunResult | None, dict[str, Any] | None, PromptRunResult | None]:
     """Generate heldout output, optionally using a prior evidence plan."""
 
-    if mode != "task_first_planned_operational_anchors":
-        prompt = build_heldout_generation_prompt(
+    baseline = baseline_for_mode(mode)
+    if not baseline.spec.needs_evidence_plan:
+        prompt = baseline.build_heldout_prompt(
             task=task,
-            mode=mode,
             examples=examples,
             skill_md=skill_md,
             max_material_chars=max_material_chars,
@@ -1077,15 +1055,7 @@ def main() -> int:
                             pack=pack,
                             task=task,
                             mode=mode,
-                            status=(
-                                "missing_ours_full_skill"
-                                if mode == "auto_skill"
-                                else (
-                                    "missing_no_validation_skill"
-                                    if mode == "ours_no_validation"
-                                    else "missing_skill"
-                                )
-                            ),
+                            status=MISSING_SKILL_STATUS_BY_MODE.get(mode, "missing_skill"),
                             solver_model=solver_model,
                             judge_model=judge_model,
                             metadata=metadata,

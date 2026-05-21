@@ -104,7 +104,7 @@ def token_usage_summary(
     if baseline:
         baseline_avg = baseline["generation_avg_per_success"]
         for mode, item in sorted(by_mode.items()):
-            if mode == examples_only_mode:
+            if mode in {examples_only_mode}:
                 continue
             mode_avg = item["generation_avg_per_success"]
             comparisons[mode] = {

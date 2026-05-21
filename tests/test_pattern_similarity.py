@@ -9,7 +9,7 @@ from auto_skill.pattern_similarity import (
     pattern_similarity_status,
     summarize_pattern_similarity_rows,
 )
-from scripts.metrics.run_pattern_similarity_eval import judge_with_parse_retry
+from scripts.metrics.run_pattern_similarity_eval import judge_with_parse_retry, mode_skill
 
 
 class SequencedCompletionClient:
@@ -149,6 +149,23 @@ class PatternSimilarityTests(unittest.TestCase):
         self.assertIn("parse_error", report)
         self.assertEqual(status, "judge_incomplete")
         self.assertEqual([attempt["status"] for attempt in attempts], ["judge_incomplete"])
+
+    def test_debug_skill_lookup_stays_limited_to_legacy_metric_modes(self) -> None:
+        skills = {
+            ("pack-1", "one_shot_skill_from_examples"): "one-shot",
+            ("pack-1", "auto_skill_feature_driven_no_validation"): "feature",
+            ("pack-1", "auto_skill_ours_full"): "full",
+            (
+                "pack-1",
+                "auto_skill_feature_driven_no_validation::feature_signatures",
+            ): "signatures",
+        }
+
+        self.assertEqual(mode_skill("one_shot_skill_from_examples", skills, "pack-1"), "one-shot")
+        self.assertEqual(mode_skill("ours_no_validation", skills, "pack-1"), "feature")
+        self.assertEqual(mode_skill("auto_skill", skills, "pack-1"), "full")
+        self.assertIsNone(mode_skill("examples_plus_feature_skill", skills, "pack-1"))
+        self.assertIsNone(mode_skill("feature_signatures_only", skills, "pack-1"))
 
 
 if __name__ == "__main__":

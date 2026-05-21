@@ -176,6 +176,51 @@ class ExportJudgeDisagreementsTests(unittest.TestCase):
         self.assertEqual(len(skill_context["skill_md_stats"]["sha256"]), 64)
         self.assertIn("Always cite constraints", skill_context["skill_md_preview"])
 
+    def test_can_export_derived_feature_signature_skill_context(self) -> None:
+        packets = build_disagreement_packets(
+            left_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("feature_signatures_only", 4, text="candidate"),
+            ],
+            right_rows=[
+                row("prompt_only", 5, text="baseline"),
+                row("feature_signatures_only", 7, text="candidate"),
+            ],
+            left_label="qwen",
+            right_label="mimo",
+            baseline_mode="prompt_only",
+            skill_rows=[
+                {
+                    "pack_id": "pack-1",
+                    "mode": "auto_skill_feature_driven_no_validation",
+                    "status": "success",
+                    "solver_model": "qwen3.5-plus",
+                    "skill_md": "Full skill text",
+                    "feature_reports": [
+                        {
+                            "content_features": {"key_variables": ["temperature"]},
+                            "style_features": {"tone": ["direct"]},
+                        }
+                    ],
+                    "cross_example_report": {
+                        "stable_features": ["Use numbered sections"],
+                        "candidate_rules": [
+                            {"rule": "Keep actions concrete", "support_count": 3}
+                        ],
+                    },
+                }
+            ],
+        )
+
+        skill_context = packets[0]["skill_context"]
+        self.assertEqual(skill_context["status"], "found")
+        self.assertEqual(
+            skill_context["expected_skill_mode"],
+            "auto_skill_feature_driven_no_validation::feature_signatures",
+        )
+        self.assertIn("Abstract Feature Signatures", skill_context["skill_md_preview"])
+        self.assertIn("Keep actions concrete", skill_context["skill_md_preview"])
+
     def test_reports_missing_skill_context_for_skill_mode(self) -> None:
         packets = build_disagreement_packets(
             left_rows=[

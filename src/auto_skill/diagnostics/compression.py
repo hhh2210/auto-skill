@@ -153,7 +153,7 @@ def generation_shape_stats(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def skill_mode_for_eval_mode(mode: str) -> str | None:
-    if mode == "one_shot_skill_from_examples":
+    if mode in {"one_shot_skill_from_examples"}:
         return "one_shot_skill_from_examples"
     if mode in {"auto_skill_feature_driven", "examples_plus_feature_skill"}:
         return "auto_skill_feature_driven_no_validation"
@@ -476,7 +476,7 @@ def summarize_author_style_compression_failures(
     baseline_cells = [
         (pack, task, row)
         for (pack, task, mode), row in eval_index.items()
-        if mode == baseline_mode
+        if mode in {baseline_mode}
     ]
 
     diagnostics = []

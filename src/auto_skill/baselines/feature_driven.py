@@ -201,12 +201,12 @@ Evidence policy for operational anchors:
 - Do not create fictional examples, named cases, statistics, references, or
   vendor/product capabilities to satisfy an anchor slot.
 """
-    if mode == "task_first_evidence_anchored_operational_anchors":
+    if mode in {"task_first_evidence_anchored_operational_anchors"}:
         evidence_inventory = (
             "\nCurrent evidence inventory for concrete facts:\n"
             f"{build_current_evidence_inventory(task)}\n"
         )
-    if mode == "task_first_two_level_operational_anchors":
+    if mode in {"task_first_two_level_operational_anchors"}:
         evidence_inventory = (
             "\nCurrent evidence inventory for specific factual claims:\n"
             f"{build_current_evidence_inventory(task, strict_whitelist=False)}\n"

@@ -66,11 +66,11 @@ def paired_delta_summary(
     baseline_cells = [
         (pack, task, row)
         for (pack, task, mode), row in success_index.items()
-        if mode == baseline_mode
+        if mode in {baseline_mode}
     ]
     deltas = {}
     for mode in modes:
-        if mode == baseline_mode:
+        if mode in {baseline_mode}:
             continue
         style_deltas = []
         win_rate_deltas = []

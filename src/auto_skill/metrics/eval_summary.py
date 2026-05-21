@@ -134,7 +134,7 @@ def summarize_score_rows(
     paired_deltas: dict[str, Any] = {}
     modes = sorted(set(grouped) | {mode for _, _, mode in expected_cell_set})
     for mode in modes:
-        if mode == baseline_mode:
+        if mode in {baseline_mode}:
             continue
         deltas = []
         examples = []

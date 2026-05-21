@@ -1,9 +1,52 @@
-"""Shared result containers for baseline runs."""
+"""Shared baseline protocol and result containers."""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
+
+from auto_skill.schemas import UserExample
+
+
+@dataclass(frozen=True)
+class BaselineSpec:
+    """Metadata for one CLI/eval baseline mode."""
+
+    name: str
+    requires_skill: bool
+    requires_examples: bool
+    benchmark_scope: tuple[str, ...] = ("writingbench", "presentbench")
+    description: str = ""
+    skill_lookup: str | None = None
+    needs_layout_plan: bool = False
+    needs_evidence_plan: bool = False
+    induction_outputs: tuple[str, ...] = ()
+
+
+@runtime_checkable
+class Baseline(Protocol):
+    """Common dispatch surface for heldout-generation baselines."""
+
+    spec: BaselineSpec
+
+    def induce(
+        self,
+        pack: dict[str, Any],
+        *,
+        llm: Any,
+        options: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return a skill row, or None for prompt-only heldout baselines."""
+
+    def build_heldout_prompt(
+        self,
+        *,
+        task: dict[str, Any],
+        examples: list[UserExample],
+        skill_md: str | None = None,
+        max_material_chars: int = 4000,
+    ) -> str:
+        """Build the user-visible heldout prompt for this baseline mode."""
 
 
 @dataclass(frozen=True)

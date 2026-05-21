@@ -144,7 +144,7 @@ def summarize_author_style_eval_rows(
     baseline_cells = [
         (pack_id, task_id, row)
         for (pack_id, task_id, mode), row in success_index.items()
-        if mode == baseline_mode
+        if mode in {baseline_mode}
     ]
     for mode in compared_modes:
         style_deltas = []

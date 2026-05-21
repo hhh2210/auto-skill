@@ -14,7 +14,12 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from auto_skill.baselines import baseline_for_mode  # noqa: E402
 from auto_skill.example_packs import load_jsonl, write_jsonl  # noqa: E402
+from auto_skill.mvp import (  # noqa: E402
+    build_feature_signature_context,
+    build_operational_anchor_context,
+)
 
 Cell = tuple[str, str, str]
 TaskCell = tuple[str, str]
@@ -94,22 +99,25 @@ def skill_index(skill_rows: list[dict[str, Any]] | None) -> dict[tuple[str, str]
         mode = row.get("mode")
         if isinstance(pack_id, str) and isinstance(mode, str):
             index[(pack_id, mode)] = row
+            feature_signature_context = build_feature_signature_context(row)
+            if feature_signature_context:
+                index[(pack_id, f"{mode}::feature_signatures")] = {
+                    **row,
+                    "mode": f"{mode}::feature_signatures",
+                    "skill_md": feature_signature_context,
+                }
+            operational_anchor_context = build_operational_anchor_context(row)
+            if operational_anchor_context:
+                index[(pack_id, f"{mode}::operational_anchors")] = {
+                    **row,
+                    "mode": f"{mode}::operational_anchors",
+                    "skill_md": operational_anchor_context,
+                }
     return index
 
 
 def skill_mode_for_eval_mode(mode: str) -> str | None:
-    if mode in {"one_shot_skill_from_examples", "examples_plus_one_shot_skill"}:
-        return "one_shot_skill_from_examples"
-    if mode in {
-        "ours_no_validation",
-        "examples_plus_feature_skill",
-        "slide_constrained_examples_plus_feature_skill",
-        "layout_plan_examples_plus_feature_skill",
-    }:
-        return "auto_skill_feature_driven_no_validation"
-    if mode == "auto_skill":
-        return "auto_skill_ours_full"
-    return None
+    return baseline_for_mode(mode).spec.skill_lookup
 
 
 def packet_skill_context(

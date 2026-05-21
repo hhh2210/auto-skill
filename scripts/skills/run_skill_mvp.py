@@ -17,6 +17,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from auto_skill.baselines import requested_induction_outputs  # noqa: E402
 from auto_skill.example_packs import load_jsonl, prompt_sha256, write_jsonl  # noqa: E402
 from auto_skill.llm import ChatCompletionClient, ChatCompletionConfig, ConfigError  # noqa: E402
 from auto_skill.mvp import (  # noqa: E402
@@ -559,14 +560,10 @@ def requested_output_modes(
     *,
     leave_one_out: bool,
 ) -> set[str]:
-    output_modes = set()
-    if "one_shot_skill_from_examples" in requested_modes:
-        output_modes.add("one_shot_skill_from_examples")
-    if "auto_skill_feature_driven" in requested_modes:
-        output_modes.add("auto_skill_feature_driven_no_validation")
-        if leave_one_out and len(user_examples_from_pack(pack)) >= 3:
-            output_modes.add("auto_skill_ours_full")
-    return output_modes
+    return requested_induction_outputs(
+        requested_modes,
+        include_full=leave_one_out and len(user_examples_from_pack(pack)) >= 3,
+    )
 
 
 def existing_success_modes(rows: list[dict[str, Any]]) -> dict[str, set[str]]:
