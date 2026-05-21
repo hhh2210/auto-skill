@@ -7,7 +7,7 @@ import re
 from collections import Counter, defaultdict
 from typing import Any
 
-from auto_skill.author_style_eval_summary import (
+from auto_skill.cleaning.author_style.eval_summary import (
     latest_eval_cells,
     mean,
     row_score,
