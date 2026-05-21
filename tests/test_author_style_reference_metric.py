@@ -180,6 +180,48 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
         self.assertNotIn("PRIVATE_TARGET_SENTINEL", str(row))
         self.assertNotIn("PRIVATE_NEGATIVE_SENTINEL", str(row))
 
+    def test_parse_error_row_redacts_model_candidate_fields(self) -> None:
+        jobs, _ = build_reference_retrieval_jobs(
+            packs=[_pack()],
+            private_eval=[
+                {
+                    "pack_id": "author_style_personal_blog_0001",
+                    "heldout_private": [
+                        {
+                            "task_ref": "author_style_personal_blog_0001::heldout::0",
+                            "reference_output_private": "PRIVATE_TARGET_SENTINEL",
+                        }
+                    ],
+                }
+            ],
+            hard_negatives=[
+                {
+                    "target_task_ref": "author_style_personal_blog_0001::heldout::0",
+                    "negative_id": "neg-1",
+                    "negative_type": "topic_time_length_style_matched_impostor",
+                    "public_negative_text": "negative text",
+                }
+            ],
+        )
+        row = build_success_row(
+            job=jobs[0],
+            judge={"model": "judge"},
+            report={
+                "most_similar_candidate_id": "PRIVATE_TARGET_SENTINEL",
+                "ranked_candidate_ids": ["PRIVATE_TARGET_SENTINEL"],
+                "confidence": "high",
+                "parse_error": "most_similar_candidate_id_must_match_candidate_id",
+            },
+            status="judge_parse_error",
+            attempts=[],
+        )
+
+        self.assertEqual(
+            row["judge_report"],
+            {"parse_error": "most_similar_candidate_id_must_match_candidate_id"},
+        )
+        self.assertNotIn("PRIVATE_TARGET_SENTINEL", str(row))
+
     def test_summary_reports_oracle_accuracy(self) -> None:
         summary = summarize_reference_retrieval_rows(
             [

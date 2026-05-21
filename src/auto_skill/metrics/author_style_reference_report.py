@@ -7,6 +7,8 @@ from typing import Any
 
 
 def public_reference_retrieval_report(report: dict[str, Any]) -> dict[str, Any]:
+    if "parse_error" in report:
+        return {"parse_error": report["parse_error"]}
     public_keys = (
         "most_similar_candidate_id",
         "ranked_candidate_ids",
