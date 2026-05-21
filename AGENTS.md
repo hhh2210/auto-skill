@@ -202,7 +202,7 @@ uv run python scripts/ops/report_experiment_readiness.py --profile full --expect
 uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
 uv run python scripts/ops/report_expanded_cleaning_status.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl --expect-packs 142 --expect-train-examples 426 --expect-heldout-tasks 284 --expect-generation-jobs 426 --skip-mimo-subset --expect-status ready
-uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl --expect-status ok
+uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy artifacts/taxonomies/judge_disagreement_2026-05-09.jsonl --expect-status ok
 uv run ruff check .
 ```
 

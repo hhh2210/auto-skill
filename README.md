@@ -181,7 +181,7 @@ uv run python scripts/ops/report_expanded_cleaning_status.py \
   --expect-status ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py \
   --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
-  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --taxonomy artifacts/taxonomies/judge_disagreement_2026-05-09.jsonl \
   --expect-status ok
 ```
 
@@ -506,7 +506,7 @@ Gate the combined experiment state before reporting results:
 uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
 uv run python scripts/metrics/validate_disagreement_taxonomy.py \
   --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl \
-  --taxonomy notes/judge_disagreement_taxonomy_2026-05-09.jsonl \
+  --taxonomy artifacts/taxonomies/judge_disagreement_2026-05-09.jsonl \
   --expect-status ok
 ```
 
