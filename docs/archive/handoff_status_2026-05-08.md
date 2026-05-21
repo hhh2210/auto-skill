@@ -78,7 +78,7 @@ Recent WritingBench smoke results:
   16/16 success but negative vs prompt-only (`examples_plus_one_shot_skill`
   -1.0, `examples_plus_feature_skill` -0.625). Treat examples-plus as a
   WritingBench-specific positive signal until this cross-domain failure is
-  understood. See `notes/presentbench_examples_plus_failure_diagnostic.md`.
+  understood. See `notes/archive/presentbench_examples_plus_failure_diagnostic.md`.
 - A light slide-specific prompt guardrail
   (`slide_constrained_examples_plus_feature_skill`) also failed on PresentBench
   surrogate: 8/8 success, mean 6.625, delta -1.0 vs prompt-only. The next
