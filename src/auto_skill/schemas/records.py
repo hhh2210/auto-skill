@@ -12,7 +12,6 @@ EVAL_SCHEMA_VERSIONS = {
     "train-example-quality-audit/v1",
     "writingbench-official-eval/v1",
     "presentbench-official-score/v1",
-    "author-style-heldout-eval/v1",
 }
 
 

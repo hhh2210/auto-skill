@@ -7,10 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from auto_skill.schemas.artifacts import validate_artifact_rows
-from auto_skill.schemas.eval_row import (
-    validate_author_style_eval_row,
-    validate_eval_row,
-)
+from auto_skill.schemas.eval_row import validate_eval_row
 from auto_skill.schemas.generated_output import validate_generated_output_row
 from auto_skill.schemas.records import (
     EVAL_SCHEMA_VERSIONS,
@@ -33,7 +30,6 @@ __all__ = [
     "field",
     "math",
     "validate_artifact_rows",
-    "validate_author_style_eval_row",
     "validate_eval_row",
     "validate_generated_output_row",
     "validate_skill_row",
