@@ -213,13 +213,21 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
                 "parse_error": "most_similar_candidate_id_must_match_candidate_id",
             },
             status="judge_parse_error",
-            attempts=[],
+            attempts=[
+                {
+                    "attempt": 1,
+                    "status": "judge_parse_error",
+                    "selected_candidate_id": "PRIVATE_TARGET_SENTINEL",
+                    "parse_error": "most_similar_candidate_id_must_match_candidate_id",
+                }
+            ],
         )
 
         self.assertEqual(
             row["judge_report"],
             {"parse_error": "most_similar_candidate_id_must_match_candidate_id"},
         )
+        self.assertNotIn("selected_candidate_id", row["judge_parse_attempts"][0])
         self.assertNotIn("PRIVATE_TARGET_SENTINEL", str(row))
 
     def test_summary_reports_oracle_accuracy(self) -> None:

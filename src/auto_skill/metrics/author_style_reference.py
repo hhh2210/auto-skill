@@ -9,6 +9,7 @@ from typing import Any
 
 from auto_skill.llm.parse import parse_json_object
 from auto_skill.metrics.author_style_reference_report import (  # noqa: F401
+    public_reference_retrieval_attempts,
     public_reference_retrieval_report,
     reference_retrieval_summary_markdown,
 )
@@ -275,7 +276,7 @@ def build_success_row(
             for candidate in job.candidates
         ],
         "judge": judge,
-        "judge_parse_attempts": attempts,
+        "judge_parse_attempts": public_reference_retrieval_attempts(attempts),
         "judge_report": public_reference_retrieval_report(report),
     }
 

@@ -18,6 +18,24 @@ def public_reference_retrieval_report(report: dict[str, Any]) -> dict[str, Any]:
     return {key: report[key] for key in public_keys if key in report}
 
 
+def public_reference_retrieval_attempts(attempts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    public_attempts = []
+    for attempt in attempts:
+        public_attempt = {
+            "attempt": attempt.get("attempt"),
+            "status": attempt.get("status"),
+            "model": attempt.get("model"),
+            "usage": attempt.get("usage"),
+            "finish_reason": attempt.get("finish_reason"),
+            "request_id": attempt.get("request_id"),
+            "parse_error": attempt.get("parse_error"),
+        }
+        if attempt.get("status") == "success":
+            public_attempt["selected_candidate_id"] = attempt.get("selected_candidate_id")
+        public_attempts.append(public_attempt)
+    return public_attempts
+
+
 def reference_retrieval_summary_markdown(summary: dict[str, Any]) -> str:
     lines = [
         "# Author-Style Reference Retrieval Oracle",
