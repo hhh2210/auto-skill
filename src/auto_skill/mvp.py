@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from auto_skill.example_packs import material_context
+from auto_skill.llm.parse import parse_json_object  # noqa: F401
 from auto_skill.schemas import UserExample
 
 HELDOUT_GENERATION_PROMPT_VERSION = "deliverable-priority-v2"
@@ -58,34 +59,6 @@ def _first_call_model(model_calls: list[dict[str, Any]]) -> str | None:
         if isinstance(model, str) and model.strip():
             return model
     return None
-
-
-def parse_json_object(text: str) -> dict[str, Any]:
-    """Parse the first JSON object in an LLM response."""
-
-    candidates = [text]
-    fence_match = re.search(r"```(?:json)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fence_match is not None:
-        candidates.insert(0, fence_match.group(1).strip())
-
-    last_error = "no_json_object_found"
-    for candidate in candidates:
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError as exc:
-            last_error = str(exc)
-            match = re.search(r"\{.*\}", candidate, flags=re.DOTALL)
-            if match is None:
-                continue
-            try:
-                parsed = json.loads(match.group(0))
-            except json.JSONDecodeError as nested_exc:
-                last_error = str(nested_exc)
-                continue
-        if isinstance(parsed, dict):
-            return parsed
-        return {"raw_text": text, "parse_error": "json_root_is_not_object"}
-    return {"raw_text": text, "parse_error": last_error}
 
 
 def user_examples_from_pack(pack: dict[str, Any]) -> list[UserExample]:
@@ -233,8 +206,10 @@ def build_heldout_generation_prompt(
     examples_text = ""
     if mode in {
         "few_shot_examples_only",
+        "few_shot_examples_bundle_preserve",
         "examples_plus_one_shot_skill",
         "examples_plus_feature_skill",
+        "examples_plus_operational_skill",
         "examples_plus_feature_signatures",
         "slide_constrained_examples_plus_feature_skill",
         "layout_plan_examples_plus_feature_skill",
@@ -272,6 +247,21 @@ Slide-task constraint priority:
 - Before writing the final answer, internally plan the current task's hard slide
   constraints and ensure every required figure or exact phrase has its own
   requested placement.
+"""
+    if mode == "few_shot_examples_bundle_preserve":
+        mode_guidance = """
+
+Author-style bundle preservation:
+- Treat the user examples as examples of low-level writing operations, not as
+  polished essays to summarize.
+- Preserve the observed shape of the author's public examples when it is
+  visible: multi-comment bundles, abrupt topic jumps, quote/reply fragments,
+  short reactive turns, uneven paragraphing, hedges, slang, punctuation habits,
+  spelling/nonstandard orthography, laughter markers, and casual register.
+- Do not smooth the answer into a coherent essay, article, memo, or balanced
+  analysis unless that polished form is clearly present in the examples.
+- Keep the heldout task's topic and requested content current; do not copy
+  example-specific topics, people, facts, or stories.
 """
     if mode == "layout_plan_examples_plus_feature_skill":
         mode_guidance = """
