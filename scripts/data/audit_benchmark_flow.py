@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit cleaned benchmark artifacts against notes/benchmark_flow.md."""
+"""Audit cleaned benchmark artifacts against docs/benchmark_flow.md."""
 
 from __future__ import annotations
 

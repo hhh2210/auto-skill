@@ -24,7 +24,7 @@ stable.
 | `data/run_generation_jobs.py` | Generate desired outputs for train examples. | core/API |
 | `data/export_latest_successful_generations.py` | Materialize latest-success rows from append-only generation logs for readiness/audit gates. | core |
 | `data/apply_generated_outputs.py` | Freeze generated desired outputs into example packs. | core |
-| `data/audit_benchmark_flow.py` | Audit cleaned artifacts against `notes/benchmark_flow.md` leakage, split-boundary, and optional generation provenance invariants. | CI/core |
+| `data/audit_benchmark_flow.py` | Audit cleaned artifacts against `docs/benchmark_flow.md` leakage, split-boundary, and optional generation provenance invariants. | CI/core |
 
 ### Skill Induction
 
