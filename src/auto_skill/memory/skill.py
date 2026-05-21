@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from auto_skill.example_packs import load_jsonl
+from auto_skill.cleaning.packs import load_jsonl
 from auto_skill.memory.extraction import (
     DERIVATION_FEATURE_REPORTS,
     EVIDENCE_SOURCE,

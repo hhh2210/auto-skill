@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from auto_skill.example_packs import load_jsonl
+from auto_skill.cleaning.packs import load_jsonl
 from auto_skill.mvp import user_examples_from_pack
 from auto_skill.schemas import (
     SchemaValidationError,

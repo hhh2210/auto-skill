@@ -1238,7 +1238,7 @@ def summarize_quality_datasets(datasets: list[tuple[str, list[dict[str, Any]]]])
 
 
 def load_run_dir(run_dir: Path) -> tuple[list[dict[str, Any]], ...]:
-    from auto_skill.example_packs import load_jsonl
+    from auto_skill.cleaning.packs import load_jsonl
 
     return (
         load_jsonl(run_dir / "accepted_author_style_packs.jsonl"),

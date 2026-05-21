@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from auto_skill.example_packs import load_jsonl
+from auto_skill.cleaning.packs import load_jsonl
 from auto_skill.mvp import user_examples_from_pack
 
 NATIVE_IMPOSTOR_NEGATIVE_TYPE = "original_av_impostor_cross_topic"

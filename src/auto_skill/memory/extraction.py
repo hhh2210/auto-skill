@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from auto_skill.example_packs import load_jsonl, write_jsonl
+from auto_skill.cleaning.packs import load_jsonl, write_jsonl
 
 SCHEMA_VERSION = "skill-extraction-memory/v1"
 EVIDENCE_SOURCE = "user_examples"

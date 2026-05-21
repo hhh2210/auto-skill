@@ -7,7 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from auto_skill.example_packs import material_context
+from auto_skill.cleaning.packs import material_context
 from auto_skill.llm.parse import parse_json_object  # noqa: F401
 from auto_skill.schemas import UserExample
 
