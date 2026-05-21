@@ -74,6 +74,7 @@ the historical artifacts remain in use.
 | `metrics/run_self_consistency_metric.py` | Eval-only skill encoding diagnostic; supports signature/judge parse retries. | diagnostic metric |
 | `metrics/run_pattern_similarity_eval.py` | Blind or skill-aware output-pattern similarity judge; supports judge parse retries. | debug-only metric |
 | `metrics/run_pairwise_likeness.py` | Anchor pairwise example-likeness win-rate over existing heldout outputs; supports swapped A/B order and judge parse retries. | diagnostic/API |
+| `metrics/run_author_style_reference_retrieval.py` | Source-derived target/reference/hard-negative oracle metric for author-style packs. | active diagnostic/API |
 | `metrics/run_skill_quality_eval.py` | Ctx2Skill-style five-dimension skill artifact quality judge over public train examples and `skill_md`; summarizes deterministic 0-100 averages. | diagnostic/API |
 | `metrics/summarize_per_criterion_delta.py` | Post-process WritingBench eval rows into per-criterion deltas + keyword-bucket roll-up between two modes (no extra LLM calls). | diagnostic |
 | `metrics/extract_judge_reasons.py` | Join paired baseline/candidate WritingBench judge scores and reasons for losing tasks (no extra LLM calls). | diagnostic |
