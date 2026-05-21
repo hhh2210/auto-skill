@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
+import hashlib as hashlib
 from dataclasses import dataclass
 from typing import Any
 
+from auto_skill.cleaning import benchmark_flow_helpers as _helpers
 from auto_skill.cleaning.data_cleaning import ValidationError, validate_splits
 from auto_skill.cleaning.generated_outputs import (
     latest_generation_rows,
@@ -19,14 +20,20 @@ from auto_skill.cleaning.packs import (
 )
 from auto_skill.schemas import SchemaValidationError, validate_artifact_rows
 
-PRIVATE_KEYS = {"supervision", "judge", "statistics"}
-PRIVATE_KEY_PREFIXES = ("private_",)
-ALLOWED_INDUCTION_FIELDS = {
-    "train_examples.task_input",
-    "train_examples.materials",
-    "train_examples.desired_output.text",
-}
-REQUIRED_INDUCTION_FIELDS = {"train_examples.desired_output.text"}
+PRIVATE_KEYS = _helpers.PRIVATE_KEYS
+PRIVATE_KEY_PREFIXES = _helpers.PRIVATE_KEY_PREFIXES
+ALLOWED_INDUCTION_FIELDS = _helpers.ALLOWED_INDUCTION_FIELDS
+REQUIRED_INDUCTION_FIELDS = _helpers.REQUIRED_INDUCTION_FIELDS
+_duplicate_values = _helpers.duplicate_values
+_find_private_keys = _helpers.find_private_keys
+_pack_private_refs = _helpers.pack_private_refs
+_private_task_map = _helpers.private_task_map
+_sha256_text = _helpers.sha256_text
+_source_task_id = _helpers.source_task_id
+_source_task_map = _helpers.source_task_map
+_split_task_by_source = _helpers.split_task_by_source
+_split_task_map = _helpers.split_task_map
+_task_ids = _helpers.task_ids
 
 
 @dataclass(frozen=True)
@@ -39,111 +46,6 @@ class FlowAuditResult:
     @property
     def ok(self) -> bool:
         return not self.errors
-
-
-def _task_ids(tasks: list[dict[str, Any]], id_key: str) -> set[str]:
-    return {str(task.get(id_key)) for task in tasks if task.get(id_key)}
-
-
-def _source_task_id(task: dict[str, Any]) -> tuple[str, str] | None:
-    source = task.get("source")
-    source_task_id = task.get("source_task_id")
-    if source is None or source_task_id is None:
-        return None
-    return (str(source), str(source_task_id))
-
-
-def _source_task_map(tasks: list[dict[str, Any]], id_key: str) -> dict[str, tuple[str, str]]:
-    mapping: dict[str, tuple[str, str]] = {}
-    for task in tasks:
-        visible_id = task.get(id_key)
-        source_task = _source_task_id(task)
-        if visible_id and source_task is not None:
-            mapping[str(visible_id)] = source_task
-    return mapping
-
-
-def _split_task_map(
-    split: dict[str, Any],
-    role: str,
-) -> set[tuple[str, str]]:
-    values = set()
-    for task in split.get(role, []):
-        source = task.get("source")
-        source_id = task.get("source_id")
-        if source is not None and source_id is not None:
-            values.add((str(source), str(source_id)))
-    return values
-
-
-def _split_task_by_source(
-    split: dict[str, Any] | None,
-    role: str,
-) -> dict[tuple[str, str], dict[str, Any]]:
-    if split is None:
-        return {}
-    mapping: dict[tuple[str, str], dict[str, Any]] = {}
-    for task in split.get(role, []):
-        source = task.get("source")
-        source_id = task.get("source_id")
-        if source is not None and source_id is not None:
-            mapping[(str(source), str(source_id))] = task
-    return mapping
-
-
-def _find_private_keys(value: Any, *, path: str = "$") -> list[str]:
-    matches: list[str] = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}"
-            has_private_prefix = any(
-                key.startswith(prefix) for prefix in PRIVATE_KEY_PREFIXES
-            )
-            if key in PRIVATE_KEYS or has_private_prefix:
-                matches.append(child_path)
-            matches.extend(_find_private_keys(child, path=child_path))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            matches.extend(_find_private_keys(child, path=f"{path}[{index}]"))
-    return matches
-
-
-def _private_task_map(tasks: list[dict[str, Any]]) -> dict[str, tuple[str, str] | None]:
-    mapping: dict[str, tuple[str, str] | None] = {}
-    for task in tasks:
-        task_ref = task.get("task_ref")
-        if task_ref:
-            mapping[str(task_ref)] = _source_task_id(task)
-    return mapping
-
-
-def _pack_private_refs(
-    private_rows: list[dict[str, Any]],
-) -> dict[str, dict[str, dict[str, tuple[str, str] | None]]]:
-    refs: dict[str, dict[str, dict[str, tuple[str, str] | None]]] = {}
-    for row in private_rows:
-        pack_id = str(row.get("pack_id") or "")
-        if not pack_id:
-            continue
-        refs[pack_id] = {
-            "train": _private_task_map(row.get("train_private", [])),
-            "heldout": _private_task_map(row.get("heldout_private", [])),
-        }
-    return refs
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _duplicate_values(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    duplicates: set[str] = set()
-    for value in values:
-        if value in seen:
-            duplicates.add(value)
-        seen.add(value)
-    return sorted(duplicates)
 
 
 def audit_benchmark_flow(
