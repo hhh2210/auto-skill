@@ -32,12 +32,18 @@ Goal: turn benchmark sources into stable JSONL artifacts that collaborators can 
 
 Expected surfaces:
 
-- WritingBench ingestion;
-- PresentBench ingestion;
-- grouping by domain / requirement pattern;
-- train-example / heldout-task split generation;
+- BlogAuthorship ingestion;
+- Mendeley Reddit Cross-Topic Authorship ingestion;
+- grouping by hashed author id, where one author id is one style cluster;
+- train-example / heldout-task split generation from same-author outputs;
+- hard negative examples from other authors/styles;
 - schema validation and summary reports;
 - no large benchmark data committed to git.
+
+WritingBench and PresentBench are runnable legacy surfaces. Keep their existing
+commands working for regression checks, but do not add new adaptation work there
+unless explicitly asked. New benchmark work should target blog/reddit
+author-style cleaning and metrics.
 
 ### 2. Auto-Skills Module
 
@@ -64,7 +70,9 @@ Expected surfaces:
 
 ## Data Flow
 
-`fewshot_splits.jsonl` → `example_packs.jsonl` + `example_private_eval.jsonl` + `example_generation_jobs.jsonl` → `generated_desired_outputs.jsonl` → `example_packs.v1.jsonl` → `skill_mvp.*.jsonl` (one_shot / feature_driven / ours_full) → WritingBench official + PresentBench official/surrogate eval rows → `experiment_readiness.json`. Private rubric/judge metadata only flows through `example_private_eval.jsonl` and the eval scripts; it must never reach the skill-induction prompts.
+Active author-style flow: `clean_posts.jsonl` → `author_style_splits.jsonl` → `author_style_packs.jsonl` + `author_style_private_eval.jsonl` + `hard_negatives.jsonl` → `accepted_author_style_packs.jsonl` + `accepted_author_style_private_eval.jsonl` + `accepted_hard_negatives.jsonl` → author-style heldout/likeness metrics and reports. Private author ids, author hashes, reference outputs, topics, dates, and hard-negative labels must never reach skill-induction prompts.
+
+Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs.jsonl` + `example_private_eval.jsonl` + `example_generation_jobs.jsonl` → `generated_desired_outputs.jsonl` → `example_packs.v1.jsonl` → `skill_mvp.*.jsonl` (one_shot / feature_driven / ours_full) → WritingBench official + PresentBench official/surrogate eval rows → `experiment_readiness.json`. Private rubric/judge metadata only flows through `example_private_eval.jsonl` and the eval scripts; it must never reach the skill-induction prompts.
 
 ## Repository Workflow
 
@@ -76,7 +84,11 @@ Expected surfaces:
 - Desired-output generation supports `--config-prefix MIMO` / `--config-prefix QWEN`
   for building parallel example sets from separately configured OpenAI-compatible
   models in one `.env`.
-- Do not jump from the 8-pack MVP directly to all benchmark cases. Prefer a
+- For new author-style runs, treat one stable hashed author id as one style
+  cluster. Do not add a separate cluster-cleaning pass before the same-author
+  examples are built. Cluster/tag summaries are reporting and stratification
+  aids only.
+- Do not jump from the 8-pack legacy MVP directly to all benchmark cases. Prefer a
   stratified medium expansion first (for example `--max-writing-groups 30
   --max-present-groups 20`) and require split validation, benchmark-flow audit,
   and sampled example-quality audit before full cleaning.
@@ -179,6 +191,8 @@ uv sync --extra dev --extra presentbench
 uv run python -m unittest discover -s tests
 diff -q AGENTS.md CLAUDE.md
 uv run python -c "import google.genai, PIL, pptx, requests, tqdm"
+uv run --with datasets python -m auto_skill.author_style_cleaning --source blog --max-rows 200 --authors 2 --train-posts 2 --heldout-posts 1 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_blog_smoke
+uv run python -m auto_skill.author_style_cleaning --source mendeley-reddit --mendeley-path data/mendeley_reddit_cross_topic/Reddit_Cross-Topic-AV-Corpus_1000_users.zip --authors 2 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_reddit_smoke
 uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl
 uv run python scripts/data/audit_benchmark_flow.py
 uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
@@ -205,6 +219,10 @@ uv run python scripts/ops/report_expanded_cleaning_status.py --splits runs/expan
 uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy artifacts/taxonomies/judge_disagreement_2026-05-09.jsonl --expect-status ok
 uv run ruff check .
 ```
+
+The WritingBench/PresentBench commands above are legacy regression gates. Keep
+them green while the legacy artifacts exist, but do not treat them as the active
+benchmark direction.
 
 `run_generation_jobs.py --dry-run` does not create generated outputs. Only run
 `apply_generated_outputs.py` after a real generation file exists, and treat any

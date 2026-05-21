@@ -8,10 +8,15 @@ Core question:
 
 Current project scope has two tracks:
 
-1. Data cleaning scripts: normalize WritingBench / PresentBench into reproducible train-example and heldout-task splits.
+1. Data cleaning scripts: normalize blog/reddit personal-author corpora into reproducible author-style train-example and heldout-task splits.
 2. Auto-skills module: compile user examples into a structured skill package with feature extraction, cross-example aggregation, validation notes, and generated `SKILL.md`.
 
 The auto-skill module must treat user examples as the only induction input. Benchmark rubrics/checklists may be used only for private data construction checks and heldout evaluation. They must never be normal skill-induction input; any future oracle or upper-bound experiment must be named and isolated separately.
+
+WritingBench and PresentBench are runnable legacy benchmark surfaces. Keep their
+commands working for regression checks, but do not extend them for new
+author-style experiments. New experiments should use the blog/reddit
+author-style cleaning, hard-negative, and likeness-metric pipeline.
 
 ## Repository Layout
 
@@ -27,10 +32,14 @@ data/                  Local benchmark checkouts; ignored.
 
 ## Local Data
 
-- WritingBench: `../WritingBench` in the current local workspace, or `data/WritingBench` if you prefer a repo-local checkout.
-- PresentBench: `data/PresentBench_repo`
+- BlogAuthorship: streamed from Hugging Face by default.
+- Mendeley Reddit Cross-Topic Authorship: `data/mendeley_reddit_cross_topic/Reddit_Cross-Topic-AV-Corpus_1000_users.zip`.
+- Legacy WritingBench: `../WritingBench` in the current local workspace, or `data/WritingBench` for a repo-local checkout.
+- Legacy PresentBench: `data/PresentBench_repo`.
 
-`data/` is ignored because PresentBench is large. Recreate it with:
+`data/` is ignored because the legacy benchmark checkouts and local source zips
+are large. Recreate the legacy PresentBench data only when running old
+regression commands:
 
 ```bash
 git clone https://huggingface.co/datasets/PresentBench/PresentBench data/PresentBench_repo
@@ -41,7 +50,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/PresentBench/
 git -C data/PresentBench_code sparse-checkout set --skip-checks README.md judge.py judge_all.py scoring.py scoring_all.py utils
 ```
 
-Current artifacts were built from a sibling WritingBench checkout:
+Legacy WritingBench artifacts were built from a sibling checkout:
 
 ```bash
 git clone https://github.com/X-PLUG/WritingBench.git ../WritingBench
@@ -104,7 +113,50 @@ The minimal test path uses only the Python standard library:
 uv run python -m unittest discover -s tests
 ```
 
-## Data Workflow
+## Author-Style Data Workflow
+
+The active data workflow builds author-level packs where one hashed author id is
+one style cluster. It does not run a separate cluster-cleaning pass.
+
+Build a blog author-style run:
+
+```bash
+uv run --with datasets python -m auto_skill.author_style_cleaning \
+  --source blog \
+  --max-rows 30000 \
+  --authors 100 \
+  --train-posts 6 \
+  --heldout-posts 3 \
+  --gpt-audit \
+  --audit-thresholds none \
+  --gpt-rerank-negatives \
+  --out-dir runs/author_style/blog_current
+```
+
+Build a reddit author-style run:
+
+```bash
+uv run python -m auto_skill.author_style_cleaning \
+  --source mendeley-reddit \
+  --mendeley-path data/mendeley_reddit_cross_topic/Reddit_Cross-Topic-AV-Corpus_1000_users.zip \
+  --authors 200 \
+  --gpt-audit \
+  --audit-thresholds none \
+  --gpt-rerank-negatives \
+  --out-dir runs/author_style/reddit_current
+```
+
+The accepted artifacts are:
+
+- `accepted_author_style_packs.jsonl`: public train examples and heldout inputs.
+- `accepted_author_style_private_eval.jsonl`: private author references for evaluation only.
+- `accepted_hard_negatives.jsonl`: hard negatives from other authors/styles.
+- `author_style_smoke_summary.json`: construction summary.
+
+## Legacy WritingBench / PresentBench Workflow
+
+The commands below are kept for compatibility and regression checks. They are
+not the active path for new author-style benchmark development.
 
 Inspect benchmark structure:
 

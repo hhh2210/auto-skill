@@ -4,6 +4,12 @@ Core claim:
 
 > If users can only provide a few good examples, the system should infer a reusable skill from those examples and improve performance on new tasks judged by the original benchmark rubrics.
 
+Status: this diagram documents the runnable legacy WritingBench/PresentBench
+flow. The active benchmark direction is blog/reddit personal author-style:
+examples are same-author outputs, one stable hashed author id is one style
+cluster, heldout targets come from that author, and hard negatives come from
+other authors/styles.
+
 ```mermaid
 flowchart LR
     A["Source benchmarks<br/>WritingBench / PresentBench"] --> B["Select related task cluster<br/>same domain / style / requirement pattern"]

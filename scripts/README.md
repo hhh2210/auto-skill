@@ -8,10 +8,27 @@ Do not add a new script for a one-off experiment unless it has a clear owner and
 an expiry path. Prefer adding a subcommand or a library function when the behavior
 will be reused.
 
-## Core Pipeline
+## Active Author-Style Pipeline
 
-These scripts are part of the main benchmark and MVP workflow and should stay
-stable.
+New benchmark work should target the blog/reddit personal author-style path.
+The source-cleaning entrypoint is currently
+`python -m auto_skill.author_style_cleaning`; reusable behavior lives under
+`src/auto_skill/cleaning/author_style/`.
+
+Key active artifacts:
+
+- `accepted_author_style_packs.jsonl`: public same-author train examples and heldout tasks.
+- `accepted_author_style_private_eval.jsonl`: private target/reference material for evaluation only.
+- `accepted_hard_negatives.jsonl`: other-author hard negatives.
+- `author_style_smoke_summary.json`: cleaning and audit summary.
+
+## Legacy WritingBench / PresentBench Pipeline
+
+These scripts remain runnable regression surfaces. Keep them stable, but do not
+extend them for new author-style experiments unless explicitly requested.
+
+These scripts are part of the legacy MVP workflow and should stay stable while
+the historical artifacts remain in use.
 
 ### Data Construction
 
