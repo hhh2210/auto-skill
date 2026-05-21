@@ -5,10 +5,22 @@ from __future__ import annotations
 import json
 from typing import Any
 
+PUBLIC_PARSE_ERROR_CODES = {
+    "json_parse_error",
+    "json_root_is_not_object",
+    "most_similar_candidate_id_must_match_candidate_id",
+    "ranked_candidate_ids_must_be_nonempty_list",
+    "ranked_candidate_ids_must_match_candidate_ids",
+    "ranked_candidate_ids_must_not_repeat",
+    "ranked_candidate_ids_first_must_equal_selected",
+    "confidence_must_be_low_medium_or_high",
+    "rationale_must_be_string",
+}
+
 
 def public_reference_retrieval_report(report: dict[str, Any]) -> dict[str, Any]:
     if "parse_error" in report:
-        return {"parse_error": report["parse_error"]}
+        return {"parse_error": _public_parse_error(report["parse_error"])}
     public_keys = (
         "most_similar_candidate_id",
         "ranked_candidate_ids",
@@ -28,7 +40,7 @@ def public_reference_retrieval_attempts(attempts: list[dict[str, Any]]) -> list[
             "usage": attempt.get("usage"),
             "finish_reason": attempt.get("finish_reason"),
             "request_id": attempt.get("request_id"),
-            "parse_error": attempt.get("parse_error"),
+            "parse_error": _public_parse_error(attempt.get("parse_error")),
         }
         if attempt.get("status") == "success":
             public_attempt["selected_candidate_id"] = attempt.get("selected_candidate_id")
@@ -74,6 +86,14 @@ def reference_retrieval_summary_markdown(summary: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def _public_parse_error(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value in PUBLIC_PARSE_ERROR_CODES:
+        return value
+    return "json_parse_error"
 
 
 def _pct(value: Any) -> str:

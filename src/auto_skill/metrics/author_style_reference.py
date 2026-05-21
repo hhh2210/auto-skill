@@ -98,7 +98,7 @@ def parse_reference_retrieval_report(
 ) -> dict[str, Any]:
     report = parse_json_object(text)
     if "parse_error" in report:
-        return report
+        return {"parse_error": "json_parse_error"}
     selected = _normalize_candidate_id(report.get("most_similar_candidate_id"), candidate_ids)
     if not isinstance(selected, str) or selected not in candidate_ids:
         report["parse_error"] = "most_similar_candidate_id_must_match_candidate_id"

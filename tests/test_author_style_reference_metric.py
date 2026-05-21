@@ -230,6 +230,14 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
         self.assertNotIn("selected_candidate_id", row["judge_parse_attempts"][0])
         self.assertNotIn("PRIVATE_TARGET_SENTINEL", str(row))
 
+    def test_model_controlled_parse_error_is_redacted(self) -> None:
+        report = parse_reference_retrieval_report(
+            '{"parse_error":"PRIVATE_TARGET_SENTINEL"}',
+            candidate_ids={"same-ref"},
+        )
+
+        self.assertEqual(report, {"parse_error": "json_parse_error"})
+
     def test_summary_reports_oracle_accuracy(self) -> None:
         summary = summarize_reference_retrieval_rows(
             [
