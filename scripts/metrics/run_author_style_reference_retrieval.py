@@ -224,8 +224,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
-    if args.references_per_target <= 0:
-        print("error: --references-per-target must be positive", file=sys.stderr)
+    if args.references_per_target != 1:
+        print("error: --references-per-target must be 1", file=sys.stderr)
         return 2
     if args.negatives_per_target <= 0:
         print("error: --negatives-per-target must be positive", file=sys.stderr)

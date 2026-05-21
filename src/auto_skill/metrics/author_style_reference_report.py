@@ -6,6 +6,16 @@ import json
 from typing import Any
 
 
+def public_reference_retrieval_report(report: dict[str, Any]) -> dict[str, Any]:
+    public_keys = (
+        "most_similar_candidate_id",
+        "ranked_candidate_ids",
+        "confidence",
+        "parse_error",
+    )
+    return {key: report[key] for key in public_keys if key in report}
+
+
 def reference_retrieval_summary_markdown(summary: dict[str, Any]) -> str:
     lines = [
         "# Author-Style Reference Retrieval Oracle",

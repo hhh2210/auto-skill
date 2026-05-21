@@ -6,6 +6,7 @@ from auto_skill.metrics.author_style_reference import (
     ReferenceCandidate,
     build_reference_retrieval_jobs,
     build_reference_retrieval_prompt,
+    build_success_row,
     parse_reference_retrieval_report,
     summarize_reference_retrieval_rows,
 )
@@ -101,6 +102,18 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
         self.assertNotIn("parse_error", report)
         self.assertEqual(report["most_similar_candidate_id"], "same-ref")
 
+    def test_parse_report_normalizes_candidate_prefix(self) -> None:
+        report = parse_reference_retrieval_report(
+            '{"most_similar_candidate_id":"candidate same-ref",'
+            '"ranked_candidate_ids":["Candidate same-ref","candidate negative::1"],'
+            '"confidence":"high","rationale":"style match"}',
+            candidate_ids={"same-ref", "negative::1"},
+        )
+
+        self.assertNotIn("parse_error", report)
+        self.assertEqual(report["most_similar_candidate_id"], "same-ref")
+        self.assertEqual(report["ranked_candidate_ids"], ["same-ref", "negative::1"])
+
     def test_parse_report_rejects_unknown_candidate(self) -> None:
         report = parse_reference_retrieval_report(
             '{"most_similar_candidate_id":"missing",'
@@ -113,6 +126,59 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
             report["parse_error"],
             "most_similar_candidate_id_must_match_candidate_id",
         )
+
+    def test_build_jobs_reject_multiple_references_per_target(self) -> None:
+        with self.assertRaisesRegex(ValueError, "references_per_target must be 1"):
+            build_reference_retrieval_jobs(
+                packs=[_pack()],
+                private_eval=[],
+                hard_negatives=[],
+                references_per_target=2,
+            )
+
+    def test_success_row_redacts_rationale_and_counts_hard_negatives(self) -> None:
+        jobs, _ = build_reference_retrieval_jobs(
+            packs=[_pack()],
+            private_eval=[
+                {
+                    "pack_id": "author_style_personal_blog_0001",
+                    "heldout_private": [
+                        {
+                            "task_ref": "author_style_personal_blog_0001::heldout::0",
+                            "reference_output_private": "PRIVATE_TARGET_SENTINEL",
+                        }
+                    ],
+                }
+            ],
+            hard_negatives=[
+                {
+                    "target_task_ref": "author_style_personal_blog_0001::heldout::0",
+                    "negative_id": "neg-1",
+                    "negative_type": "topic_time_length_style_matched_impostor",
+                    "public_negative_text": "PRIVATE_NEGATIVE_SENTINEL",
+                }
+            ],
+        )
+        row = build_success_row(
+            job=jobs[0],
+            judge={"model": "judge"},
+            report={
+                "most_similar_candidate_id": "author_style_personal_blog_0001::train::0",
+                "ranked_candidate_ids": [
+                    "author_style_personal_blog_0001::train::0",
+                    "negative::1",
+                ],
+                "confidence": "high",
+                "rationale": "PRIVATE_TARGET_SENTINEL PRIVATE_NEGATIVE_SENTINEL",
+            },
+            status="success",
+            attempts=[],
+        )
+
+        self.assertEqual(row["hard_negative_count"], 1)
+        self.assertNotIn("rationale", row["judge_report"])
+        self.assertNotIn("PRIVATE_TARGET_SENTINEL", str(row))
+        self.assertNotIn("PRIVATE_NEGATIVE_SENTINEL", str(row))
 
     def test_summary_reports_oracle_accuracy(self) -> None:
         summary = summarize_reference_retrieval_rows(

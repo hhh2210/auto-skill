@@ -9,6 +9,7 @@ from typing import Any
 
 from auto_skill.llm.parse import parse_json_object
 from auto_skill.metrics.author_style_reference_report import (  # noqa: F401
+    public_reference_retrieval_report,
     reference_retrieval_summary_markdown,
 )
 
@@ -97,10 +98,11 @@ def parse_reference_retrieval_report(
     report = parse_json_object(text)
     if "parse_error" in report:
         return report
-    selected = report.get("most_similar_candidate_id")
+    selected = _normalize_candidate_id(report.get("most_similar_candidate_id"), candidate_ids)
     if not isinstance(selected, str) or selected not in candidate_ids:
         report["parse_error"] = "most_similar_candidate_id_must_match_candidate_id"
         return report
+    report["most_similar_candidate_id"] = selected
     ranked = report.get("ranked_candidate_ids")
     if not isinstance(ranked, list) or not ranked:
         report["parse_error"] = "ranked_candidate_ids_must_be_nonempty_list"
@@ -108,17 +110,19 @@ def parse_reference_retrieval_report(
     clean_ranked = []
     seen = set()
     for item in ranked:
-        if not isinstance(item, str) or item not in candidate_ids:
+        normalized = _normalize_candidate_id(item, candidate_ids)
+        if not isinstance(normalized, str) or normalized not in candidate_ids:
             report["parse_error"] = "ranked_candidate_ids_must_match_candidate_ids"
             return report
-        if item in seen:
+        if normalized in seen:
             report["parse_error"] = "ranked_candidate_ids_must_not_repeat"
             return report
-        seen.add(item)
-        clean_ranked.append(item)
+        seen.add(normalized)
+        clean_ranked.append(normalized)
     if clean_ranked[0] != selected:
         report["parse_error"] = "ranked_candidate_ids_first_must_equal_selected"
         return report
+    report["ranked_candidate_ids"] = clean_ranked
     if report.get("confidence") not in {"low", "medium", "high"}:
         report["parse_error"] = "confidence_must_be_low_medium_or_high"
         return report
@@ -157,6 +161,9 @@ def build_reference_retrieval_jobs(
     references_per_target: int = 1,
     negatives_per_target: int = 4,
 ) -> tuple[list[ReferenceRetrievalJob], list[dict[str, Any]]]:
+    if references_per_target != 1:
+        raise ValueError("references_per_target must be 1 for this oracle metric")
+
     private_by_pack = {str(row.get("pack_id") or ""): row for row in private_eval}
     negatives_by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in hard_negatives:
@@ -256,9 +263,7 @@ def build_success_row(
         "oracle_correct": selected == job.expected_candidate_id if status == "success" else None,
         "expected_rank": rank,
         "candidate_count": len(job.candidates),
-        "hard_negative_count": sum(
-            1 for candidate in job.candidates if candidate.kind != "reference"
-        ),
+        "hard_negative_count": _hard_negative_count(job.candidates),
         "candidate_manifest": [
             {
                 "candidate_id": candidate.candidate_id,
@@ -271,7 +276,7 @@ def build_success_row(
         ],
         "judge": judge,
         "judge_parse_attempts": attempts,
-        "judge_report": report,
+        "judge_report": public_reference_retrieval_report(report),
     }
 
 
@@ -297,9 +302,7 @@ def build_error_row(
         "oracle_correct": None,
         "expected_rank": None,
         "candidate_count": len(job.candidates),
-        "hard_negative_count": sum(
-            1 for candidate in job.candidates if candidate.kind != "reference"
-        ),
+        "hard_negative_count": _hard_negative_count(job.candidates),
         "candidate_manifest": [
             {
                 "candidate_id": candidate.candidate_id,
@@ -395,6 +398,26 @@ def _train_reference_candidates(
         if len(candidates) >= limit:
             break
     return candidates
+
+
+def _normalize_candidate_id(value: Any, candidate_ids: set[str]) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if value in candidate_ids:
+        return value
+    stripped = value.strip()
+    if stripped in candidate_ids:
+        return stripped
+    lower_prefix = "candidate "
+    if stripped.lower().startswith(lower_prefix):
+        suffix = stripped[len(lower_prefix) :].strip()
+        if suffix in candidate_ids:
+            return suffix
+    return stripped
+
+
+def _hard_negative_count(candidates: list[ReferenceCandidate]) -> int:
+    return sum(1 for candidate in candidates if candidate.kind != "same_author_reference")
 
 
 def _hard_negative_candidates(
