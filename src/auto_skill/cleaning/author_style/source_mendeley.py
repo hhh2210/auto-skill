@@ -12,6 +12,7 @@ from pathlib import Path
 from auto_skill.cleaning.author_style.common import (
     CleanPost,
     content_tags,
+    minimal_reject_reasons,
     normalize_text,
     reject_reasons,
     stable_hash,
@@ -113,10 +114,20 @@ def clean_mendeley_reddit_doc(
     role_index: int,
     min_words: int,
     max_words: int,
+    min_normalized_chars: int = 20,
+    filter_policy: str = "strict",
 ) -> CleanPost | None:
     text = normalize_text(text)
     tokens = word_tokens(text)
-    if reject_reasons(text, tokens, min_words=min_words, max_words=max_words):
+    if filter_policy == "minimal":
+        reasons = minimal_reject_reasons(
+            text=text,
+            raw_author_id=doc_author,
+            min_normalized_chars=min_normalized_chars,
+        )
+    else:
+        reasons = reject_reasons(text, tokens, min_words=min_words, max_words=max_words)
+    if reasons:
         return None
     is_same_author_problem = truth_label == "Y"
     author_hash = stable_hash(f"mendeley-reddit:{doc_author}", prefix="author")
@@ -205,6 +216,8 @@ def load_mendeley_reddit_posts(args: argparse.Namespace) -> list[CleanPost]:
                 role_index=role_index,
                 min_words=args.min_words,
                 max_words=args.max_words,
+                min_normalized_chars=getattr(args, "min_normalized_chars", 20),
+                filter_policy=getattr(args, "ingestion_filter", "strict"),
             ),
         )
     return posts

@@ -100,14 +100,10 @@ def choose_authors(
         author_posts = sorted(author_posts, key=lambda item: (item.private_date, item.source_id))
         if len(author_posts) < required:
             continue
-        feature_tags = derive_cluster_tags(aggregate_style_features(author_posts[:train_posts]))
-        topic_count = len({post.private_topic for post in author_posts})
-        candidates.append(
-            (len(feature_tags), topic_count, len(author_posts), author_hash, author_posts)
-        )
-    candidates.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
+        candidates.append((author_hash, author_posts))
+    candidates.sort(key=lambda item: item[0])
     selected = []
-    for _, _, _, author_hash, author_posts in candidates[:authors]:
+    for author_hash, author_posts in candidates[:authors]:
         selected.append(
             (
                 author_hash,
@@ -362,6 +358,10 @@ def source_inventory_row(args: argparse.Namespace, posts: list[CleanPost]) -> di
         "topics_with_clean_posts": len(by_topic),
         "min_words": args.min_words,
         "max_words": args.max_words,
+        "min_normalized_chars": getattr(args, "min_normalized_chars", None),
+        "ingestion_filter": getattr(args, "ingestion_filter", None),
+        "exact_text_dedupe": getattr(args, "exact_text_dedupe", None),
+        "exact_text_dedupe_report": getattr(args, "exact_text_dedupe_report", None),
         "top_clean_post_counts_per_author": sorted(by_author.values(), reverse=True)[:20],
         "top_topics": [
             {"topic_private": topic, "clean_posts": count}

@@ -311,7 +311,13 @@ def load_blog_posts(args: argparse.Namespace) -> list[CleanPost]:
     scanned = 0
     for row in dataset:
         scanned += 1
-        clean = clean_blog_row(row, min_words=args.min_words, max_words=args.max_words)
+        clean = clean_blog_row(
+            row,
+            min_words=args.min_words,
+            max_words=args.max_words,
+            min_normalized_chars=getattr(args, "min_normalized_chars", 20),
+            filter_policy=getattr(args, "ingestion_filter", "strict"),
+        )
         if clean is not None:
             posts.append(clean)
         if scanned >= args.max_rows:

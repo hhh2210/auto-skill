@@ -17,6 +17,7 @@ from auto_skill.author_style_cleaning import (
     clean_blog_row,
     clean_longlamp_product_profile_item,
     clean_longlamp_topic_output,
+    dedupe_posts_by_text,
     filter_negatives_by_pack_ids,
     find_hard_negatives,
     find_mendeley_native_impostor_negatives,
@@ -114,6 +115,97 @@ class AuthorStyleCleaningTests(unittest.TestCase):
         self.assertEqual(post.private_topic, "Technology")
         self.assertTrue(post.author_hash.startswith("author_"))
         self.assertNotIn("12345", post.author_hash)
+
+    def test_minimal_blog_cleaning_drops_normalized_placeholder(self) -> None:
+        row = {
+            "id": "12345",
+            "date": "02,August,2004",
+            "topic": "Technology",
+            "text": "urlLink",
+        }
+
+        post = clean_blog_row(
+            row,
+            min_words=80,
+            max_words=900,
+            filter_policy="minimal",
+            min_normalized_chars=20,
+        )
+
+        self.assertIsNone(post)
+
+    def test_minimal_blog_cleaning_keeps_short_real_post(self) -> None:
+        row = {
+            "id": "12345",
+            "date": "02,August,2004",
+            "topic": "Technology",
+            "text": "Today I fixed one tiny annoying thing",
+        }
+
+        minimal = clean_blog_row(
+            row,
+            min_words=80,
+            max_words=900,
+            filter_policy="minimal",
+            min_normalized_chars=20,
+        )
+        strict = clean_blog_row(row, min_words=80, max_words=900, filter_policy="strict")
+
+        self.assertIsNotNone(minimal)
+        self.assertIsNone(strict)
+
+    def test_exact_text_dedupe_keeps_first_normalized_text(self) -> None:
+        first = clean_post(
+            author_hash="author_a",
+            source_id="post-a",
+            topic="Tech",
+            date="2004-09-01",
+            text_seed="duplicate",
+        )
+        duplicate = CleanPost(
+            **{
+                **first.__dict__,
+                "author_hash": "author_b",
+                "source_id": "post-b",
+                "raw_author_id": "raw_b",
+            }
+        )
+
+        posts, report = dedupe_posts_by_text([first, duplicate])
+
+        self.assertEqual(posts, [first])
+        self.assertEqual(report["duplicate_rows_dropped"], 1)
+
+    def test_choose_authors_uses_author_hash_order_not_feature_richness(self) -> None:
+        low_feature_author = [
+            clean_post(
+                author_hash="author_a",
+                source_id=f"a-{index}",
+                topic="one-topic",
+                date=f"2004-09-0{index + 1}",
+                text_seed="plain",
+            )
+            for index in range(2)
+        ]
+        high_feature_author = [
+            clean_post(
+                author_hash="author_z",
+                source_id=f"z-{index}",
+                topic=f"topic-{index}",
+                date=f"2004-09-0{index + 1}",
+                text_seed="expressive",
+            )
+            for index in range(6)
+        ]
+
+        selected = choose_authors(
+            high_feature_author + low_feature_author,
+            authors=1,
+            train_posts=1,
+            heldout_posts=1,
+        )
+
+        self.assertEqual(selected[0][0], "author_a")
 
     def test_public_pack_is_runner_readable_and_hides_heldout_output(self) -> None:
         train = [

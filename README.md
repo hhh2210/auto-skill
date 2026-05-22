@@ -133,6 +133,11 @@ uv run --with datasets python -m auto_skill.author_style_cleaning \
   --out-dir runs/author_style/blog_current
 ```
 
+Author-style cleaning defaults to minimal ingestion for blog/reddit corpora:
+schema-broken or too-short normalized text rows are dropped, exact normalized
+text duplicates are deduped, and word-count / lexical-diversity / stopword /
+uppercase heuristics are left for metric stratification instead of ingestion.
+
 Build a reddit author-style run:
 
 ```bash

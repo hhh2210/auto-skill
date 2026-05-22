@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from auto_skill.cleaning.author_style.common import CleanPost, write_jsonl
+from auto_skill.cleaning.author_style.common import CleanPost, dedupe_posts_by_text, write_jsonl
 from auto_skill.cleaning.author_style.gpt import (
     audit_passes_thresholds,
     audit_threshold_policy,
@@ -76,6 +76,14 @@ def build_report(
         "source": args.source,
         "hf_dataset": args.hf_dataset,
         "scanned_max_rows": args.max_rows,
+        "ingestion": {
+            "filter": args.ingestion_filter,
+            "min_normalized_chars": args.min_normalized_chars,
+            "exact_text_dedupe": args.exact_text_dedupe,
+            "exact_text_dedupe_report": getattr(args, "exact_text_dedupe_report", None),
+            "strict_min_words": args.min_words,
+            "strict_max_words": args.max_words,
+        },
         "clean_posts": len(posts),
         "selected_authors": len(selected),
         "packs": len(packs),
@@ -158,6 +166,15 @@ def main() -> int:
     parser.add_argument("--negatives-per-heldout", type=int, default=2)
     parser.add_argument("--negative-prefilter-size", type=int, default=24)
     parser.add_argument("--negative-author-cap", type=int, default=2)
+    parser.add_argument("--ingestion-filter", choices=("minimal", "strict"), default="minimal")
+    parser.add_argument(
+        "--min-normalized-chars",
+        type=int,
+        default=20,
+        help="Minimal ingestion drops normalized text shorter than this character count.",
+    )
+    parser.add_argument("--no-exact-text-dedupe", dest="exact_text_dedupe", action="store_false")
+    parser.set_defaults(exact_text_dedupe=True)
     parser.add_argument("--min-words", type=int, default=80)
     parser.add_argument("--max-words", type=int, default=900)
     parser.add_argument("--longlamp-profile-items-per-row", type=int, default=12)
@@ -198,6 +215,8 @@ def main() -> int:
             args.max_words = 2_500
     if args.gpt_max_attempts < 1:
         parser.error("--gpt-max-attempts must be positive")
+    if args.min_normalized_chars < 1:
+        parser.error("--min-normalized-chars must be positive")
     if args.hf_dataset is None:
         if args.source == "blog":
             args.hf_dataset = "paoramen/blog-authorship-corpus"
@@ -206,6 +225,9 @@ def main() -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     posts = load_posts(args)
+    args.exact_text_dedupe_report = None
+    if args.exact_text_dedupe:
+        posts, args.exact_text_dedupe_report = dedupe_posts_by_text(posts)
     selected = choose_authors(
         posts,
         authors=args.authors,

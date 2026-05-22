@@ -179,7 +179,54 @@ def reject_reasons(text: str, tokens: list[str], *, min_words: int, max_words: i
     return reasons
 
 
-def clean_blog_row(row: dict[str, Any], *, min_words: int, max_words: int) -> CleanPost | None:
+def normalized_text_key(text: str) -> str:
+    return normalize_text(text).casefold()
+
+
+def minimal_reject_reasons(
+    *,
+    text: str,
+    raw_author_id: str,
+    min_normalized_chars: int,
+) -> list[str]:
+    reasons: list[str] = []
+    if not raw_author_id:
+        reasons.append("empty_author")
+    if not text:
+        reasons.append("empty_text")
+    elif len(text) < min_normalized_chars:
+        reasons.append("too_few_normalized_chars")
+    return reasons
+
+
+def dedupe_posts_by_text(posts: list[CleanPost]) -> tuple[list[CleanPost], dict[str, Any]]:
+    seen: set[str] = set()
+    deduped: list[CleanPost] = []
+    duplicate_rows = 0
+    for post in posts:
+        key = normalized_text_key(post.text)
+        if key in seen:
+            duplicate_rows += 1
+            continue
+        seen.add(key)
+        deduped.append(post)
+    return deduped, {
+        "enabled": True,
+        "key": "normalized_text.casefold",
+        "input_rows": len(posts),
+        "output_rows": len(deduped),
+        "duplicate_rows_dropped": duplicate_rows,
+    }
+
+
+def clean_blog_row(
+    row: dict[str, Any],
+    *,
+    min_words: int,
+    max_words: int,
+    min_normalized_chars: int = 20,
+    filter_policy: str = "strict",
+) -> CleanPost | None:
     raw_author_id = str(row.get("id") or "").strip()
     raw_date = str(row.get("date") or "").strip()
     parsed_date = parse_blog_date(raw_date)
@@ -187,7 +234,14 @@ def clean_blog_row(row: dict[str, Any], *, min_words: int, max_words: int) -> Cl
         return None
     text = normalize_text(str(row.get("text") or ""))
     tokens = word_tokens(text)
-    reasons = reject_reasons(text, tokens, min_words=min_words, max_words=max_words)
+    if filter_policy == "minimal":
+        reasons = minimal_reject_reasons(
+            text=text,
+            raw_author_id=raw_author_id,
+            min_normalized_chars=min_normalized_chars,
+        )
+    else:
+        reasons = reject_reasons(text, tokens, min_words=min_words, max_words=max_words)
     if reasons:
         return None
     author_hash = stable_hash(f"blog-authorship:{raw_author_id}", prefix="author")

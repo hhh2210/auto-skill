@@ -88,6 +88,11 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
   cluster. Do not add a separate cluster-cleaning pass before the same-author
   examples are built. Cluster/tag summaries are reporting and stratification
   aids only.
+- Blog/reddit author-style ingestion is minimal by default: drop schema-broken or
+  too-short normalized text rows, then exact-dedupe by normalized text. Do not
+  filter by word count, lexical diversity, stopword hits, lyrics/copyright
+  substrings, or uppercase heuristics unless running an explicitly named strict
+  diagnostic. Length and quality signals belong in metric stratification reports.
 - Do not jump from the 8-pack legacy MVP directly to all benchmark cases. Prefer a
   stratified medium expansion first (for example `--max-writing-groups 30
   --max-present-groups 20`) and require split validation, benchmark-flow audit,
