@@ -22,6 +22,10 @@ Key active artifacts:
 - `accepted_hard_negatives.jsonl`: other-author hard negatives.
 - `author_style_smoke_summary.json`: cleaning and audit summary.
 
+| Script | Purpose | Status |
+| --- | --- | --- |
+| `data/profile_author_style_corpus.py` | Profile raw blog/reddit author-style corpora before choosing filters; writes JSON and Markdown reports for length, author concentration, exact duplicates, and triple feasibility. | active diagnostic |
+
 ## Legacy WritingBench / PresentBench Pipeline
 
 These scripts remain runnable regression surfaces. Keep them stable, but do not
