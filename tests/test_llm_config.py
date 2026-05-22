@@ -10,6 +10,7 @@ from auto_skill.llm import (
     ChatCompletionClient,
     ChatCompletionConfig,
     ConfigError,
+    parse_int_env,
     parse_optional_bool_env,
     parse_optional_positive_int_env,
     parse_positive_int_env,
@@ -20,6 +21,11 @@ class LLMConfigTests(unittest.TestCase):
     def test_parse_positive_int_env_uses_default_when_unset(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(parse_positive_int_env("BAILIAN_NUM_THREADS", default=1), 1)
+
+    def test_parse_int_env_rejects_negative_to_preserve_legacy_contract(self) -> None:
+        with patch.dict(os.environ, {"BAILIAN_MAX_RETRIES": "-1"}, clear=True):
+            with self.assertRaisesRegex(ConfigError, "must be non-negative"):
+                parse_int_env("BAILIAN_MAX_RETRIES", default=0)
 
     def test_parse_positive_int_env_rejects_zero(self) -> None:
         with patch.dict(os.environ, {"BAILIAN_NUM_THREADS": "0"}, clear=True):

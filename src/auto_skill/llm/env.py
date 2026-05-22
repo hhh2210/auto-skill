@@ -127,6 +127,8 @@ def parse_int_env(name: str, *, default: int) -> int:
         value = int(raw)
     except ValueError as exc:
         raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+    if value < 0:
+        raise ConfigError(f"{name} must be non-negative, got {raw!r}")
     return value
 
 

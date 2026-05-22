@@ -25,18 +25,9 @@ class BaselineSpec:
 
 @runtime_checkable
 class Baseline(Protocol):
-    """Common dispatch surface for heldout-generation baselines."""
+    """Common dispatch surface for heldout-generation baseline prompts."""
 
     spec: BaselineSpec
-
-    def induce(
-        self,
-        pack: dict[str, Any],
-        *,
-        llm: Any,
-        options: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        """Return a skill row, or None for prompt-only heldout baselines."""
 
     def build_heldout_prompt(
         self,

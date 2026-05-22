@@ -1,4 +1,4 @@
-"""Baseline registry for skill-induction and heldout evaluation modes."""
+"""Baseline registry for heldout prompt dispatch and skill-row metadata."""
 
 from __future__ import annotations
 
@@ -21,15 +21,6 @@ class PromptBaseline:
     """Registry adapter for modes that share the canonical heldout prompt builder."""
 
     spec: BaselineSpec
-
-    def induce(
-        self,
-        pack: dict[str, Any],
-        *,
-        llm: Any,
-        options: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        return None
 
     def build_heldout_prompt(
         self,
