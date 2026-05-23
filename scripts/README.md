@@ -8,6 +8,20 @@ Do not add a new script for a one-off experiment unless it has a clear owner and
 an expiry path. Prefer adding a subcommand or a library function when the behavior
 will be reused.
 
+## Status Legend
+
+- `core`: stable project workflow; needs tests or a documented smoke command.
+- `CI/core` or `core gate`: expected to stay runnable before code handoff.
+- `active diagnostic`: research/debug surface with current owner; review or
+  archive if unused for six months.
+- `debug-only` or `debug-only metric`: not paper-facing evidence unless promoted
+  with tests, docs, and explicit leakage boundaries.
+- `prototype`: allowed to change quickly; promote reusable behavior into
+  `src/auto_skill/` on the second serious reuse or repeated fixes.
+- `archive candidate`: disposable unless refreshed with owner, test, and expiry.
+- `/API`: makes model/provider calls; must support dry-run, resume, or bounded
+  smoke usage when practical.
+
 ## Active Author-Style Pipeline
 
 New benchmark work should target the blog/reddit personal author-style path.
@@ -25,6 +39,18 @@ Key active artifacts:
 | Script | Purpose | Status |
 | --- | --- | --- |
 | `data/profile_author_style_corpus.py` | Profile raw blog/reddit author-style corpora before choosing filters; writes JSON and Markdown reports for length, author concentration, exact duplicates, and triple feasibility. | active diagnostic |
+
+### Research Probes
+
+These scripts build ignored `runs/probes/...` artifacts for metric calibration.
+They should stay small and disposable: canonical cleaning and judge behavior must
+remain in the library / metric runners above.
+
+| Script | Purpose | Status |
+| --- | --- | --- |
+| `probes/build_author_style_probe_artifacts.py` | Build fresh-minimal T2 oracle and pairwise probe artifacts from `clean_posts.jsonl` without running judges. | active diagnostic |
+| `probes/run_author_style_pairwise_separation.py` | Run gpt-5.5 Codex-OAuth within/cross author-style similarity scoring over private probe jobs. | active diagnostic/API |
+| `probes/summarize_author_style_probe.py` | Summarize oracle, cross-check, pairwise, and optional legacy-strict controls into JSON plus a short Markdown report. | active diagnostic |
 
 ## Legacy WritingBench / PresentBench Pipeline
 

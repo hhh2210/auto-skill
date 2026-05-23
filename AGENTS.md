@@ -4,6 +4,17 @@
 
 Default discussion language is Chinese. Keep key technical terms in English when they are part of the method or code.
 
+## Living Guide Maintenance
+
+This file is for durable collaboration rules, architecture boundaries, and
+validation commands. Do not use it as a running experiment log. Dated run
+evidence belongs in `notes/` or `docs/`; `AGENTS.md` should only point to that
+evidence when it changes an active rule or a required validation command.
+
+When project assumptions change, update this file in the same PR as the code or
+artifact change. Keep entries short and operational: what future agents must do,
+what they must not do, and which command verifies the invariant.
+
 ## Canonical Research Framing
 
 The project is **few-shot skill induction from user examples**.
@@ -97,16 +108,6 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
   stratified medium expansion first (for example `--max-writing-groups 30
   --max-present-groups 20`) and require split validation, benchmark-flow audit,
   and sampled example-quality audit before full cleaning.
-- Current expanded-cleaning evidence lives in
-  `notes/expanded_cleaning_strategy_2026-05-08.md`, with local artifact hashes in
-  `docs/expanded_cleaning_manifest_2026-05-08.md`: Qwen3.5-Plus completed the
-  30WB/20PB local pass and the max-available Qwen pass
-  (`runs/expanded/example_packs.max_available.qwen.v1.jsonl`: 142 packs, 426
-  frozen train examples, 284 heldout tasks, benchmark-flow `status=ok`). MIMO
-  has an audited local subset pack
-  (`runs/expanded/example_packs.30wb_20pb.mimo.sample.v1.jsonl`: 15 packs, 45
-  frozen train examples, benchmark-flow `status=ok`), but it is not the
-  canonical expanded dataset because full MIMO cleaning is not frozen.
 - Generation sampling temperature must be explicit for production runs: use `--temperature` or `BAILIAN_TEMPERATURE`; when unset the provider/model default is used.
 - API generation is sequential by default. For batch cleaning, use `--num-threads` or `BAILIAN_NUM_THREADS`; with the current high-RPM Bailian quota, start with 16 and use the printed timing/error rate to decide whether to increase toward 32.
 - For long PresentBench jobs, prefer `--timeout-seconds 600 --max-retries 0` while estimating throughput; repeated 120s SDK retries hide the true per-job latency.
@@ -173,7 +174,8 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
   Qwen-only scored run. In that case the gate emits `scored_model_monoculture`.
   Metrics summaries keep `model_inventory` focused on heldout eval rows and put
   self-consistency or other diagnostic rows in `diagnostic_model_inventory`.
-- Before pushing code, run `uv run python -m unittest discover -s tests`,
+- Before pushing code, run `uv run ruff check .`,
+  `uv run python -m unittest discover -s tests`,
   `uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl`,
   and the readiness gate below. A not-ready report is acceptable during
   prototyping only when it is explicit and expected, never silently green.
@@ -187,6 +189,71 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
 - Use explicit schemas and validation for JSONL records.
 - Avoid hidden benchmark leakage: if a function consumes rubric/checklist/teacher traces, name it as benchmark/eval-only.
 - Add or update tests for shared parsing, validation, aggregation, and prompt-building logic.
+- Prefer static correctness checks over style-only churn. `uv run ruff check .`
+  is the required Python lint gate; treat undefined names/imports, bug-prone
+  constructs, invalid upgrades, and import graph issues as real blockers.
+  Formatting-only rewrites should be scoped, intentional, and not mixed into
+  behavioral changes.
+- Keep experimental code composable. Prefer building small artifact generators
+  that reuse existing cleaning, negative-selection, prompt, parser, and report
+  modules over adding all-in-one research scripts.
+- Treat the second run of a temporary experiment as the promotion point. If an
+  experiment is rerun after the initial probe, move the reusable behavior into
+  maintained code under `src/auto_skill/` plus a documented thin script, or
+  explicitly archive the experiment and explain why it should not become part of
+  the project surface.
+- Long-running or API-backed scripts need `--dry-run`, `--resume` when outputs
+  are append-only, deterministic `--seed` for sampling, explicit output schemas,
+  and public/private artifact boundaries.
+- A new file over roughly 300 lines, or a patch that adds roughly 500 lines, is
+  an architecture smell. Stop and split responsibilities before continuing
+  unless the file is generated or schema-only.
+- Do not duplicate model transport logic. Add provider-specific options to the
+  shared client or transport wrapper, then expose them through thin CLIs.
+- New probe or diagnostic scripts must be listed in `scripts/README.md` with an
+  owner category and lifecycle status (`active diagnostic`, `debug-only`,
+  `archive candidate`, etc.).
+
+## Architecture-First Discipline
+
+Before writing a new file, adding more than ~20 lines to an existing file, or
+starting any "implementation" task, run a 60-second discovery first. The goal
+is to write code that lives in the right place and reuses existing helpers,
+not to draft a 600-line self-contained script that the size hook will later
+reject.
+
+The fastest path is the helper script:
+
+```bash
+./tools/where_does_it_live.sh <concept-or-function-keyword>
+```
+
+It prints the current `src/auto_skill/` package tree, every existing module
+that already mentions `<concept>`, and the largest modules near the 300-line
+limit. If you skip the helper, run the equivalent commands by hand:
+
+1. `find src/auto_skill -maxdepth 3 -type d | grep -v __pycache__` — confirm
+   the package layout. New behavior must land in an existing package unless a
+   new one is justified.
+2. `rg -l "<core concept>|<function name>" src/auto_skill` — confirm whether
+   the concept or its helpers already exist. If yes: import; do not
+   re-implement. The `style_similarity` / `length_ratio` / `jaccard` /
+   `days_apart` family in `cleaning/author_style/pack_negatives.py` is a
+   recurring trap.
+3. `wc -l <target file>` and sibling files — confirm you are not pushing the
+   file past 300 lines. If you are, split before adding.
+4. State the architectural decision in 1-2 sentences (in your reply, the
+   commit body, or the PR description): `X belongs in
+   src/auto_skill/<path> because <reason>; reused helpers: <list>` (or
+   `<none — first implementation>`).
+
+Skip this only for typo fixes, comment-only edits, or in-place rename
+refactors of existing code with no new module.
+
+Scripts in `scripts/` are CLI shells. They must import library logic from
+`src/auto_skill/`; reimplementing helpers inside a script is a process
+violation, not a style preference. When unsure where something belongs,
+propose the location first and wait for confirmation — do not start writing.
 
 ## Current Validation Commands
 
