@@ -28,6 +28,12 @@ def days_apart(left: str, right: str) -> int:
 def style_similarity(left: CleanPost, right: CleanPost) -> float:
     """Return a rough 0-1 similarity over cheap surface-style features."""
 
+    return style_similarity_features(left.style_features, right.style_features)
+
+
+def style_similarity_features(left: dict[str, float], right: dict[str, float]) -> float:
+    """Return a rough 0-1 similarity over cheap surface-style feature dicts."""
+
     normalizers = {
         "avg_sentence_words": 30.0,
         "question_per_100w": 3.0,
@@ -40,12 +46,18 @@ def style_similarity(left: CleanPost, right: CleanPost) -> float:
     }
     distances = []
     for key, normalizer in normalizers.items():
-        if key not in left.style_features or key not in right.style_features:
+        if key not in left or key not in right:
             continue
-        distances.append(abs(left.style_features[key] - right.style_features[key]) / normalizer)
+        distances.append(abs(left[key] - right[key]) / normalizer)
     if not distances:
         return 0.0
     return round(max(0.0, 1.0 - min(1.0, sum(distances) / len(distances))), 3)
+
+
+def word_count_length_ratio(left_word_count: int, right_word_count: int) -> float:
+    """Return a 0-1 length match score for two word counts."""
+
+    return min(left_word_count, right_word_count) / max(left_word_count, right_word_count, 1)
 
 
 def find_hard_negatives(
@@ -65,9 +77,7 @@ def find_hard_negatives(
             scored = []
             for candidate in pool:
                 topic_match = int(candidate.private_topic == heldout.private_topic)
-                length_ratio = min(candidate.word_count, heldout.word_count) / max(
-                    candidate.word_count, heldout.word_count
-                )
+                length_ratio = word_count_length_ratio(candidate.word_count, heldout.word_count)
                 time_score = max(
                     0.0, 1.0 - days_apart(candidate.private_date, heldout.private_date) / 365
                 )
@@ -165,9 +175,7 @@ def find_mendeley_native_impostor_negatives(
         pack_id = pack_ids_by_author[target_author_hash]
         for heldout_index, heldout in enumerate(heldout_posts):
             topic_match = int(candidate.private_topic == heldout.private_topic)
-            length_ratio = min(candidate.word_count, heldout.word_count) / max(
-                candidate.word_count, heldout.word_count
-            )
+            length_ratio = word_count_length_ratio(candidate.word_count, heldout.word_count)
             time_score = max(
                 0.0, 1.0 - days_apart(candidate.private_date, heldout.private_date) / 365
             )

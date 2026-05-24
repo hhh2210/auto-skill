@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ def codex_response_text(
     auth_path: Path,
     instructions: str,
     service_tier: str | None,
+    reasoning_effort: str | None = None,
     timeout_seconds: float,
 ) -> tuple[str, dict[str, Any] | None]:
     access_token, account_id = load_codex_auth(auth_path)
@@ -40,6 +42,8 @@ def codex_response_text(
     }
     if service_tier:
         body["service_tier"] = service_tier
+    if reasoning_effort:
+        body["reasoning"] = {"effort": reasoning_effort}
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -55,7 +59,12 @@ def codex_response_text(
     )
     text = ""
     usage = None
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+    try:
+        response_context = urllib.request.urlopen(request, timeout=timeout_seconds)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Codex responses HTTP {exc.code}: {detail[:500]}") from exc
+    with response_context as response:
         for raw in response:
             line = raw.decode("utf-8", errors="replace").rstrip("\n")
             if not line.startswith("data: "):
