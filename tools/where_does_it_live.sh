@@ -9,8 +9,8 @@
 # Prints:
 #   1. The src/auto_skill/ package tree (where things can go).
 #   2. Modules that already mention <concept> (so you do not re-implement).
-#   3. Modules closest to the 300-line architecture-smell limit (so you do not
-#      push them over).
+#   3. Modules closest to their tier limit (400 for src/tools, 700 for
+#      scripts; see tools/check_module_size.py) so you do not push them over.
 
 set -euo pipefail
 
@@ -53,10 +53,13 @@ else
 fi
 
 echo
-echo "=== modules over 200 lines (closest to 300-line architecture-smell limit) ==="
-find src/auto_skill scripts -name "*.py" -not -path "*__pycache__*" -print0 \
+echo "=== modules at >=75% of their tier limit (src/tools=400, scripts=700) ==="
+find src/auto_skill scripts tools -name "*.py" -not -path "*__pycache__*" -print0 \
   | xargs -0 wc -l 2>/dev/null \
-  | awk '$1 > 200 && $2 != "total"' \
+  | awk '$2 != "total" {
+      tier_limit = ($2 ~ /^scripts\//) ? 700 : 400
+      if ($1 >= 0.75 * tier_limit) printf "%5d/%d %s\n", $1, tier_limit, $2
+    }' \
   | sort -rn \
   | head -15
 

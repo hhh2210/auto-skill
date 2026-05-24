@@ -104,6 +104,15 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
   filter by word count, lexical diversity, stopword hits, lyrics/copyright
   substrings, or uppercase heuristics unless running an explicitly named strict
   diagnostic. Length and quality signals belong in metric stratification reports.
+- For target-nearest author-style hard-negative probes, prefer the H100 vLLM
+  embedding endpoint over local MPS once the SSH tunnel is stable. The observed
+  good local client shape is OpenAI-compatible embeddings through
+  `127.0.0.1:18001`, `--batch-size 256`, `--embedding-workers 4`,
+  `--embedding-max-retries 5`, `--embedding-expected-dim 1024`, and
+  `--max-candidate-chars 3000`. Always set `NO_PROXY=127.0.0.1,localhost` for
+  tunnel calls, include backend + served model id + embedding dim in the cache
+  namespace, and fail loud on dimension mismatches instead of mixing caches from
+  local sentence-transformers and remote vLLM.
 - Do not jump from the 8-pack legacy MVP directly to all benchmark cases. Prefer a
   stratified medium expansion first (for example `--max-writing-groups 30
   --max-present-groups 20`) and require split validation, benchmark-flow audit,
@@ -205,9 +214,18 @@ Legacy WritingBench/PresentBench flow: `fewshot_splits.jsonl` → `example_packs
 - Long-running or API-backed scripts need `--dry-run`, `--resume` when outputs
   are append-only, deterministic `--seed` for sampling, explicit output schemas,
   and public/private artifact boundaries.
-- A new file over roughly 300 lines, or a patch that adds roughly 500 lines, is
-  an architecture smell. Stop and split responsibilities before continuing
-  unless the file is generated or schema-only.
+- File size is tiered and enforced by `tools/check_module_size.py`:
+  `src/**` and `tools/**` use a 400-line soft limit; `scripts/**` (CLI
+  orchestrators that aggregate library calls) use 700. A patch that adds
+  roughly 500 lines to one file is an architecture smell regardless of tier.
+  Existing over-limit files live in `GRANDFATHERED` and must shrink, not grow.
+  Generated, schema-only, or lookup-table files are exempt — state the
+  exception in the PR.
+- Function complexity is bounded by ruff's `C901` rule with
+  `max-complexity = 15` (configured in `pyproject.toml`). Pre-existing
+  offenders are listed in `[tool.ruff.lint.per-file-ignores]` and should be
+  refactored opportunistically; new code under any non-listed path must stay
+  within budget.
 - Do not duplicate model transport logic. Add provider-specific options to the
   shared client or transport wrapper, then expose them through thin CLIs.
 - New probe or diagnostic scripts must be listed in `scripts/README.md` with an
@@ -229,8 +247,10 @@ The fastest path is the helper script:
 ```
 
 It prints the current `src/auto_skill/` package tree, every existing module
-that already mentions `<concept>`, and the largest modules near the 300-line
-limit. If you skip the helper, run the equivalent commands by hand:
+that already mentions `<concept>`, and the modules closest to their tier
+limit (400 for `src/**` and `tools/**`, 700 for `scripts/**`; see
+`tools/check_module_size.py`). If you skip the helper, run the equivalent
+commands by hand:
 
 1. `find src/auto_skill -maxdepth 3 -type d | grep -v __pycache__` — confirm
    the package layout. New behavior must land in an existing package unless a
@@ -241,7 +261,8 @@ limit. If you skip the helper, run the equivalent commands by hand:
    `days_apart` family in `cleaning/author_style/pack_negatives.py` is a
    recurring trap.
 3. `wc -l <target file>` and sibling files — confirm you are not pushing the
-   file past 300 lines. If you are, split before adding.
+   file past its tier limit (400 for `src/**` and `tools/**`, 700 for
+   `scripts/**`). If you are, split before adding.
 4. State the architectural decision in 1-2 sentences (in your reply, the
    commit body, or the PR description): `X belongs in
    src/auto_skill/<path> because <reason>; reused helpers: <list>` (or
@@ -255,58 +276,55 @@ Scripts in `scripts/` are CLI shells. They must import library logic from
 violation, not a style preference. When unsure where something belongs,
 propose the location first and wait for confirmation — do not start writing.
 
-## Current Validation Commands
+## Validation Policy
+
+Do not run every historical command by default. Choose the smallest closed-loop
+validation that covers the files touched, then broaden only when the change
+crosses module boundaries or affects public artifacts.
+
+Always run these before handing off a code change:
 
 ```bash
-uv sync --extra dev
-uv sync --extra dev --extra presentbench
+uv run ruff check <changed paths>
 uv run python -m unittest discover -s tests
 diff -q AGENTS.md CLAUDE.md
-uv run python -c "import google.genai, PIL, pptx, requests, tqdm"
-uv run --with datasets python -m auto_skill.author_style_cleaning --source blog --max-rows 200 --authors 2 --train-posts 2 --heldout-posts 1 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_blog_smoke
-uv run python -m auto_skill.author_style_cleaning --source mendeley-reddit --mendeley-path data/mendeley_reddit_cross_topic/Reddit_Cross-Topic-AV-Corpus_1000_users.zip --authors 2 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_reddit_smoke
-uv run python scripts/data/validate_splits.py artifacts/splits/fewshot_splits.jsonl
-uv run python scripts/data/audit_benchmark_flow.py
-uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.30wb_20pb.jsonl --packs runs/expanded/example_packs.30wb_20pb.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.30wb_20pb.jsonl --jobs runs/expanded/example_generation_jobs.30wb_20pb.jsonl --generated-outputs runs/expanded/generated_desired_outputs.30wb_20pb.qwen.jsonl
-uv run python scripts/data/audit_benchmark_flow.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl
-uv run python scripts/ops/validate_run_artifacts.py --generated-outputs tests/fixtures/generated_outputs.valid.jsonl --skills tests/fixtures/skill_rows.valid.jsonl --eval tests/fixtures/eval_rows.valid.jsonl
-uv run python scripts/data/inspect_benchmarks.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --limit 2 --out-dir artifacts
-uv run python scripts/data/build_fewshot_splits.py --writingbench-root ../WritingBench --presentbench-root data/PresentBench_repo --train-size 3 --heldout-size 2 --max-groups 4 --out artifacts/splits/fewshot_splits.jsonl --summary-out artifacts/splits/fewshot_split_summary.json
-uv run python scripts/data/build_example_packs.py --splits artifacts/splits/fewshot_splits.jsonl --packs-out artifacts/packs/example_packs.jsonl --private-out artifacts/private/example_private_eval.jsonl --jobs-out artifacts/jobs/example_generation_jobs.jsonl --summary-out artifacts/reports/example_pack_summary.md
-uv run python scripts/data/run_generation_jobs.py --jobs artifacts/jobs/example_generation_jobs.jsonl --out artifacts/jobs/generated_desired_outputs.jsonl --limit 1 --dry-run
-uv run python scripts/skills/run_skill_mvp.py --packs artifacts/packs/example_packs.v1.jsonl --out runs/skill_mvp.qwen.mvp.jsonl --stream --resume --allow-partial --no-enable-thinking --no-leave-one-out --temperature 0.2 --json-temperature 0 --timeout-seconds 900 --max-retries 0 --parse-max-attempts 3 --max-tokens 8192
-RUN_SKILL_MVP=0 RUN_MEMORY=1 RUN_WRITINGBENCH=1 RUN_PRESENTBENCH=1 RUN_VALIDATE=1 PRESENTBENCH_NUM_THREADS=4 scripts/ops/run_mvp_pipeline.sh
-uv run python scripts/eval/run_writingbench_official_eval.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --private-eval artifacts/private/example_private_eval.jsonl --writingbench-root ../WritingBench --limit-heldout 1 --parse-max-attempts 3 --resume --num-threads 16 --dry-run
-uv run python scripts/eval/check_presentbench_official_eval_ready.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --judge-model gemini-3-flash-preview --allow-missing --allow-empty
-uv run python scripts/eval/run_presentbench_official_judge.py --packs artifacts/packs/example_packs.v1.jsonl --code-root data/PresentBench_code --data-root data/PresentBench_repo --mode-result-root prompt_only=../PresentBench/results/prompt_only --mode-result-root auto_skill=../PresentBench/results/auto_skill --limit-heldout 2 --dry-run --allow-missing-env --expect-commands 16 --commands-out runs/presentbench_official_judge_commands.json
-# After upstream PresentBench score YAMLs exist:
-# uv run python scripts/eval/summarize_presentbench_official_scores.py --packs artifacts/packs/example_packs.v1.jsonl --solver-model qwen3.5-plus --judge-model gemini-3-flash-preview --score-root prompt_only=../PresentBench/results/prompt_only --score-root auto_skill=../PresentBench/results/auto_skill
-uv run python scripts/metrics/run_self_consistency_metric.py --packs artifacts/packs/example_packs.v1.jsonl --skills runs/skill_mvp.qwen.mvp.jsonl --out runs/self_consistency.writingbench.qwen.mvp.jsonl --modes one_shot_skill_from_examples,auto_skill_feature_driven_no_validation --dry-run
-uv run python scripts/metrics/summarize_mvp_metrics.py --skills runs/skill_mvp.qwen.mvp.jsonl --skills runs/skill_mvp.qwen.ours_full.writingbench.jsonl --skills runs/skill_mvp.qwen.ours_full.presentbench.jsonl --packs artifacts/packs/example_packs.v1.jsonl --modes prompt_only,few_shot_examples_only,one_shot_skill_from_examples,ours_no_validation,auto_skill,examples_plus_one_shot_skill,examples_plus_feature_skill,slide_constrained_examples_plus_feature_skill,layout_plan_examples_plus_feature_skill --eval runs/writingbench_official_eval.qwen.five_modes.no_thinking_auto_skill.jsonl --eval runs/writingbench_official_eval.qwen.examples_plus_skill.heldout2.jsonl --eval runs/presentbench_surrogate_eval.qwen.mvp.jsonl --eval runs/presentbench_surrogate_eval.qwen.auto_skill.jsonl --eval runs/presentbench_surrogate_eval.qwen.examples_plus_skill.heldout2.jsonl --eval runs/presentbench_surrogate_eval.qwen.slide_constrained_examples_plus_feature.heldout2.jsonl --eval runs/presentbench_surrogate_eval.qwen.layout_plan_examples_plus_feature.heldout2.jsonl --eval runs/writingbench_official_eval.mimo_judge.five_modes.heldout2.jsonl --eval runs/writingbench_official_eval.mimo_judge.examples_plus_skill.heldout2.jsonl --self-consistency runs/self_consistency.writingbench.qwen.mvp.jsonl --out runs/mvp_metrics.heldout2.current.summary.json
-uv run python scripts/ops/report_experiment_readiness.py --profile mvp --expect-status ready
-uv run python scripts/ops/report_experiment_readiness.py --profile full --expect-status not_ready
-uv run python scripts/ops/report_expanded_cleaning_status.py --expect-status ready
-uv run python scripts/ops/report_expanded_cleaning_status.py --require-mimo-subset --expect-status ready
-uv run python scripts/ops/report_expanded_cleaning_status.py --splits runs/expanded/fewshot_splits.max_available.jsonl --packs runs/expanded/example_packs.max_available.qwen.v1.jsonl --private-eval runs/expanded/example_private_eval.max_available.jsonl --jobs runs/expanded/example_generation_jobs.max_available.jsonl --generated-outputs runs/expanded/generated_desired_outputs.max_available.qwen.latest_success.jsonl --expect-packs 142 --expect-train-examples 426 --expect-heldout-tasks 284 --expect-generation-jobs 426 --skip-mimo-subset --expect-status ready
-uv run python scripts/metrics/validate_disagreement_taxonomy.py --packets runs/expanded/judge_disagreements.qwen_vs_mimo.sample4_wb.heldout1.jsonl --taxonomy artifacts/taxonomies/judge_disagreement_2026-05-09.jsonl --expect-status ok
-uv run ruff check .
 ```
 
-The WritingBench/PresentBench commands above are legacy regression gates. Keep
-them green while the legacy artifacts exist, but do not treat them as the active
-benchmark direction.
+Use targeted checks by changed area:
+
+| Changed area | Required validation |
+| --- | --- |
+| `src/auto_skill/cleaning/author_style/*` | Run related unit tests plus one blog smoke and one reddit smoke. Use `--audit-thresholds none` unless explicitly testing strict cleaning. |
+| `src/auto_skill/probes/*` or `scripts/probes/*` | Run a tiny probe artifact build against existing smoke `clean_posts.jsonl`; do not start a full research run as validation. |
+| `src/auto_skill/metrics/*` or `scripts/metrics/*` | Run the relevant metric tests and one fixture/smoke invocation with `--dry-run` or a tiny JSONL sample when supported. |
+| `src/auto_skill/llm/*` or provider config | Run LLM config tests and import checks; only call external models when the behavior cannot be validated with fixtures. |
+| `scripts/data/*`, schemas, or split builders | Run split/artifact validation on the smallest checked-in fixture or smoke artifact that exercises the changed contract. |
+| readiness/reporting code | Run the specific readiness/reporting test plus one expected-ready and one expected-not-ready profile when fixtures exist. |
+| docs only | Run `diff -q AGENTS.md CLAUDE.md` when either collaboration file changed; skip expensive benchmark checks. |
+
+Author-style smoke commands:
+
+```bash
+uv run --with datasets python -m auto_skill.author_style_cleaning --source blog --max-rows 200 --authors 2 --train-posts 2 --heldout-posts 1 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_blog_smoke
+uv run python -m auto_skill.author_style_cleaning --source mendeley-reddit --mendeley-path data/mendeley_reddit_cross_topic/Reddit_Cross-Topic-AV-Corpus_1000_users.zip --authors 2 --negatives-per-heldout 1 --audit-thresholds none --out-dir /tmp/auto_skill_author_style_reddit_smoke
+```
+
+Environment setup is not a normal validation step. Run `uv sync --extra dev`
+only when dependencies changed or the environment is missing packages. Run
+`uv sync --extra dev --extra presentbench` only for legacy PresentBench work.
+
+WritingBench and PresentBench are legacy regression surfaces. Keep their existing
+commands working while the artifacts exist, but run those gates only when touching
+legacy code, release-readiness scripts, or a change that could affect legacy
+artifact contracts.
 
 `run_generation_jobs.py --dry-run` does not create generated outputs. Only run
 `apply_generated_outputs.py` after a real generation file exists, and treat any
 non-zero missing/rejected count as a failed data freeze.
 
-For CI or smoke work where the current checked-in artifacts are intentionally
-incomplete, use `report_experiment_readiness.py --profile full --expect-status
-not_ready` to assert that the gate fails closed. Use `--profile smoke` for
-partial smoke inspection. The default `--profile mvp` reads current MVP
-artifacts and does not require `auto_skill_ours_full`, `auto_skill`, or official
-PresentBench score artifacts / success rows; full experiment readiness requires
-those official scores.
-Readiness input flags (`--skills`, `--writing-eval`, `--present-surrogate-eval`,
-and `--present-official-scores`) are repeatable so split artifacts can be merged
-without fabricating concatenated run files.
+For CI or smoke work where checked-in artifacts are intentionally incomplete, use
+`report_experiment_readiness.py --profile full --expect-status not_ready` to
+assert that the gate fails closed. Use `--profile smoke` for partial smoke
+inspection. Full experiment readiness requires official score artifacts and
+success rows; do not fabricate concatenated run files when repeatable input flags
+can merge split artifacts.

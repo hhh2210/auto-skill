@@ -30,8 +30,35 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "C90"]
+ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Existing C901 (mccabe complexity) debt. Refactor opportunistically; new code
+# under any non-listed path must stay within max-complexity=15.
+"scripts/eval/audit_train_examples.py" = ["C901"]
+"scripts/eval/run_heldout_eval.py" = ["C901"]
+"scripts/eval/run_writingbench_official_eval.py" = ["C901"]
+"scripts/metrics/aggregate_failure_modes.py" = ["C901"]
+"scripts/metrics/run_author_style_reference_retrieval.py" = ["C901"]
+"scripts/metrics/run_pairwise_likeness.py" = ["C901"]
+"scripts/metrics/run_pattern_similarity_eval.py" = ["C901"]
+"scripts/metrics/run_skill_quality_eval.py" = ["C901"]
+"scripts/metrics/validate_disagreement_taxonomy.py" = ["C901"]
+"scripts/ops/report_expanded_cleaning_status.py" = ["C901"]
+"scripts/skills/run_skill_mvp.py" = ["C901"]
+"src/auto_skill/cleaning/author_style/gpt.py" = ["C901"]
+"src/auto_skill/cleaning/author_style/pipeline.py" = ["C901"]
+"src/auto_skill/cleaning/author_style/quality/audit.py" = ["C901"]
+"src/auto_skill/cleaning/author_style/quality/metric_helpers.py" = ["C901"]
+"src/auto_skill/cleaning/author_style/quality/metrics.py" = ["C901"]
+"src/auto_skill/cleaning/benchmark_flow.py" = ["C901"]
+"src/auto_skill/eval/presentbench_official.py" = ["C901"]
+"src/auto_skill/metrics/readiness.py" = ["C901"]
