@@ -33,6 +33,7 @@ class ReferenceRetrievalJob:
     task_id: str
     source: str | None
     source_task_id: str | None
+    probe_metadata: dict[str, Any]
     target_text: str
     expected_candidate_id: str
     candidates: list[ReferenceCandidate]
@@ -231,6 +232,7 @@ def build_reference_retrieval_jobs(
                         if isinstance(task.get("source_task_id"), str)
                         else None
                     ),
+                    probe_metadata=_public_probe_metadata(pack.get("probe_metadata")),
                     target_text=target_text,
                     expected_candidate_id=expected,
                     candidates=candidates,
@@ -255,6 +257,7 @@ def build_success_row(
         "task_id": job.task_id,
         "source": job.source,
         "source_task_id": job.source_task_id,
+        "probe_metadata": job.probe_metadata,
         "evaluator_kind": EVALUATOR_KIND,
         "status": status,
         "target_provenance": "source_private_heldout_reference",
@@ -294,6 +297,7 @@ def build_error_row(
         "task_id": job.task_id,
         "source": job.source,
         "source_task_id": job.source_task_id,
+        "probe_metadata": job.probe_metadata,
         "evaluator_kind": EVALUATOR_KIND,
         "status": status,
         "target_provenance": "source_private_heldout_reference",
@@ -335,21 +339,16 @@ def summarize_reference_retrieval_rows(
         for row in success_rows
         if isinstance(row.get("expected_rank"), int)
     ]
-    by_source: dict[str, dict[str, Any]] = {}
-    for source, source_rows in _group_by_source(success_rows).items():
-        source_correct = [row for row in source_rows if row.get("oracle_correct") is True]
-        by_source[source] = {
-            "success": len(source_rows),
-            "correct": len(source_correct),
-            "accuracy": _rate(len(source_correct), len(source_rows)),
-            "mean_expected_rank": _mean(
-                [
-                    int(row["expected_rank"])
-                    for row in source_rows
-                    if isinstance(row.get("expected_rank"), int)
-                ]
-            ),
-        }
+    by_source = _summarize_groups(_group_by_key(success_rows, lambda row: str(row.get("source") or "unknown")))
+    by_hard_neg_variant = _summarize_groups(
+        _group_by_key(success_rows, lambda row: _metadata_value(row, "hard_neg_variant"))
+    )
+    by_source_hard_neg_variant = _summarize_groups(
+        _group_by_key(success_rows, lambda row: _metadata_value(row, "source_hard_neg_variant"))
+    )
+    by_length_bucket = _summarize_groups(
+        _group_by_key(success_rows, lambda row: _metadata_value(row, "length_bucket"))
+    )
     return {
         "schema_version": "author-style-reference-retrieval-summary/v1",
         "evaluator_kind": EVALUATOR_KIND,
@@ -361,6 +360,9 @@ def summarize_reference_retrieval_rows(
         "mean_expected_rank": _mean(ranks),
         "median_expected_rank": _median(ranks),
         "by_source": by_source,
+        "by_hard_neg_variant": by_hard_neg_variant,
+        "by_source_hard_neg_variant": by_source_hard_neg_variant,
+        "by_length_bucket": by_length_bucket,
         "skipped": {
             "rows": len(skipped or []),
             "reason_counts": dict(
@@ -399,6 +401,26 @@ def _train_reference_candidates(
         if len(candidates) >= limit:
             break
     return candidates
+
+
+def _public_probe_metadata(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        "hard_neg_variant",
+        "source_hard_neg_variant",
+        "length_bucket",
+        "source",
+        "probe_kind",
+        "target_word_count",
+        "target_private_topic",
+    }
+    public = {}
+    for key in allowed:
+        item = value.get(key)
+        if isinstance(item, (str, int, float, bool)) or item is None:
+            public[key] = item
+    return public
 
 
 def _normalize_candidate_id(value: Any, candidate_ids: set[str]) -> str | None:
@@ -469,11 +491,40 @@ def _latest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return unkeyed + list(latest.values())
 
 
-def _group_by_source(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _group_by_key(
+    rows: list[dict[str, Any]],
+    key_fn: Any,
+) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        grouped[str(row.get("source") or "unknown")].append(row)
+        grouped[str(key_fn(row) or "unknown")].append(row)
     return grouped
+
+
+def _metadata_value(row: dict[str, Any], key: str) -> str:
+    metadata = row.get("probe_metadata")
+    if not isinstance(metadata, dict):
+        return "unknown"
+    return str(metadata.get(key) or "unknown")
+
+
+def _summarize_groups(groups: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    summary: dict[str, dict[str, Any]] = {}
+    for key, group_rows in groups.items():
+        correct = [row for row in group_rows if row.get("oracle_correct") is True]
+        summary[key] = {
+            "success": len(group_rows),
+            "correct": len(correct),
+            "accuracy": _rate(len(correct), len(group_rows)),
+            "mean_expected_rank": _mean(
+                [
+                    int(row["expected_rank"])
+                    for row in group_rows
+                    if isinstance(row.get("expected_rank"), int)
+                ]
+            ),
+        }
+    return summary
 
 
 def _rate(numerator: int, denominator: int) -> float | None:

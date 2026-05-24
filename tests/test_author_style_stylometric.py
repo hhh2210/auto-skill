@@ -65,6 +65,7 @@ def _job(
         task_id=f"{pack_id}::heldout::0",
         source="fixture",
         source_task_id=None,
+        probe_metadata={},
         target_text=target,
         expected_candidate_id=expected,
         candidates=candidates,

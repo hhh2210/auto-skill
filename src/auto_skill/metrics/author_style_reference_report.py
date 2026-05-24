@@ -70,6 +70,28 @@ def reference_retrieval_summary_markdown(summary: dict[str, Any]) -> str:
             f"| {source} | {row.get('success', 0)} | {row.get('correct', 0)} | "
             f"{_pct(row.get('accuracy'))} | {_fmt(row.get('mean_expected_rank'))} |"
         )
+    for title, key in (
+        ("By Hard Negative Variant", "by_hard_neg_variant"),
+        ("By Source Hard Negative Variant", "by_source_hard_neg_variant"),
+        ("By Length Bucket", "by_length_bucket"),
+    ):
+        rows = summary.get(key) or {}
+        if not rows:
+            continue
+        lines.extend(
+            [
+                "",
+                f"## {title}",
+                "",
+                "| Bucket | Success | Correct | Accuracy | Mean rank |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        for bucket, row in sorted(rows.items()):
+            lines.append(
+                f"| {bucket} | {row.get('success', 0)} | {row.get('correct', 0)} | "
+                f"{_pct(row.get('accuracy'))} | {_fmt(row.get('mean_expected_rank'))} |"
+            )
     lines.extend(
         [
             "",

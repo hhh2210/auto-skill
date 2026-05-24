@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -45,6 +46,8 @@ def judge_openai_compatible(
     config: ChatCompletionConfig,
     prompt: str,
     max_tokens: int,
+    enable_thinking: bool | None,
+    thinking_budget: int | None,
 ) -> tuple[str, dict[str, Any]]:
     started = time.monotonic()
     client = ChatCompletionClient(config)
@@ -61,6 +64,8 @@ def judge_openai_compatible(
         ],
         temperature=0.0,
         max_tokens=max_tokens,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
     )
     return result.text, {
         "provider": "openai_compatible",
@@ -87,11 +92,13 @@ def judge_codex_oauth(
             "Return only strict JSON."
         ),
         service_tier=args.service_tier,
+        reasoning_effort=args.reasoning_effort,
         timeout_seconds=args.timeout_seconds,
     )
     return text, {
         "provider": "codex_oauth",
         "model": args.model,
+        "reasoning_effort": args.reasoning_effort,
         "usage": usage,
         "finish_reason": None,
         "request_id": None,
@@ -125,6 +132,8 @@ def judge_with_parse_retry(
                 config=config,
                 prompt=prompt,
                 max_tokens=args.max_tokens,
+                enable_thinking=args.enable_thinking,
+                thinking_budget=args.thinking_budget,
             )
         report = parse_reference_retrieval_report(text, candidate_ids=candidate_ids)
         status = reference_retrieval_status(
@@ -156,7 +165,7 @@ def evaluate_job(
     *,
     args: argparse.Namespace,
     config: ChatCompletionConfig | None,
-) -> tuple[tuple[str, str], dict[str, Any]]:
+) -> tuple[tuple[str, str], dict[str, Any], dict[str, Any] | None]:
     key = (job.pack_id, job.task_id)
     try:
         judge, report, status, attempts = judge_with_parse_retry(
@@ -164,28 +173,107 @@ def evaluate_job(
             args=args,
             config=config,
         )
-        return key, build_success_row(
+        row = build_success_row(
             job=job,
             judge=judge,
             report=report,
             status=status,
             attempts=attempts,
         )
-    except Exception as exc:  # noqa: BLE001 - checkpoint batch errors per row.
-        judge_model = args.model if args.backend == "codex-oauth" else (
-            config.model if config is not None else None
+        return (
+            key,
+            row,
+            private_debug_row(
+                job=job,
+                judge=judge,
+                report=report,
+                status=status,
+            ),
         )
-        return key, build_error_row(
+    except Exception as exc:  # noqa: BLE001 - checkpoint batch errors per row.
+        judge_model = (
+            args.model
+            if args.backend == "codex-oauth"
+            else (config.model if config is not None else None)
+        )
+        row = build_error_row(
             job=job,
             status="model_error",
             error=f"{type(exc).__name__}: {exc}",
             judge_model=judge_model,
+        )
+        return (
+            key,
+            row,
+            private_debug_row(
+                job=job,
+                judge={"model": judge_model},
+                report={"parse_error": "model_error", "rationale": f"{type(exc).__name__}: {exc}"},
+                status="model_error",
+            ),
         )
 
 
 def append_row(out: Path, rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
     rows.append(row)
     write_jsonl(out, rows)
+
+
+def append_jsonl_row(out: Path, row: dict[str, Any]) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def private_debug_row(
+    *,
+    job: ReferenceRetrievalJob,
+    judge: dict[str, Any],
+    report: dict[str, Any],
+    status: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": "author-style-reference-private-debug/v1",
+        "pack_id": job.pack_id,
+        "task_id": job.task_id,
+        "source": job.source,
+        "source_task_id": job.source_task_id,
+        "status": status,
+        "target_text_excerpt": _excerpt(job.target_text),
+        "candidate_texts_excerpt": [
+            {
+                "candidate_id": candidate.candidate_id,
+                "kind": candidate.kind,
+                "text_excerpt": _excerpt(candidate.text),
+            }
+            for candidate in job.candidates
+        ],
+        "expected_candidate_id": job.expected_candidate_id,
+        "selected_candidate_id": report.get("most_similar_candidate_id"),
+        "ranked_candidate_ids": report.get("ranked_candidate_ids"),
+        "judge_full_rationale": report.get("rationale"),
+        "parse_error": report.get("parse_error"),
+        "judge": judge,
+    }
+
+
+def private_debug_keys(
+    jobs: list[ReferenceRetrievalJob],
+    *,
+    sample_size: int,
+    seed: int,
+) -> set[tuple[str, str]]:
+    ordered = sorted(
+        jobs,
+        key=lambda job: hashlib.sha256(f"{seed}:{job.pack_id}:{job.task_id}".encode()).hexdigest(),
+    )
+    return {(job.pack_id, job.task_id) for job in ordered[:sample_size]}
+
+
+def _excerpt(text: str, max_chars: int = 500) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + f"\n...[truncated {len(text) - max_chars} chars]"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -196,6 +284,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--summary-out", type=Path, required=True)
     parser.add_argument("--report-md", type=Path)
+    parser.add_argument("--private-debug-out", type=Path)
+    parser.add_argument("--private-debug-sample-size", type=int, default=0)
+    parser.add_argument("--private-debug-seed", type=int, default=20260523)
     parser.add_argument("--limit-packs", type=int)
     parser.add_argument("--limit-heldout", type=int)
     parser.add_argument("--references-per-target", type=int, default=1)
@@ -210,9 +301,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default="gpt-5.5")
     parser.add_argument("--auth", type=Path, default=Path("~/.codex/auth.json").expanduser())
     parser.add_argument("--service-tier", default=None)
+    parser.add_argument("--reasoning-effort", default=None)
     parser.add_argument("--timeout-seconds", type=float, default=240.0)
     parser.add_argument("--max-retries", type=int)
     parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument("--enable-thinking", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--thinking-budget", type=int)
     parser.add_argument("--parse-max-attempts", type=int, default=3)
     parser.add_argument("--num-threads", type=int, default=1)
     parser.add_argument("--max-target-chars", type=int, default=5000)
@@ -296,6 +390,11 @@ def main() -> int:
         ]
     completed = {row_key(row) for row in rows}
     pending = [job for job in jobs if job_key(job) not in completed]
+    debug_keys = private_debug_keys(
+        jobs,
+        sample_size=max(0, args.private_debug_sample_size),
+        seed=args.private_debug_seed,
+    )
     model_label = (
         args.model if args.backend == "codex-oauth" else (config.model if config else None)
     )
@@ -307,18 +406,21 @@ def main() -> int:
 
     if args.num_threads == 1:
         for job in pending:
-            key, row = evaluate_job(job, args=args, config=config)
+            key, row, debug = evaluate_job(job, args=args, config=config)
             append_row(args.out, rows, row)
+            if args.private_debug_out and debug and key in debug_keys:
+                append_jsonl_row(args.private_debug_out, debug)
             print(f"  {key[1]}: {row['status']} {row.get('oracle_correct')}", flush=True)
     else:
         with ThreadPoolExecutor(max_workers=args.num_threads) as executor:
             futures = [
-                executor.submit(evaluate_job, job, args=args, config=config)
-                for job in pending
+                executor.submit(evaluate_job, job, args=args, config=config) for job in pending
             ]
             for future in as_completed(futures):
-                key, row = future.result()
+                key, row, debug = future.result()
                 append_row(args.out, rows, row)
+                if args.private_debug_out and debug and key in debug_keys:
+                    append_jsonl_row(args.private_debug_out, debug)
                 print(f"  {key[1]}: {row['status']} {row.get('oracle_correct')}", flush=True)
 
     summary = summarize_reference_retrieval_rows(rows, skipped=skipped)

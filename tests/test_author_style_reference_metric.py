@@ -245,6 +245,11 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
                     "pack_id": "p1",
                     "task_id": "t1",
                     "source": "personal_blog_history",
+                    "probe_metadata": {
+                        "hard_neg_variant": "topic_nearest_qwen3",
+                        "source_hard_neg_variant": "style_surface",
+                        "length_bucket": "0_50",
+                    },
                     "status": "success",
                     "oracle_correct": True,
                     "expected_rank": 1,
@@ -253,6 +258,11 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
                     "pack_id": "p2",
                     "task_id": "t1",
                     "source": "cross_topic_online_comment_history",
+                    "probe_metadata": {
+                        "hard_neg_variant": "topic_nearest_qwen3",
+                        "source_hard_neg_variant": "random",
+                        "length_bucket": "500_plus",
+                    },
                     "status": "success",
                     "oracle_correct": False,
                     "expected_rank": 3,
@@ -265,6 +275,9 @@ class AuthorStyleReferenceMetricTests(unittest.TestCase):
         self.assertEqual(summary["correct"], 1)
         self.assertEqual(summary["accuracy"], 0.5)
         self.assertEqual(summary["median_expected_rank"], 2)
+        self.assertEqual(summary["by_hard_neg_variant"]["topic_nearest_qwen3"]["success"], 2)
+        self.assertEqual(summary["by_source_hard_neg_variant"]["style_surface"]["accuracy"], 1.0)
+        self.assertEqual(summary["by_length_bucket"]["0_50"]["accuracy"], 1.0)
         self.assertEqual(summary["skipped"]["reason_counts"], {"missing_negatives": 1})
 
 
